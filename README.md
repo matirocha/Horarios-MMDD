@@ -240,6 +240,12 @@ Deben cumplirse en el 100% de los casos para que un horario sea considerado fact
    * **Salas de Especialidad y Electivos:** La planilla oficial coordina **8 salas específicas** (*Electivo 1, Electivo 2, Electivo 3, Sala de Tecnología, Sala Padre Cueto, Sala Madre Pilar, Sala de Artes y Sala de Música*), las cuales no admiten solapamiento entre distintas secciones.
    * **Bloqueos Institucionales por Actividades Pastorales:** Determinados recintos (ej. Sala Padre Cueto, Sala Madre Pilar y Sala de Música) tienen franjas bloqueadas para actividades de pastoral escolar (*Comunidad Misionera* y *Amigos Servidores*), restringiendo su uso lectivo.
 
+8. **No Repetición Diaria de Asignaturas (At Most One Session Per Day):**
+   * Ningún curso puede tener la misma asignatura repartida en dos sesiones o momentos separados durante el mismo día escolar. Toda carga diaria de una asignatura debe impartirse en una única sesión continua (evitando, por ejemplo, tener Matemática a primera hora y nuevamente en la tarde).
+
+9. **Bloques Pedagógicos Consecutivos (90 minutos) para Asignaturas Troncales:**
+   * Para asignaturas clave y de alta demanda cognitiva (**Educación Matemática**, **Lenguaje y Comunicación**, y **Ciencias**: Ciencias Naturales, Biología, Química y Física), los bloques lectivos deben programarse obligatoriamente de forma consecutiva (pares pedagógicos de 90 minutos contiguos). No se admiten bloques aislados de 1 hora para estas materias salvo remanentes impares estricta y curricularmente autorizados.
+
 ---
 
 ### 2. Restricciones Blandas / Criterios de Calidad (Soft Constraints)
@@ -260,6 +266,10 @@ Horarios-MMDD/
 │   ├── HORARIO CURSOS (1).xlsx          # Mallas horarias de referencia por curso y espacio
 │   └── PROPUESTA HORARIA_MATIAS (1).xls # Propuesta de distribución y dotación docente
 ├── notebooks/                           # Jupyter Notebooks de experimentación y prototipado
+│   ├── generador_horarios.py            # Motor algorítmico y optimizador en Python
+│   └── Outputs Excel/                   # Libros generados automáticamente en formato Excel
+│       ├── Horario_Cursos_MMDD.xlsx     # Horarios oficiales por curso (24 cursos + resúmenes)
+│       └── Horarios_Docentes_Colegio_MMDD.xlsx # Horarios individualizados por docente (51 docentes)
 ├── Presentacion de avance/              # Documentación de entregas académicas
 │   ├── Presentacion_Avance1_Grupo5.html # Presentación interactiva del proyecto (Informe de Avance)
 │   └── Presentacion_Avance1_Grupo5.pdf  # Versión PDF de la presentación
@@ -287,6 +297,22 @@ flowchart LR
 3. **Diseño y Codificación:** Implementación de algoritmos heurísticos y metaheurísticos en Python (Búsqueda Local Iterada, Algoritmos Genéticos / ILS).
 4. **Calibración y Ajuste:** Afinamiento de parámetros computacionales y ponderaciones de la función de aptitud frente a la escala combinatoria real.
 5. **Validación y Despliegue:** Contraste de horarios generados versus horarios manuales históricos y despliegue en la plataforma web interactiva.
+
+---
+
+## 📊 Plataforma de Ejecución y Salidas Excel
+
+El sistema cuenta con un motor algorítmico autocontenido en Python (`notebooks/generador_horarios.py`) que genera la programación horaria factible y exporta automáticamente dos libros Excel estructurados en `notebooks/Outputs Excel/`:
+
+### 1. `Horario_Cursos_MMDD.xlsx` (Horario por Cursos)
+* **24 Hojas de Cursos:** Una pestaña por cada curso (1° Básico A a 4° Medio B) con títulos institucionales en las filas 1, 2 y 3 unificados mediante **Combinar y Centrar (`A1:G1`, `A2:G2` y `A3:G3`)**, paleta de colores corporativa (azul marino y carmesí), bloques lectivos y recreos destacados.
+* **Hoja de Gimnasios:** Monitoreo y control de aforo para los 3 recintos deportivos (*Gimnasio A, Gimnasio B y Patio Santo Domingo*).
+* **Hoja de Docentes:** Consolidado de carga horaria semanal y programación general.
+* **Hoja de Auditoría:** Informe matemático de verificación de las restricciones duras (*Hard Constraints*).
+
+### 2. `Horarios_Docentes_Colegio_MMDD.xlsx` (Horario por Docente)
+* **Hoja RESUMEN DOCENTES:** Matriz consolidada de toda la planta docente con N°, Nombre del Docente, Horas Totales asignadas, Cursos a cargo y Asignaturas impartidas, con cabecera combinada y centrada (`A1:E1`, `A2:E2`, `A3:E3`).
+* **51 Hojas Individuales de Docentes:** Una pestaña personalizada por cada profesor/a con su malla horaria semanal detallada (Bloque, Horario, Lunes a Viernes), indicando curso y asignatura en cada bloque asignado, bloques libres/ventanas y recreos/colaciones, con cabecera combinada y centrada (`A1:G1`, `A2:G2`, `A3:G3`).
 
 ---
 

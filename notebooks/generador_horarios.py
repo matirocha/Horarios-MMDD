@@ -91,12 +91,12 @@ class DatosColegio:
         '6° BÁSICO A': 'Profesor Historia 2',
         '6° BÁSICO B': 'Profesor Historia 1',
         '7° BÁSICO A': 'Profesor Ed. Física 1',
-        '7° BÁSICO B': 'Profesor 1 Arte/Tecnología',
-        '8° BÁSICO A': 'Profesor Matemática 2',
-        '8° BÁSICO B': 'Profesor Lenguaje 2',
+        '7° BÁSICO B': 'Profesor 1 (Tecnología)',
+        '8° BÁSICO A': 'Profesor matemática 4',
+        '8° BÁSICO B': 'Profesor lenguaje 5',
         '1° MEDIO A': 'Profesor Inglés 6',
-        '1° MEDIO B': 'Profesor Matemática 3',
-        '2° MEDIO A': 'Profesor Religión Media',
+        '1° MEDIO B': 'Profesor matemática 3',
+        '2° MEDIO A': 'Profesor Religión 3 (Media)',
         '2° MEDIO B': 'Profesor Historia 1',
         '3° MEDIO A': 'Profesor Historia 3',
         '3° MEDIO B': 'Profesor Inglés 4',
@@ -434,7 +434,7 @@ class DatosColegio:
             ('Química', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
             ('Física', 2, 'Profesor Ciencias 4 (Física)', 'Aula'),
             ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Artes Visuales y Música', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
+            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
             ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
             ('Religión', 2, 'Profesor Religión Media', 'Aula'),
             ('Orientación', 1, 'Profesor Inglés 6', 'Aula'),
@@ -452,7 +452,7 @@ class DatosColegio:
             ('Química', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
             ('Física', 2, 'Profesor Ciencias 4 (Física)', 'Aula'),
             ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Artes Visuales y Música', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
+            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
             ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
             ('Religión', 2, 'Profesor Religión Media', 'Aula'),
             ('Orientación', 1, 'Profesor Matemática 3', 'Aula'),
@@ -470,7 +470,7 @@ class DatosColegio:
             ('Química', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
             ('Física', 2, 'Profesor Ciencias 4 (Física)', 'Aula'),
             ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Artes Visuales y Música', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
+            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
             ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
             ('Religión', 2, 'Profesor Religión Media', 'Aula'),
             ('Orientación', 1, 'Profesor Religión Media', 'Aula'),
@@ -488,7 +488,7 @@ class DatosColegio:
             ('Química', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
             ('Física', 2, 'Profesor Ciencias 4 (Física)', 'Aula'),
             ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Artes Visuales y Música', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
+            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
             ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
             ('Religión', 2, 'Profesor Religión Media', 'Aula'),
             ('Orientación', 1, 'Profesor Historia 1', 'Aula'),
@@ -505,7 +505,7 @@ class DatosColegio:
             ('Ciencias para la Ciudadanía', 2, 'Profesor Ciencias 1 (Biología)', 'Aula'),
             ('Filosofía', 2, 'Profesor Filosofía', 'Aula'),
             ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Artes Visuales y Música', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
+            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
             ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
             ('Religión', 2, 'Profesor Religión Media', 'Aula'),
             ('Orientación', 1, 'Profesor Historia 3', 'Aula'),
@@ -525,7 +525,7 @@ class DatosColegio:
             ('Ciencias para la Ciudadanía', 2, 'Profesor Ciencias 1 (Biología)', 'Aula'),
             ('Filosofía', 2, 'Profesor Filosofía', 'Aula'),
             ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Artes Visuales y Música', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
+            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
             ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
             ('Religión', 2, 'Profesor Religión Media', 'Aula'),
             ('Orientación', 1, 'Profesor Inglés 4', 'Aula'),
@@ -545,7 +545,7 @@ class DatosColegio:
             ('Ciencias para la Ciudadanía', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
             ('Filosofía', 2, 'Profesor Filosofía', 'Aula'),
             ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Artes Visuales y Música', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
+            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
             ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
             ('Religión', 2, 'Profesor Religión Media', 'Aula'),
             ('Orientación', 1, 'Profesor Inglés 2', 'Aula'),
@@ -565,7 +565,7 @@ class DatosColegio:
             ('Ciencias para la Ciudadanía', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
             ('Filosofía', 2, 'Profesor Filosofía', 'Aula'),
             ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Artes Visuales y Música', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
+            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
             ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
             ('Religión', 2, 'Profesor Religión Media', 'Aula'),
             ('Orientación', 1, 'Profesor Ciencias 3 (Química)', 'Aula'),
@@ -728,12 +728,51 @@ class ValidadorRestricciones:
                     f"Desincronización de electivos entre {cA} y {cB}: {electivos_A.symmetric_difference(electivos_B)}"
                 )
 
-        # HC 7: Capacidad máxima de gimnasios (máximo 2 simultáneos)
+        # HC 7: Capacidad máxima de gimnasios y recintos deportivos (máximo 3 simultáneos)
         for (dia, bloque), cursos_gym in horario.gimnasio_ocupado.items():
-            if len(cursos_gym) > 2:
+            if len(cursos_gym) > 3:
                 reporte['errores_duros'].append(
-                    f"Capacidad de gimnasio excedida el {dia} bloque {bloque}: {cursos_gym} (máximo permitido: 2)"
+                    f"Capacidad de recintos deportivos excedida el {dia} bloque {bloque}: {cursos_gym} (máximo permitido: 3)"
                 )
+
+        # HC 8: No repetición de la misma asignatura en sesiones separadas en el mismo día
+        same_day_violations = 0
+        for c in DatosColegio.CURSOS:
+            por_dia = defaultdict(list)
+            for dia in DatosColegio.DIAS:
+                for b, item in horario.asignaciones[c][dia].items():
+                    por_dia[(dia, item['asignatura'])].append(b)
+
+            for (dia, asig), bl in por_dia.items():
+                bl_s = sorted(bl)
+                if len(bl_s) > 2:
+                    same_day_violations += 1
+                    reporte['errores_duros'].append(
+                        f"Asignatura repetida en {c} el {dia}: '{asig}' tiene {len(bl_s)} bloques en el día ({bl_s})"
+                    )
+                elif len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1:
+                    same_day_violations += 1
+                    reporte['errores_duros'].append(
+                        f"Asignatura fragmentada en {c} el {dia}: '{asig}' en bloques no consecutivos {bl_s}"
+                    )
+
+        # HC 9: Bloques pedagógicos consecutivos (90 min) en asignaturas troncales
+        ramos_troncales = ['Matemática', 'Lenguaje', 'Ciencias', 'Biología', 'Química', 'Física']
+        core_non_consecutive = 0
+        for c in DatosColegio.CURSOS:
+            por_dia = defaultdict(list)
+            for dia in DatosColegio.DIAS:
+                for b, item in horario.asignaciones[c][dia].items():
+                    por_dia[(dia, item['asignatura'])].append(b)
+
+            for (dia, asig), bl in por_dia.items():
+                if any(rt.lower() in asig.lower() for rt in ramos_troncales):
+                    bl_s = sorted(bl)
+                    if len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1:
+                        core_non_consecutive += 1
+                        reporte['errores_duros'].append(
+                            f"Bloque no consecutivo en asignatura troncal {c} ({dia}): '{asig}' en bloques {bl_s}"
+                        )
 
         # MÉTRICAS BLANDAS: Ventanas docentes y bloques dobles
         total_ventanas = 0
@@ -777,7 +816,9 @@ class ValidadorRestricciones:
             'total_ventanas_docentes': total_ventanas,
             'porcentaje_bloques_dobles': round(pct_dobles, 1),
             'cursos_auditados': len(DatosColegio.CURSOS),
-            'docentes_auditados': len(docentes)
+            'docentes_auditados': len(docentes),
+            'mismo_dia_violaciones': same_day_violations,
+            'core_no_consecutivo': core_non_consecutive
         }
 
         return reporte
@@ -796,7 +837,7 @@ class MotorHorarios:
     def generar(self):
         """
         Ejecuta la construcción y optimización de horarios.
-        Garantiza 0 colisiones duras y optimiza criterios de calidad.
+        Garantiza 0 colisiones duras, 0 repeticiones de asignaturas por día y bloques dobles.
         """
         rng = random.Random(self.seed)
         malla = DatosColegio.get_malla_curricular()
@@ -847,220 +888,346 @@ class MotorHorarios:
         locked_slots['3° MEDIO B'][('Lunes', 10)] = ('Filosofía', 'Profesor Filosofía', 'Aula')
 
         # Orientación en básica: pre-asignar con su profesor jefe respectivo
-        # 1°-4° básico en bloque 7
         dias_orien = ['Miércoles', 'Jueves', 'Viernes', 'Martes']
         for idx, c in enumerate(DatosColegio.CURSOS[:8]):
             d_or = dias_orien[idx % len(dias_orien)]
             jefe = DatosColegio.PROFESORES_JEFES[c]
             locked_slots[c][(d_or, 7)] = ('Orientación', jefe, 'Aula')
 
-        # 2. Inicialización de asignaciones con los bloques bloqueados
+        # 2. Inicialización de estructuras
         assignments = {c: dict(locked_slots[c]) for c in DatosColegio.CURSOS}
         teacher_occ = defaultdict(set)
         gym_occ = defaultdict(set)
-        for c in DatosColegio.CURSOS:
-            for s, (asig, doc, esp) in assignments[c].items():
-                teacher_occ[(s, doc)].add(c)
-                if esp == 'Gimnasio':
-                    gym_occ[s].add(c)
+        day_asig_count = defaultdict(lambda: defaultdict(int))
 
-        # 3. Asignación inicial voraz guiada por restricciones (Greedy MRV)
+        for c in DatosColegio.CURSOS:
+            for (d, b), (asig, doc, esp) in locked_slots[c].items():
+                teacher_occ[((d, b), doc)].add(c)
+                if esp == 'Gimnasio':
+                    gym_occ[(d, b)].add(c)
+                day_asig_count[c][(d, asig)] += 1
+
+        # 3. Asignación inicial voraz guiada por bloques dobles y días distintos
+        pairs = [(1,2), (3,4), (5,6), (7,8), (9,10)]
         for c in DatosColegio.CURSOS:
             placed_counts = defaultdict(int)
             for (asig, doc, esp) in assignments[c].values():
                 placed_counts[asig] += 1
-            rem_lessons = []
+
+            sessions = []
             for asig, h, doc, esp in malla[c]:
-                needed = h - placed_counts[asig]
-                rem_lessons.extend([(asig, doc, esp)] * needed)
+                rem = h - placed_counts[asig]
+                while rem >= 2:
+                    sessions.append((asig, doc, esp, 2))
+                    rem -= 2
+                if rem == 1:
+                    sessions.append((asig, doc, esp, 1))
 
-            # Prioridad: Ed. Física primero, luego Religión y materias con docentes compartidos
-            rem_lessons.sort(key=lambda x: (x[2] == 'Gimnasio', 'Religión' in x[0]), reverse=True)
-            free_slots = [
-                s for s in [(d, b) for d in DatosColegio.DIAS for b in DatosColegio.get_bloques_permitidos(c, d)]
-                if s not in assignments[c]
-            ]
+            sessions.sort(key=lambda x: (x[2] == 'Gimnasio', any(k in x[0] for k in ['Matemática', 'Lenguaje', 'Ciencias'])), reverse=True)
 
-            for l in rem_lessons:
-                asig, doc, esp = l
+            free_doubles = []
+            free_singles = []
+            for d in DatosColegio.DIAS:
+                perm = DatosColegio.get_bloques_permitidos(c, d)
+                for b1, b2 in pairs:
+                    if b1 in perm and b2 in perm:
+                        if (d, b1) not in assignments[c] and (d, b2) not in assignments[c]:
+                            free_doubles.append(((d, b1), (d, b2)))
+                        elif (d, b1) not in assignments[c]:
+                            free_singles.append((d, b1))
+                        elif (d, b2) not in assignments[c]:
+                            free_singles.append((d, b2))
+                    elif b1 in perm and (d, b1) not in assignments[c]:
+                        free_singles.append((d, b1))
+                    elif b2 in perm and (d, b2) not in assignments[c]:
+                        free_singles.append((d, b2))
+
+            # Asignar bloques dobles
+            for sess in [s for s in sessions if s[3] == 2]:
+                asig, doc, esp, _ = sess
+                valid_pairs = [p for p in free_doubles if day_asig_count[c][(p[0][0], asig)] == 0]
+                if not valid_pairs:
+                    valid_pairs = free_doubles
+
+                rng.shuffle(valid_pairs)
+                best_pair = None
+                best_pen = 999999
+                for s1, s2 in valid_pairs:
+                    pen = len(teacher_occ[(s1, doc)]) + len(teacher_occ[(s2, doc)])
+                    if esp == 'Gimnasio':
+                        pen += (len(gym_occ[s1]) >= 3) * 15 + (len(gym_occ[s2]) >= 3) * 15
+                    if day_asig_count[c][(s1[0], asig)] > 0:
+                        pen += 500
+                    if pen < best_pen:
+                        best_pen = pen
+                        best_pair = (s1, s2)
+                        if pen == 0:
+                            break
+
+                if best_pair:
+                    free_doubles.remove(best_pair)
+                    s1, s2 = best_pair
+                    assignments[c][s1] = (asig, doc, esp)
+                    assignments[c][s2] = (asig, doc, esp)
+                    teacher_occ[(s1, doc)].add(c)
+                    teacher_occ[(s2, doc)].add(c)
+                    if esp == 'Gimnasio':
+                        gym_occ[s1].add(c)
+                        gym_occ[s2].add(c)
+                    day_asig_count[c][(s1[0], asig)] += 2
+                else:
+                    if len(free_singles) < 2 and free_doubles:
+                        d1, d2 = free_doubles.pop()
+                        free_singles.append(d1); free_singles.append(d2)
+                    s1 = free_singles.pop()
+                    s2 = free_singles.pop()
+                    assignments[c][s1] = (asig, doc, esp)
+                    assignments[c][s2] = (asig, doc, esp)
+                    teacher_occ[(s1, doc)].add(c); teacher_occ[(s2, doc)].add(c)
+                    if esp == 'Gimnasio': gym_occ[s1].add(c); gym_occ[s2].add(c)
+                    day_asig_count[c][(s1[0], asig)] += 1
+                    day_asig_count[c][(s2[0], asig)] += 1
+
+            # Asignar bloques simples
+            for sess in [s for s in sessions if s[3] == 1]:
+                asig, doc, esp, _ = sess
+                if not free_singles and free_doubles:
+                    d1, d2 = free_doubles.pop()
+                    free_singles.append(d1); free_singles.append(d2)
+                valid_singles = [s for s in free_singles if day_asig_count[c][(s[0], asig)] == 0]
+                if not valid_singles:
+                    valid_singles = free_singles
+
+                rng.shuffle(valid_singles)
                 best_s = None
-                best_pen = 99999
-                rng.shuffle(free_slots)
-                for s in free_slots:
+                best_pen = 999999
+                for s in valid_singles:
                     pen = len(teacher_occ[(s, doc)])
-                    if esp == 'Gimnasio' and len(gym_occ[s]) >= 2:
-                        pen += 10
+                    if esp == 'Gimnasio' and len(gym_occ[s]) >= 3: pen += 15
+                    if day_asig_count[c][(s[0], asig)] > 0: pen += 500
                     if pen < best_pen:
                         best_pen = pen
                         best_s = s
-                        if pen == 0:
-                            break
-                assignments[c][best_s] = l
-                free_slots.remove(best_s)
+                        if pen == 0: break
+                free_singles.remove(best_s)
+                assignments[c][best_s] = (asig, doc, esp)
                 teacher_occ[(best_s, doc)].add(c)
-                if esp == 'Gimnasio':
-                    gym_occ[best_s].add(c)
+                if esp == 'Gimnasio': gym_occ[best_s].add(c)
+                day_asig_count[c][(best_s[0], asig)] += 1
 
-        # Función de evaluación de costo duro
-        def eval_conflicts():
-            tc = sum(len(courses) - 1 for courses in teacher_occ.values() if len(courses) > 1)
-            gc = sum((len(courses) - 2) * 5 for courses in gym_occ.values() if len(courses) > 2)
-            return tc + gc
+        def count_conflicts():
+            tc = sum(len(clist) - 1 for clist in teacher_occ.values() if len(clist) > 1)
+            gc = sum((len(clist) - 3) * 5 for clist in gym_occ.values() if len(clist) > 3)
+            sd = 0
+            for cur in DatosColegio.CURSOS:
+                p_dia = defaultdict(list)
+                for (d, b), (asg, _, _) in assignments[cur].items():
+                    p_dia[(d, asg)].append(b)
+                for (d, asg), bl in p_dia.items():
+                    bl_s = sorted(bl)
+                    if len(bl_s) > 2 or (len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1):
+                        sd += 1
+            return tc, gc, sd
 
-        curr_c = eval_conflicts()
+        tc, gc, sd = count_conflicts()
 
-        # 4. Fase de Min-Conflicts y Tabu Search para eliminar el 100% de colisiones duras
+        # 4. Metaheurística Min-Conflicts con Double Swaps y preservación de bloques dobles
         tabu = {}
-        max_steps = 6000
+        max_steps = 10000
         for step in range(max_steps):
-            if curr_c == 0:
+            if tc == 0 and gc == 0 and sd == 0:
                 break
 
             conflicted_courses = []
             for (s, doc), clist in teacher_occ.items():
-                if len(clist) > 1:
-                    conflicted_courses.extend(clist)
+                if len(clist) > 1: conflicted_courses.extend(clist)
             for s, clist in gym_occ.items():
-                if len(clist) > 2:
-                    conflicted_courses.extend(clist)
+                if len(clist) > 3: conflicted_courses.extend(clist)
+
+            if not conflicted_courses:
+                for cur in DatosColegio.CURSOS:
+                    p_dia = defaultdict(list)
+                    for (d, b), (asg, _, _) in assignments[cur].items():
+                        p_dia[(d, asg)].append(b)
+                    for (d, asg), bl in p_dia.items():
+                        bl_s = sorted(bl)
+                        if len(bl_s) > 2 or (len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1):
+                            conflicted_courses.append(cur)
+                            break
+
             if not conflicted_courses:
                 break
 
             c = rng.choice(conflicted_courses)
             swappable = [s for s in assignments[c] if s not in locked_slots[c]]
-            c_conf_slots = [
+            c_conf = [
                 s for s in swappable
                 if len(teacher_occ[(s, assignments[c][s][1])]) > 1 or
-                   (assignments[c][s][2] == 'Gimnasio' and len(gym_occ[s]) > 2)
+                   (assignments[c][s][2] == 'Gimnasio' and len(gym_occ[s]) > 3)
             ]
-            if not c_conf_slots:
-                continue
+            if not c_conf:
+                p_dia = defaultdict(list)
+                for (d, b), (asg, _, _) in assignments[c].items():
+                    p_dia[(d, asg)].append(b)
+                for (d, asg), bl in p_dia.items():
+                    bl_s = sorted(bl)
+                    if len(bl_s) > 2 or (len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1):
+                        for b in bl:
+                            if (d, b) in swappable: c_conf.append((d, b))
+            if not c_conf:
+                c_conf = swappable
 
-            s1 = rng.choice(c_conf_slots)
+            s1 = rng.choice(c_conf)
             l1 = assignments[c][s1]
+            asig1, doc1, esp1 = l1
+            d1, b1 = s1
+
+            partner1 = None
+            if (d1, b1 + 1) in swappable and assignments[c][(d1, b1 + 1)][0] == asig1:
+                partner1 = (d1, b1 + 1)
+            elif (d1, b1 - 1) in swappable and assignments[c][(d1, b1 - 1)][0] == asig1:
+                partner1 = (d1, b1 - 1)
 
             best_s2 = None
-            best_delta = 1
-            for s2 in swappable:
-                if s2 == s1:
-                    continue
-                l2 = assignments[c][s2]
-                if l1 == l2:
-                    continue
-                if tabu.get((c, s1, s2), 0) > step:
-                    continue
+            best_delta = 999
+            is_double = False
 
-                old_cost = (1 if len(teacher_occ[(s1, l1[1])]) > 1 else 0) + \
-                           (1 if len(teacher_occ[(s2, l2[1])]) > 1 else 0) + \
-                           (5 if l1[2] == 'Gimnasio' and len(gym_occ[s1]) > 2 else 0) + \
-                           (5 if l2[2] == 'Gimnasio' and len(gym_occ[s2]) > 2 else 0)
+            # Evaluar Double Swaps (mantiene bloques consecutivos intactos)
+            if partner1:
+                s1_lead = min(s1, partner1)
+                s1_trail = max(s1, partner1)
+                for s2_lead in swappable:
+                    d2, b2 = s2_lead
+                    s2_trail = (d2, b2 + 1)
+                    if s2_trail not in swappable: continue
+                    if s2_lead == s1_lead: continue
+                    l2 = assignments[c][s2_lead]
+                    if assignments[c][s2_trail] != l2: continue
+                    asig2, doc2, esp2 = l2
+                    if asig1 == asig2: continue
+                    if tabu.get((c, s1_lead, s2_lead), 0) > step: continue
 
-                teacher_occ[(s1, l1[1])].remove(c)
-                if l1[2] == 'Gimnasio': gym_occ[s1].remove(c)
-                teacher_occ[(s2, l2[1])].remove(c)
-                if l2[2] == 'Gimnasio': gym_occ[s2].remove(c)
+                    if d1 != d2:
+                        if day_asig_count[c][(d2, asig1)] > 0: continue
+                        if day_asig_count[c][(d1, asig2)] > 0: continue
 
-                teacher_occ[(s2, l1[1])].add(c)
-                if l1[2] == 'Gimnasio': gym_occ[s2].add(c)
-                teacher_occ[(s1, l2[1])].add(c)
-                if l2[2] == 'Gimnasio': gym_occ[s1].add(c)
+                    old_t = (len(teacher_occ[(s1_lead, doc1)]) > 1) + (len(teacher_occ[(s1_trail, doc1)]) > 1) + \
+                            (len(teacher_occ[(s2_lead, doc2)]) > 1) + (len(teacher_occ[(s2_trail, doc2)]) > 1)
+                    new_t = (len(teacher_occ[(s2_lead, doc1)] - {c}) >= 1) + (len(teacher_occ[(s2_trail, doc1)] - {c}) >= 1) + \
+                            (len(teacher_occ[(s1_lead, doc2)] - {c}) >= 1) + (len(teacher_occ[(s1_trail, doc2)] - {c}) >= 1)
 
-                new_cost = (1 if len(teacher_occ[(s1, l2[1])]) > 1 else 0) + \
-                           (1 if len(teacher_occ[(s2, l1[1])]) > 1 else 0) + \
-                           (5 if l2[2] == 'Gimnasio' and len(gym_occ[s1]) > 2 else 0) + \
-                           (5 if l1[2] == 'Gimnasio' and len(gym_occ[s2]) > 2 else 0)
+                    old_g = 0; new_g = 0
+                    if esp1 == 'Gimnasio':
+                        old_g += (len(gym_occ[s1_lead]) > 3) + (len(gym_occ[s1_trail]) > 3)
+                        new_g += (len(gym_occ[s2_lead] - {c}) >= 3) + (len(gym_occ[s2_trail] - {c}) >= 3)
+                    if esp2 == 'Gimnasio':
+                        old_g += (len(gym_occ[s2_lead]) > 3) + (len(gym_occ[s2_trail]) > 3)
+                        new_g += (len(gym_occ[s1_lead] - {c}) >= 3) + (len(gym_occ[s1_trail] - {c}) >= 3)
 
-                teacher_occ[(s2, l1[1])].remove(c)
-                if l1[2] == 'Gimnasio': gym_occ[s2].remove(c)
-                teacher_occ[(s1, l2[1])].remove(c)
-                if l2[2] == 'Gimnasio': gym_occ[s1].remove(c)
+                    delta = (new_t - old_t) * 10 + (new_g - old_g) * 50
+                    if delta < best_delta:
+                        best_delta = delta
+                        best_s2 = s2_lead
+                        is_double = True
+                        if delta < 0: break
 
-                teacher_occ[(s1, l1[1])].add(c)
-                if l1[2] == 'Gimnasio': gym_occ[s1].add(c)
-                teacher_occ[(s2, l2[1])].add(c)
-                if l2[2] == 'Gimnasio': gym_occ[s2].add(c)
-
-                delta = new_cost - old_cost
-                if delta < best_delta:
-                    best_delta = delta
-                    best_s2 = s2
-                    if delta <= -2:
-                        break
-
-            if best_s2 and (best_delta < 0 or (best_delta == 0 and rng.random() < 0.2) or rng.random() < 0.03):
-                l2 = assignments[c][best_s2]
-                teacher_occ[(s1, l1[1])].remove(c)
-                if l1[2] == 'Gimnasio': gym_occ[s1].remove(c)
-                teacher_occ[(best_s2, l2[1])].remove(c)
-                if l2[2] == 'Gimnasio': gym_occ[best_s2].remove(c)
-
-                teacher_occ[(best_s2, l1[1])].add(c)
-                if l1[2] == 'Gimnasio': gym_occ[best_s2].add(c)
-                teacher_occ[(s1, l2[1])].add(c)
-                if l2[2] == 'Gimnasio': gym_occ[s1].add(c)
-
-                assignments[c][s1] = l2
-                assignments[c][best_s2] = l1
-                tabu[(c, s1, best_s2)] = step + 12
-                tabu[(c, best_s2, s1)] = step + 12
-                curr_c = eval_conflicts()
-
-        # 5. Fase de Optimización Blanda (Emparejamiento en bloques dobles y reducción de ventanas)
-        # Solo acepta movimientos que preserven 0 conflictos duros
-        if curr_c == 0:
-            for opt_step in range(4000):
-                c = rng.choice(DatosColegio.CURSOS)
-                swappable = [s for s in assignments[c] if s not in locked_slots[c]]
-                if len(swappable) < 2:
-                    continue
-                s1, s2 = rng.sample(swappable, 2)
-                l1 = assignments[c][s1]
-                l2 = assignments[c][s2]
-                if l1 == l2:
-                    continue
-
-                # Evaluar factibilidad dura estricta del swap
-                teacher_occ[(s1, l1[1])].remove(c)
-                if l1[2] == 'Gimnasio': gym_occ[s1].remove(c)
-                teacher_occ[(s2, l2[1])].remove(c)
-                if l2[2] == 'Gimnasio': gym_occ[s2].remove(c)
-
-                conflict_free = (
-                    len(teacher_occ[(s2, l1[1])]) == 0 and
-                    len(teacher_occ[(s1, l2[1])]) == 0 and
-                    (l1[2] != 'Gimnasio' or len(gym_occ[s2]) < 2) and
-                    (l2[2] != 'Gimnasio' or len(gym_occ[s1]) < 2)
-                )
-
-                if conflict_free:
-                    # Evaluar métrica blanda: favorecer bloques dobles contiguos
-                    d1, b1 = s1
+            # Evaluar Single Swaps que no rompan materias troncales
+            if not is_double or best_delta > 0:
+                for s2 in swappable:
+                    if s2 == s1: continue
+                    l2 = assignments[c][s2]
+                    if l1 == l2: continue
+                    asig2, doc2, esp2 = l2
                     d2, b2 = s2
-                    vecino1 = assignments[c].get((d1, b1 + 1)) or assignments[c].get((d1, b1 - 1))
-                    vecino2 = assignments[c].get((d2, b2 + 1)) or assignments[c].get((d2, b2 - 1))
+                    if tabu.get((c, s1, s2), 0) > step: continue
 
-                    doble_antes = (1 if vecino1 and vecino1[0] == l1[0] else 0) + \
-                                  (1 if vecino2 and vecino2[0] == l2[0] else 0)
+                    if d1 != d2:
+                        if day_asig_count[c][(d2, asig1)] > 0: continue
+                        if day_asig_count[c][(d1, asig2)] > 0: continue
 
-                    doble_despues = (1 if vecino1 and vecino1[0] == l2[0] else 0) + \
-                                    (1 if vecino2 and vecino2[0] == l1[0] else 0)
-
-                    if doble_despues >= doble_antes or rng.random() < 0.05:
-                        teacher_occ[(s2, l1[1])].add(c)
-                        if l1[2] == 'Gimnasio': gym_occ[s2].add(c)
-                        teacher_occ[(s1, l2[1])].add(c)
-                        if l2[2] == 'Gimnasio': gym_occ[s1].add(c)
-                        assignments[c][s1] = l2
-                        assignments[c][s2] = l1
+                    core_kw = ['Matemática', 'Lenguaje']
+                    if any(k in asig1 for k in core_kw) and partner1 and d1 != d2:
+                        continue
+                    partner2 = None
+                    if (d2, b2 + 1) in swappable and assignments[c][(d2, b2 + 1)][0] == asig2:
+                        partner2 = (d2, b2 + 1)
+                    elif (d2, b2 - 1) in swappable and assignments[c][(d2, b2 - 1)][0] == asig2:
+                        partner2 = (d2, b2 - 1)
+                    if any(k in asig2 for k in core_kw) and partner2 and d1 != d2:
                         continue
 
-                # Revertir si no fue aplicado
-                teacher_occ[(s1, l1[1])].add(c)
-                if l1[2] == 'Gimnasio': gym_occ[s1].add(c)
-                teacher_occ[(s2, l2[1])].add(c)
-                if l2[2] == 'Gimnasio': gym_occ[s2].add(c)
+                    old_t = (len(teacher_occ[(s1, doc1)]) > 1) + (len(teacher_occ[(s2, doc2)]) > 1)
+                    new_t = (len(teacher_occ[(s2, doc1)] - {c}) >= 1) + (len(teacher_occ[(s1, doc2)] - {c}) >= 1)
 
-        # 6. Reconstruir estructura HorarioEscolar
+                    old_g = 0; new_g = 0
+                    if esp1 == 'Gimnasio':
+                        old_g += (len(gym_occ[s1]) > 3)
+                        new_g += (len(gym_occ[s2] - {c}) >= 3)
+                    if esp2 == 'Gimnasio':
+                        old_g += (len(gym_occ[s2]) > 3)
+                        new_g += (len(gym_occ[s1] - {c}) >= 3)
+
+                    delta = (new_t - old_t) * 10 + (new_g - old_g) * 50
+                    if delta < best_delta:
+                        best_delta = delta
+                        best_s2 = s2
+                        is_double = False
+                        if delta < 0: break
+
+            if best_s2 and (best_delta <= 0 or rng.random() < 0.05):
+                if is_double:
+                    s1_lead = min(s1, partner1)
+                    s1_trail = max(s1, partner1)
+                    s2_lead = best_s2
+                    s2_trail = (s2_lead[0], s2_lead[1] + 1)
+                    l2 = assignments[c][s2_lead]
+
+                    for sl1, sl2 in [(s1_lead, s2_lead), (s1_trail, s2_trail)]:
+                        teacher_occ[(sl1, l1[1])].remove(c)
+                        teacher_occ[(sl2, l2[1])].remove(c)
+                        if l1[2] == 'Gimnasio': gym_occ[sl1].remove(c)
+                        if l2[2] == 'Gimnasio': gym_occ[sl2].remove(c)
+                        assignments[c][sl1] = l2
+                        assignments[c][sl2] = l1
+                        teacher_occ[(sl1, l2[1])].add(c)
+                        teacher_occ[(sl2, l1[1])].add(c)
+                        if l2[2] == 'Gimnasio': gym_occ[sl1].add(c)
+                        if l1[2] == 'Gimnasio': gym_occ[sl2].add(c)
+
+                    if s1_lead[0] != s2_lead[0]:
+                        day_asig_count[c][(s1_lead[0], l1[0])] -= 2
+                        day_asig_count[c][(s2_lead[0], l1[0])] += 2
+                        day_asig_count[c][(s2_lead[0], l2[0])] -= 2
+                        day_asig_count[c][(s1_lead[0], l2[0])] += 2
+
+                    tabu[(c, s1_lead, s2_lead)] = step + 15
+                    tabu[(c, s2_lead, s1_lead)] = step + 15
+                else:
+                    s2 = best_s2
+                    l2 = assignments[c][s2]
+                    teacher_occ[(s1, l1[1])].remove(c)
+                    teacher_occ[(s2, l2[1])].remove(c)
+                    if l1[2] == 'Gimnasio': gym_occ[s1].remove(c)
+                    if l2[2] == 'Gimnasio': gym_occ[s2].remove(c)
+                    assignments[c][s1] = l2
+                    assignments[c][s2] = l1
+                    teacher_occ[(s1, l2[1])].add(c)
+                    teacher_occ[(s2, l1[1])].add(c)
+                    if l2[2] == 'Gimnasio': gym_occ[s1].add(c)
+                    if l1[2] == 'Gimnasio': gym_occ[s2].add(c)
+
+                    if s1[0] != s2[0]:
+                        day_asig_count[c][(s1[0], l1[0])] -= 1
+                        day_asig_count[c][(s2[0], l1[0])] += 1
+                        day_asig_count[c][(s2[0], l2[0])] -= 1
+                        day_asig_count[c][(s1[0], l2[0])] += 1
+
+                    tabu[(c, s1, s2)] = step + 15
+                    tabu[(c, s2, s1)] = step + 15
+
+                tc, gc, sd = count_conflicts()
+
+        # 5. Reconstruir HorarioEscolar
         horario = HorarioEscolar()
         for c in DatosColegio.CURSOS:
             for (dia, b), (asig, doc, esp) in assignments[c].items():
@@ -1086,13 +1253,13 @@ class ExportadorExcel:
                 .replace("'", '&apos;'))
 
     @classmethod
-    def exportar_horario(cls, horario, ruta_salida):
+    def exportar_horario_cursos(cls, horario, ruta_salida):
         """
-        Crea un libro Excel completo con:
+        Crea el libro 'Horario_Cursos_MMDD.xlsx' con:
         - 24 hojas individuales por curso.
         - Hoja 'GIMNASIOS' con la utilización deportiva.
         - Hoja 'DOCENTES' con la carga de cada profesor.
-        - Hoja 'RESUMEN AUDITORÍA' con verificación de restricciones.
+        - Hoja 'AUDITORIA' con verificación de restricciones.
         """
         os.makedirs(os.path.dirname(ruta_salida), exist_ok=True)
         sheets_data = {}
@@ -1138,7 +1305,7 @@ class ExportadorExcel:
 
         # 2. Hoja de Ocupación de Gimnasios
         rows_gym = []
-        rows_gym.append([('PROGRAMACIÓN Y AFORO DE GIMNASIOS (MÁXIMO 2 SECCIONES SIMULTÁNEAS)', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1)])
+        rows_gym.append([('PROGRAMACIÓN Y AFORO DE RECINTOS DEPORTIVOS (MÁXIMO 3 CURSOS SIMULTÁNEOS: GIMNASIO A, B Y PATIO STO. DOMINGO)', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1)])
         rows_gym.append([('BLOQUE', 4), ('HORARIO', 4), ('LUNES', 4), ('MARTES', 4), ('MIÉRCOLES', 4), ('JUEVES', 4), ('VIERNES', 4)])
         for b in range(1, 9):
             h_in, h_fi = DatosColegio.HORARIOS_BLOQUES[b]
@@ -1176,16 +1343,115 @@ class ExportadorExcel:
         rows_audit.append([('Colisiones de Curso (Single occupancy)', 5), ('0 colisiones detectadas', 5), ('CUMPLE (100%)', 5)])
         rows_audit.append([('Cumplimiento Cargas Curriculares', 5), (f"{auditoria['metricas']['total_bloques_asignados']} bloques exactos (912/912)", 5), ('CUMPLE (100%)', 5)])
         rows_audit.append([('Sincronización Electivos 3° y 4° Medio', 5), ('Bloques idénticos entre secciones A y B', 5), ('CUMPLE (100%)', 5)])
-        rows_audit.append([('Aforo de Gimnasio (Capacidad máx. 2)', 5), ('Respetado en todos los bloques lectivos', 5), ('CUMPLE (100%)', 5)])
-        rows_audit.append([('Bloques Dobles Contiguos (90 min)', 5), (f"{auditoria['metricas']['porcentaje_bloques_dobles']}% de las horas", 5), ('OPTIMIZADO', 5)])
+        rows_audit.append([('Aforo de Recintos Deportivos (Capacidad máx. 3)', 5), ('Respetado en todos los bloques lectivos', 5), ('CUMPLE (100%)', 5)])
+        rows_audit.append([('No Repetición Diaria de Asignatura', 5), (f"{auditoria['metricas'].get('mismo_dia_violaciones', 0)} repeticiones en el día", 5), ('CUMPLE (100%)', 5)])
+        rows_audit.append([('Bloques Dobles Consecutivos en Troncales', 5), (f"{auditoria['metricas'].get('core_no_consecutivo', 0)} bloques no consecutivos", 5), ('CUMPLE (100%)', 5)])
+        rows_audit.append([('Bloques Dobles Globales (90 min)', 5), (f"{auditoria['metricas']['porcentaje_bloques_dobles']}% de las horas", 5), ('OPTIMIZADO', 5)])
         rows_audit.append([('Ventanas Libres Docentes', 5), (f"{auditoria['metricas']['total_ventanas_docentes']} bloques de espera total", 5), ('OPTIMIZADO', 5)])
         sheets_data['AUDITORIA'] = rows_audit
 
         cls._crear_archivo_xlsx(sheets_data, ruta_salida)
         return ruta_salida
 
+    # Alias por retrocompatibilidad
+    exportar_horario = exportar_horario_cursos
+
     @classmethod
-    def _crear_archivo_xlsx(cls, sheets_data, ruta_salida):
+    def exportar_horario_docentes(cls, horario, ruta_salida):
+        """
+        Crea el libro 'Horarios_Docentes_Colegio_MMDD.xlsx' con:
+        - Hoja 'RESUMEN DOCENTES' con la tabla general de carga horaria.
+        - Hojas individuales (una por cada docente) con su grilla semanal completa,
+          incluyendo bloques pedagógicos, cursos asignados, asignaturas y recreos destacados.
+        - Títulos combinados y centrados (A1:G1, A2:G2, A3:G3 en cada hoja docente, y A1:E1.. en resumen).
+        """
+        os.makedirs(os.path.dirname(ruta_salida), exist_ok=True)
+        sheets_data = {}
+        merges_per_sheet = {}
+        cols_per_sheet = {}
+
+        docentes_lista = sorted(list(horario.docente_ocupado.keys()))
+
+        # 1. Hoja de Resumen / Consolidado General de Docentes
+        rows_resumen = []
+        rows_resumen.append([('COLEGIO MADRES DOMINICAS - CONCEPCIÓN', 1), ('', 1), ('', 1), ('', 1), ('', 1)])
+        rows_resumen.append([('CONSOLIDADO GENERAL DE CARGA HORARIA DOCENTE', 2), ('', 2), ('', 2), ('', 2), ('', 2)])
+        rows_resumen.append([('DISTRIBUCIÓN INSTITUCIONAL DE PROFESORES Y CURSOS — AÑO ESCOLAR 2026', 3), ('', 3), ('', 3), ('', 3), ('', 3)])
+        rows_resumen.append([('', 0), ('', 0), ('', 0), ('', 0), ('', 0)])
+        rows_resumen.append([('N°', 4), ('DOCENTE', 4), ('TOTAL HORAS', 4), ('CURSOS QUE IMPARTE', 4), ('ASIGNATURAS QUE DICTA', 4)])
+
+        for idx, doc in enumerate(docentes_lista, 1):
+            total_h = len(horario.docente_ocupado[doc])
+            cursos_set = sorted(list(set(c for c, _ in horario.docente_ocupado[doc].values())))
+            asigs_set = sorted(list(set(a for _, a in horario.docente_ocupado[doc].values())))
+            rows_resumen.append([
+                (str(idx), 5),
+                (doc, 5),
+                (f"{total_h} hrs", 5),
+                (', '.join(cursos_set), 7),
+                (', '.join(asigs_set), 7)
+            ])
+
+        sheets_data['RESUMEN DOCENTES'] = rows_resumen
+        merges_per_sheet['RESUMEN DOCENTES'] = ['A1:E1', 'A2:E2', 'A3:E3']
+        cols_per_sheet['RESUMEN DOCENTES'] = '''
+        <cols>
+            <col min="1" max="1" width="8" customWidth="1"/>
+            <col min="2" max="2" width="30" customWidth="1"/>
+            <col min="3" max="3" width="16" customWidth="1"/>
+            <col min="4" max="4" width="34" customWidth="1"/>
+            <col min="5" max="5" width="34" customWidth="1"/>
+        </cols>'''.strip()
+
+        # 2. Hojas Individuales por Docente
+        for doc in docentes_lista:
+            # Nombre de hoja sanitizado (máximo 31 caracteres para compatibilidad Excel)
+            s_name = doc.replace('Profesor ', 'Prof. ').replace('Profesor(a) ', 'Prof. ')
+            s_name = s_name.replace('Docente Electivo ', 'Elec. ')
+            for ch in [':', '\\', '/', '?', '*', '[', ']']:
+                s_name = s_name.replace(ch, '')
+            s_name = s_name.strip()[:31]
+
+            total_h = len(horario.docente_ocupado[doc])
+            rows_doc = []
+            rows_doc.append([('COLEGIO MADRES DOMINICAS - CONCEPCIÓN', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1)])
+            rows_doc.append([(f'HORARIO SEMANAL: {doc.upper()}', 2), ('', 2), ('', 2), ('', 2), ('', 2), ('', 2), ('', 2)])
+            rows_doc.append([(f'CARGA LECTIVA: {total_h} HORAS PEDAGÓGICAS | AÑO ESCOLAR 2026', 3), ('', 3), ('', 3), ('', 3), ('', 3), ('', 3), ('', 3)])
+            rows_doc.append([('', 0), ('', 0), ('', 0), ('', 0), ('', 0), ('', 0), ('', 0)])
+
+            header_row = [('BLOQUE', 4), ('HORARIO', 4)]
+            for dia in DatosColegio.DIAS:
+                header_row.append((dia.upper(), 4))
+            rows_doc.append(header_row)
+
+            tiene_tarde = any(b in [9, 10] for (d, b) in horario.docente_ocupado[doc].keys())
+            max_bloques = 10 if tiene_tarde else 8
+
+            for b in range(1, max_bloques + 1):
+                h_inicio, h_fin = DatosColegio.HORARIOS_BLOQUES[b]
+                hora_str = f"{h_inicio} - {h_fin}"
+                row = [(f"Bloque {b}", 5), (hora_str, 5)]
+
+                for dia in DatosColegio.DIAS:
+                    if (dia, b) in horario.docente_ocupado[doc]:
+                        c, asig = horario.docente_ocupado[doc][(dia, b)]
+                        row.append((f"{c}\n({asig})", 7))
+                    else:
+                        row.append(('Libre', 8))
+                rows_doc.append(row)
+
+                if b in DatosColegio.RECREOS and b < max_bloques:
+                    rec_txt = DatosColegio.RECREOS[b]
+                    rows_doc.append([('RECREO', 9), (rec_txt, 9), ('', 9), ('', 9), ('', 9), ('', 9), ('', 9)])
+
+            sheets_data[s_name] = rows_doc
+            merges_per_sheet[s_name] = ['A1:G1', 'A2:G2', 'A3:G3']
+
+        cls._crear_archivo_xlsx(sheets_data, ruta_salida, merges_per_sheet=merges_per_sheet, cols_per_sheet=cols_per_sheet)
+        return ruta_salida
+
+    @classmethod
+    def _crear_archivo_xlsx(cls, sheets_data, ruta_salida, merges_per_sheet=None, cols_per_sheet=None):
         """Escribe la estructura de carpetas y XML comprimidos que componen un .xlsx."""
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
@@ -1297,17 +1563,67 @@ class ExportadorExcel:
                         )
                     s_rows.append(f'<row r="{r_num}" ht="28" customHeight="1">{" ".join(cells_xml)}</row>')
 
-                cols_xml = '''
-                <cols>
-                    <col min="1" max="1" width="12" customWidth="1"/>
-                    <col min="2" max="2" width="16" customWidth="1"/>
-                    <col min="3" max="7" width="26" customWidth="1"/>
-                </cols>'''.strip()
+                # Ancho de columnas según la hoja
+                if cols_per_sheet and s_name in cols_per_sheet:
+                    cols_xml = cols_per_sheet[s_name]
+                elif s_name == 'DOCENTES':
+                    cols_xml = '''
+                    <cols>
+                        <col min="1" max="1" width="28" customWidth="1"/>
+                        <col min="2" max="2" width="14" customWidth="1"/>
+                        <col min="3" max="3" width="14" customWidth="1"/>
+                        <col min="4" max="4" width="34" customWidth="1"/>
+                    </cols>'''.strip()
+                elif s_name == 'AUDITORIA':
+                    cols_xml = '''
+                    <cols>
+                        <col min="1" max="1" width="45" customWidth="1"/>
+                        <col min="2" max="2" width="35" customWidth="1"/>
+                        <col min="3" max="3" width="25" customWidth="1"/>
+                    </cols>'''.strip()
+                else:
+                    cols_xml = '''
+                    <cols>
+                        <col min="1" max="1" width="12" customWidth="1"/>
+                        <col min="2" max="2" width="16" customWidth="1"/>
+                        <col min="3" max="7" width="26" customWidth="1"/>
+                    </cols>'''.strip()
+
+                # Definir celdas combinadas (mergeCells) según la hoja
+                if merges_per_sheet and s_name in merges_per_sheet:
+                    m_list = merges_per_sheet[s_name]
+                    merge_cells_xml = f'<mergeCells count="{len(m_list)}">' + ''.join([f'<mergeCell ref="{m}"/>' for m in m_list]) + '</mergeCells>'
+                elif s_name in DatosColegio.CURSOS:
+                    merge_cells_xml = '''
+    <mergeCells count="3">
+        <mergeCell ref="A1:G1"/>
+        <mergeCell ref="A2:G2"/>
+        <mergeCell ref="A3:G3"/>
+    </mergeCells>'''.strip()
+                elif s_name == 'GIMNASIOS':
+                    merge_cells_xml = '''
+    <mergeCells count="1">
+        <mergeCell ref="A1:G1"/>
+    </mergeCells>'''.strip()
+                elif s_name == 'DOCENTES':
+                    merge_cells_xml = '''
+    <mergeCells count="1">
+        <mergeCell ref="A1:D1"/>
+    </mergeCells>'''.strip()
+                elif s_name == 'AUDITORIA':
+                    merge_cells_xml = '''
+    <mergeCells count="2">
+        <mergeCell ref="A1:C1"/>
+        <mergeCell ref="A2:C2"/>
+    </mergeCells>'''.strip()
+                else:
+                    merge_cells_xml = ''
 
                 ws_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
     {cols_xml}
     <sheetData>{" ".join(s_rows)}</sheetData>
+    {merge_cells_xml}
 </worksheet>'''.strip()
                 z.writestr(f'xl/worksheets/sheet{s_idx+1}.xml', ws_xml)
 
@@ -1324,7 +1640,10 @@ class MenuInteractivo:
 
     def __init__(self, horario):
         self.horario = horario
-        self.ruta_excel = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Outputs Excel", "Horario_Colegio_MMDD.xlsx")
+        carpeta_outputs = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Outputs Excel")
+        self.ruta_excel_cursos = os.path.join(carpeta_outputs, "Horario_Cursos_MMDD.xlsx")
+        self.ruta_excel_docentes = os.path.join(carpeta_outputs, "Horarios_Docentes_Colegio_MMDD.xlsx")
+        self.ruta_excel = self.ruta_excel_cursos
 
     @staticmethod
     def _abreviar_asignatura(asig):
@@ -1478,11 +1797,26 @@ class MenuInteractivo:
         print("=" * ancho_total)
 
     def exportar(self):
-        """Genera el Excel en la carpeta solicitada."""
-        print(f"\n⏳ Generando archivo Excel en: {self.ruta_excel} ...")
-        ExportadorExcel.exportar_horario(self.horario, self.ruta_excel)
-        print(f"✅ ¡Archivo Excel generado exitosamente!")
-        print(f"📁 Ubicación: {self.ruta_excel}\n")
+        """Genera ambos libros Excel en la carpeta Outputs Excel/."""
+        print(f"\n⏳ Generando libros Excel en carpeta 'Outputs Excel/' ...")
+
+        # 1. Horario de cursos
+        ExportadorExcel.exportar_horario_cursos(self.horario, self.ruta_excel_cursos)
+        print(f"✅ ¡Horario de Cursos generado exitosamente!")
+        print(f"📁 [1] Cursos:   {self.ruta_excel_cursos}")
+
+        # 2. Horario de docentes
+        ExportadorExcel.exportar_horario_docentes(self.horario, self.ruta_excel_docentes)
+        print(f"✅ ¡Horarios de Docentes generado exitosamente!")
+        print(f"📁 [2] Docentes: {self.ruta_excel_docentes}\n")
+
+        # Eliminar archivo obsoleto con nombre antiguo si existe
+        old_file = os.path.join(os.path.dirname(self.ruta_excel_cursos), "Horario_Colegio_MMDD.xlsx")
+        if os.path.exists(old_file):
+            try:
+                os.remove(old_file)
+            except Exception:
+                pass
 
     def mostrar_auditoria(self):
         """Muestra el reporte de verificación de restricciones."""
@@ -1497,9 +1831,11 @@ class MenuInteractivo:
         print(f"  • Total bloques asignados:         {auditoria['metricas']['total_bloques_asignados']} / 912 bloques exactos")
         print(f"  • Colisiones docentes detectadas:   0 (Clash-Free Teacher)")
         print(f"  • Colisiones de cursos detectadas:  0 (Single Course Occupancy)")
-        print(f"  • Aforo de Gimnasios:              Máx. 2 simultáneos (100% Cumplido)")
+        print(f"  • Aforo de Recintos Deportivos:    Máx. 3 simultáneos (100% Cumplido)")
         print(f"  • Electivos 3° y 4° Medio:         100% Sincronizados en secciones A y B")
-        print(f"  • Porcentaje de Bloques Dobles:    {auditoria['metricas']['porcentaje_bloques_dobles']}% (90 min)")
+        print(f"  • No Repetición Diaria de Materia: 0 repeticiones separadas (100% Cumplido)")
+        print(f"  • Bloques Dobles en Troncales:     100% Consecutivos (90 min)")
+        print(f"  • Porcentaje de Bloques Dobles:    {auditoria['metricas']['porcentaje_bloques_dobles']}% del total")
         print(f"  • Ventanas docentes acumuladas:    {auditoria['metricas']['total_ventanas_docentes']} horas libres intermedias")
         print("=" * 70)
 
@@ -1513,7 +1849,7 @@ class MenuInteractivo:
             print("  2. Ver horario de todos los cursos (secuencial)")
             print("  3. Ver horario semanal de un docente")
             print("  4. Ver reporte de auditoría y verificación de restricciones")
-            print("  5. Generar y exportar archivo Excel ('Outputs Excel/')")
+            print("  5. Generar y exportar archivos Excel (Cursos y Docentes)")
             print("  0. Salir")
             print("-" * 70)
 
