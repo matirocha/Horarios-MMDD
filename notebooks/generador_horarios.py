@@ -2,65 +2,81 @@
 # -*- coding: utf-8 -*-
 """
 ===============================================================================
-SISTEMA DE PROGRAMACIÓN AUTOMATIZADA DE HORARIOS ESCOLARES
+SISTEMA DE PROGRAMACIÓN AUTOMATIZADA DE HORARIOS ESCOLARES — AÑO ESCOLAR 2026
 Colegio Madres Dominicas (MMDD) - Concepción, Chile
 Taller de Gestión de Operaciones (TGOP) - Ingeniería Civil Industrial, UdeC
 ===============================================================================
 
 Este script implementa un motor algorítmico capaz de construir mallas horarias
-factibles y de alta calidad para los 24 cursos del establecimiento (1° Básico a
-4° Medio, secciones A y B), respetando estrictamente el 100% de las restricciones
-duras y optimizando los criterios pedagógicos y laborales blandos.
+factibles para los 24 cursos regulares del establecimiento (1° Básico a 4° Medio,
+secciones A y B) y para la Educación Física de los 3 niveles de párvulos, usando
+los parámetros oficiales del año 2026 (carpeta data/Data 2026):
+  - HORARIO CURSOS 2026.xlsx       -> bloques, jornadas, cargas, electivos y recintos.
+  - DISTRIBUCIÓN HORARIA 2026.docx -> dotación docente y asignación profesor-curso.
 
 Módulos incluidos:
-1. DatosColegio: Definición exhaustiva de cursos, dotación docente, mallas y bloques.
+1. DatosColegio: bloques, jornadas, dotación docente, mallas, electivos y recintos 2026.
 2. HorarioEscolar: Estructura de datos matricial para asignaciones y consultas.
 3. ValidadorRestricciones: Auditoría exhaustiva de restricciones duras y blandas.
-4. MotorHorarios: Algoritmo de asignación basado en restricciones (Min-Conflicts + ILS).
-5. ExportadorExcel: Generador nativo OpenXML (.xlsx) sin dependencias externas.
+4. MotorHorarios: Heurística constructiva + búsqueda local Min-Conflicts con lista tabú.
+5. ExportadorExcel: Libros .xlsx con el mismo diseño que 'HORARIO CURSOS 2026.xlsx' (openpyxl).
 6. MenuInteractivo: Interfaz de consola para consultar cursos, docentes y exportar.
 """
 
+import io
 import os
 import sys
-import io
-import time
 import random
 import zipfile
 import argparse
 from collections import defaultdict
 
+try:
+    import openpyxl
+    from openpyxl.drawing.image import Image as ImagenExcel
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.utils.indexed_list import IndexedList
+    from openpyxl.worksheet.page import PageMargins
+except ImportError:  # El motor y la consola funcionan sin openpyxl; solo la exportación lo requiere
+    openpyxl = None
+
 # =============================================================================
-# 1. PARÁMETROS Y DATOS DEL COLEGIO MADRES DOMINICAS
+# 1. PARÁMETROS Y DATOS DEL COLEGIO MADRES DOMINICAS (AÑO 2026)
 # =============================================================================
 
 class DatosColegio:
-    """Catálogo y parámetros institucionales del Colegio Madres Dominicas."""
+    """Catálogo y parámetros institucionales del Colegio Madres Dominicas (año escolar 2026)."""
 
+    ANIO = 2026
     DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
 
-    # Definición horaria real de los bloques pedagógicos y recreos
+    # Bloques pedagógicos de 45 minutos (fuente: HORARIO CURSOS 2026.xlsx)
     HORARIOS_BLOQUES = {
         1: ('08:00', '08:45'),
         2: ('08:45', '09:30'),
-        3: ('09:40', '10:25'),
-        4: ('10:25', '11:10'),
-        5: ('11:25', '12:10'),
-        6: ('12:10', '12:50'),
-        7: ('13:00', '13:40'),
-        8: ('13:40', '14:20'),
-        9: ('14:50', '15:30'),  # Exclusivo lunes en 3° y 4° medio (jornada tarde)
-        10: ('15:30', '16:10')  # Exclusivo lunes en 3° y 4° medio (jornada tarde)
+        3: ('09:45', '10:30'),
+        4: ('10:30', '11:15'),
+        5: ('11:30', '12:15'),
+        6: ('12:15', '13:00'),
+        7: ('13:10', '13:55'),
+        8: ('13:55', '14:40'),
+        9: ('15:10', '15:55'),   # Jornada tarde: solo lunes en 3° y 4° medio
+        10: ('15:55', '16:40')   # Jornada tarde: solo lunes en 3° y 4° medio
     }
 
+    # Pausa que sigue a cada bloque: (nombre, rango horario)
     RECREOS = {
-        2: '09:30 - 09:40 (Recreo 1)',
-        4: '11:10 - 11:25 (Recreo 2)',
-        6: '12:50 - 13:00 (Recreo 3)',
-        8: '14:20 - 14:50 (Colación / Almuerzo)'
+        2: ('RECREO', '09:30 - 09:45'),
+        4: ('RECREO', '11:15 - 11:30'),
+        6: ('RECREO', '13:00 - 13:10'),
+        8: ('COLACIÓN', '14:40 - 15:10')
     }
 
-    # Los 24 cursos oficiales del colegio
+    # Pares pedagógicos de 90 minutos (un bloque doble nunca cruza un recreo)
+    PARES = [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10)]
+
+    # Los 24 cursos regulares del colegio
     CURSOS = [
         '1° BÁSICO A', '1° BÁSICO B',
         '2° BÁSICO A', '2° BÁSICO B',
@@ -76,505 +92,786 @@ class DatosColegio:
         '4° MEDIO A', '4° MEDIO B'
     ]
 
-    # Profesores Jefes asignados por curso
-    PROFESORES_JEFES = {
-        '1° BÁSICO A': 'Profesor 1 Básica (Lenguaje)',
-        '1° BÁSICO B': 'Profesor 2 Básica (Matemática)',
-        '2° BÁSICO A': 'Profesor 3 Básica (Matemática)',
-        '2° BÁSICO B': 'Profesor 4 Básica (Lenguaje)',
-        '3° BÁSICO A': 'Profesor 5 Básica (Lenguaje)',
-        '3° BÁSICO B': 'Profesor 6 Básica (Matemática)',
-        '4° BÁSICO A': 'Profesor 7 Básica (Lenguaje)',
-        '4° BÁSICO B': 'Profesor 8 Básica (Matemática)',
-        '5° BÁSICO A': 'Profesor Inglés 1',
-        '5° BÁSICO B': 'Profesor Historia 2',
-        '6° BÁSICO A': 'Profesor Historia 2',
-        '6° BÁSICO B': 'Profesor Historia 1',
-        '7° BÁSICO A': 'Profesor Ed. Física 1',
-        '7° BÁSICO B': 'Profesor 1 (Tecnología)',
-        '8° BÁSICO A': 'Profesor matemática 4',
-        '8° BÁSICO B': 'Profesor lenguaje 5',
-        '1° MEDIO A': 'Profesor Inglés 6',
-        '1° MEDIO B': 'Profesor matemática 3',
-        '2° MEDIO A': 'Profesor Religión 3 (Media)',
-        '2° MEDIO B': 'Profesor Historia 1',
-        '3° MEDIO A': 'Profesor Historia 3',
-        '3° MEDIO B': 'Profesor Inglés 4',
-        '4° MEDIO A': 'Profesor Inglés 2',
-        '4° MEDIO B': 'Profesor Ciencias 3 (Química)'
+    # Párvulos: solo se programa su Educación Física (comparten docente y Gimnasio B con básica)
+    CURSOS_PARVULOS = ['PREKINDER A', 'KINDER A', 'KINDER B']
+
+    # Último bloque lectivo de cada día (lunes a viernes) según las mallas 2026.
+    # En los datos oficiales 5°A/5°B y 8°A/8°B no comparten la misma jornada.
+    JORNADAS = {
+        '1° BÁSICO A': (8, 8, 7, 8, 7), '1° BÁSICO B': (8, 8, 7, 8, 7),
+        '2° BÁSICO A': (8, 8, 7, 8, 7), '2° BÁSICO B': (8, 8, 7, 8, 7),
+        '3° BÁSICO A': (8, 8, 7, 8, 7), '3° BÁSICO B': (8, 8, 7, 8, 7),
+        '4° BÁSICO A': (8, 8, 7, 8, 7), '4° BÁSICO B': (8, 8, 7, 8, 7),
+        '5° BÁSICO A': (8, 8, 8, 6, 8), '5° BÁSICO B': (8, 8, 8, 8, 6),
+        '6° BÁSICO A': (8, 8, 7, 8, 6), '6° BÁSICO B': (8, 8, 7, 8, 6),
+        '7° BÁSICO A': (8, 8, 7, 8, 6), '7° BÁSICO B': (8, 8, 7, 8, 6),
+        '8° BÁSICO A': (6, 8, 7, 8, 8), '8° BÁSICO B': (8, 8, 7, 8, 6),
+        '1° MEDIO A': (8, 8, 8, 8, 8), '1° MEDIO B': (8, 8, 8, 8, 8),
+        '2° MEDIO A': (8, 8, 8, 8, 8), '2° MEDIO B': (8, 8, 8, 8, 8),
+        '3° MEDIO A': (10, 8, 8, 8, 8), '3° MEDIO B': (10, 8, 8, 8, 8),
+        '4° MEDIO A': (10, 8, 8, 8, 8), '4° MEDIO B': (10, 8, 8, 8, 8),
+        # Supuesto: la Ed. Física de párvulos se dicta en la jornada de mañana (bloques 1 a 6)
+        'PREKINDER A': (6, 6, 6, 6, 6), 'KINDER A': (6, 6, 6, 6, 6), 'KINDER B': (6, 6, 6, 6, 6),
     }
+
+    # Dotación docente 2026, agrupada como en DISTRIBUCIÓN HORARIA 2026.docx
+    DEPARTAMENTOS = [
+        ('LENGUAJE – FILOSOFÍA - ASIGNATURAS DE PROFUNDIZACIÓN',
+         ['Lenguaje 1', 'Lenguaje 2', 'Lenguaje 3', 'Lenguaje 4', 'Lenguaje 5']),
+        ('MATEMÁTICA - ASIGNATURAS DE PROFUNDIZACIÓN',
+         ['Matemática 1', 'Matemática 2', 'Matemática 3', 'Matemática 4']),
+        ('INGLÉS',
+         ['Inglés 1', 'Inglés 2', 'Inglés 3', 'Inglés 4', 'Inglés 5']),
+        ('HISTORIA, GEOGRAFÍA Y C. SOCIALES – EDUCACIÓN CIUDADANA - ASIGNATURAS DE PROFUNDIZACIÓN',
+         ['Historia 1', 'Historia 2', 'Historia 3']),
+        ('CIENCIAS NATURALES – CIENCIAS PARA LA CIUDADANÍA - ASIGNATURAS DE PROFUNDIZACIÓN – RELIGIÓN',
+         ['Química', 'Biología', 'C. Naturales y Religión', 'C. Naturales', 'Física', 'Religión']),
+        ('ARTES VISUALES – MÚSICA – TECNOLOGÍA - ASIGNATURAS DE PROFUNDIZACIÓN',
+         ['Artes y Tecnología 1', 'Artes y Tecnología 2', 'Música']),
+        ('EDUCACIÓN FÍSICA',
+         ['Ed. Física 1', 'Ed. Física 2', 'Ed. Física 3']),
+        ('EDUCACIÓN GENERAL BÁSICA',
+         ['Básica 1', 'Básica 2', 'Básica 3', 'Básica 4', 'Básica 5', 'Básica 6', 'Básica 7', 'Básica 8']),
+    ]
+
+    # Horas declaradas en la distribución que no se programan en la grilla de cursos:
+    # docente -> [(cursos, actividad, horas)]
+    HORAS_NO_LECTIVAS = {
+        'Matemática 2': [('Intv. Media (1° a 4°)', 'Intervención', 24), ('', 'ACLE', 2)],
+        'Básica 1': [('', 'Intervención', 7)],
+        'Básica 3': [('', 'Intervención', 7)],
+        'Básica 4': [('', 'Intervención', 6)],
+        'Básica 5': [('', 'Intervención', 6)],
+        'Básica 6': [('', 'Intervención', 6)],
+        'Básica 7': [('', 'Intervención', 7)],
+        'Básica 8': [('', 'Intervención', 6)],
+    }
+
+    # Profesores jefes 2026 (filas "Jefatura" de la distribución horaria)
+    PROFESORES_JEFES = {
+        '1° BÁSICO A': 'Básica 1',
+        '1° BÁSICO B': 'Básica 2',
+        '2° BÁSICO A': 'Básica 3',
+        '2° BÁSICO B': 'Básica 4',
+        '3° BÁSICO A': 'Básica 5',
+        '3° BÁSICO B': 'Básica 6',
+        '4° BÁSICO A': 'Básica 7',
+        '4° BÁSICO B': 'Básica 8',
+        '5° BÁSICO A': 'Historia 2',
+        '5° BÁSICO B': 'Inglés 1',
+        '6° BÁSICO A': 'Inglés 4',
+        '6° BÁSICO B': 'C. Naturales',
+        '7° BÁSICO A': 'C. Naturales y Religión',
+        '7° BÁSICO B': 'Inglés 3',
+        '8° BÁSICO A': 'Historia 1',
+        '8° BÁSICO B': 'Matemática 2',
+        '1° MEDIO A': 'Química',
+        '1° MEDIO B': 'Inglés 5',
+        '2° MEDIO A': 'Matemática 1',
+        '2° MEDIO B': 'Lenguaje 4',
+        '3° MEDIO A': 'Matemática 3',
+        '3° MEDIO B': 'Lenguaje 1',
+        '4° MEDIO A': 'Lenguaje 3',
+        '4° MEDIO B': 'Inglés 2',  # Supuesto: el documento repite la jefatura de 4°A y omite la de 4°B
+    }
+
+    # Etiqueta que muestra cada asignatura en la grilla de los cursos (igual que el Excel 2026)
+    ETIQUETAS = {
+        'Lenguaje y Comunicación': 'LENGUAJE',
+        'Educación Matemática': 'MATEMÁTICA',
+        'Idioma Extranjero Inglés': 'INGLÉS',
+        'English Skills': 'INGLÉS',
+        'Ciencias Sociales': 'C. SOCIALES',
+        'Historia, Geografía y CC.SS.': 'HISTORIA',
+        'Ciencias Naturales': 'C. NATURALES',
+        'Biología': 'BIOLOGÍA',
+        'Química': 'QUÍMICA',
+        'Física': 'FÍSICA',
+        'Educación Tecnológica': 'TECNOLOGÍA',
+        'Artes Visuales': 'ARTES',
+        'Educación Musical': 'MÚSICA',
+        'Artes Visuales / Música': 'ARTES-MÚSICA',
+        'Educación Física y Salud': 'ED. FÍSICA',
+        'Orientación / Tecnología': 'ORIEN/TEC.',
+        'Orientación': 'ORIENTACIÓN',
+        'Religión': 'RELIGIÓN',
+        'Filosofía': 'FILOSOFÍA',
+        'Educación Ciudadana': 'ED. CIUDADANA',
+        'Ciencias para la Ciudadanía': 'CC. CIUDADANA',
+    }
+
+    # Asignaturas que comparten la regla de "una sesión diaria" (English skills es parte de Inglés)
+    FAMILIAS = {'English Skills': 'Idioma Extranjero Inglés'}
+
+    # Asignaturas troncales que se dictan en bloques consecutivos de 90 minutos
+    ASIGNATURAS_TRONCALES = ['Matemática', 'Lenguaje', 'Ciencias Naturales', 'Biología', 'Química', 'Física']
+
+    # Salas con capacidad limitada (un curso por bloque)
+    RECURSOS_CAPACIDAD = {'Sala English skills': 1}
+
+    # Recintos deportivos: cada uno admite un curso por bloque. El Patio Santo Domingo
+    # recibe el desborde de cualquiera de los dos gimnasios (uso penalizado).
+    RECINTOS_DEPORTIVOS = ['GIMNASIO A', 'GIMNASIO B', 'PATIO SANTO DOMINGO']
+
+    # Franjas institucionales de electivos (formación diferenciada), fijas según la grilla 2026.
+    # Cada franja dura 6 horas: 3 periodos dobles en los que 3° (o 4°) A y B se mezclan.
+    # 'periodos': bloque inicial de cada periodo doble; 'etiquetas': texto del 1er y 2do bloque
+    # en la grilla del curso; 'grupos': (asignatura, sección, docente, sala, etiqueta en la sala).
+    FRANJAS_ELECTIVOS = {
+        '3° MEDIO': [
+            {
+                'periodos': [('Lunes', 3), ('Martes', 7), ('Jueves', 5)],
+                'etiquetas': ('CHP 3AB', 'LE-QU-EC S. 1'),
+                'grupos': [
+                    ('COMPRENSIÓN HISTÓRICA DEL PRESENTE', '3AB', 'Historia 3', 'SALA DE 3°A', 'COMP.H 3AB'),
+                    ('LECTURA Y ESCRITURA ESPECIALIZADA', 'S.1', 'Lenguaje 1', 'SALA DE 3°B', 'LECT ESP. S.1'),
+                    ('QUÍMICA FORMACIÓN DIFERENCIADA', 'S.1', 'Química', 'ELECTIVO 2', 'QUÍMICA S.1'),
+                    ('ECONOMÍA Y SOCIEDAD', 'S.1', 'Historia 1', 'ELECTIVO 3', 'ECONOMÍA S.1'),
+                ],
+            },
+            {
+                'periodos': [('Lunes', 7), ('Miércoles', 1), ('Jueves', 3)],
+                'etiquetas': ('PROB. EST. 3AB', 'LE-QU-EC S. 2'),
+                'grupos': [
+                    ('PROBABILIDADES Y ESTADÍSTICA DESCRIPTIVA', '3AB', 'Matemática 1', 'SALA DE 3°A', 'PROB. ES. 3AB'),
+                    ('LECTURA Y ESCRITURA ESPECIALIZADA', 'S.2', 'Lenguaje 1', 'SALA DE 3°B', 'LECT ESP. S.2'),
+                    ('QUÍMICA FORMACIÓN DIFERENCIADA', 'S.2', 'Química', 'ELECTIVO 2', 'QUÍMICA S.2'),
+                    ('ECONOMÍA Y SOCIEDAD', 'S.2', 'Historia 1', 'ELECTIVO 3', 'ECONOMÍA S.2'),
+                ],
+            },
+            {
+                'periodos': [('Martes', 5), ('Miércoles', 3), ('Jueves', 7)],
+                'etiquetas': ('BIO. CEL. 3AB', 'LE-QU-EC S. 3'),
+                'grupos': [
+                    ('BIOLOGÍA CELULAR Y MOLECULAR', '3AB', 'Biología', 'SALA DE 3°A', 'BIO. CEL. 3AB'),
+                    # El documento indica "3A-B s. 2" para Lenguaje 4; se interpreta como la sección 3
+                    ('LECTURA Y ESCRITURA ESPECIALIZADA', 'S.3', 'Lenguaje 4', 'SALA DE 3°B', 'LECT ESP. S.3'),
+                    ('QUÍMICA FORMACIÓN DIFERENCIADA', 'S.3', 'Química', 'ELECTIVO 2', 'QUÍMICA S.3'),
+                    ('ECONOMÍA Y SOCIEDAD', 'S.3', 'Historia 2', 'ELECTIVO 3', 'ECONOMÍA S.3'),
+                ],
+            },
+        ],
+        '4° MEDIO': [
+            {
+                'periodos': [('Martes', 1), ('Miércoles', 7), ('Viernes', 1)],
+                'etiquetas': {'4° MEDIO A': ('DISEÑO 4A', 'LIM-PA-GEO S.1'),
+                              '4° MEDIO B': ('DISEÑO 4B', 'LIM-PA-GEO S.1')},
+                'grupos': [
+                    ('DISEÑO Y ARQUITECTURA', '4A', 'Artes y Tecnología 1', 'SALA DE 4°A', 'DISEÑO 4A'),
+                    ('DISEÑO Y ARQUITECTURA', '4B', 'Artes y Tecnología 2', 'SALA DE 4°B', 'DISEÑO 4B'),
+                    ('LÍMITES, DERIVADAS E INTEGRALES', 'S.1', 'Matemática 3', 'ELECTIVO 2', 'LIMITES S.1'),
+                    ('PARTICIPACIÓN Y ARGUMENTACIÓN EN DEMOCRACIA', 'S.1', 'Lenguaje 1', 'SALA DE TECNOLOGÍA', 'PART.ARG S.1'),
+                    ('GEOGRAFÍA, TERRITORIO Y PROBLEMAS SOCIOAMBIENTALES', 'S.1', 'Historia 3', 'ELECTIVO 3', 'GEOGRAFÍA S.1'),
+                ],
+            },
+            {
+                'periodos': [('Martes', 3), ('Miércoles', 5), ('Viernes', 3)],
+                'etiquetas': {'4° MEDIO A': ('BIO. ECOS 4A', 'LIM-PA-GEO S.2'),
+                              '4° MEDIO B': ('BIO. ECOS 4B', 'LIM-PA-GEO S.2')},
+                'grupos': [
+                    ('BIOLOGÍA DE LOS ECOSISTEMAS', '4A', 'Biología', 'SALA DE 4°A', 'BIO. ECOS. 4A'),
+                    ('BIOLOGÍA DE LOS ECOSISTEMAS', '4B', 'C. Naturales', 'ELECTIVO 3', 'BIO. ECOS. 4B'),
+                    ('LÍMITES, DERIVADAS E INTEGRALES', 'S.2', 'Matemática 1', 'ELECTIVO 2', 'LIMITES S.2'),
+                    ('PARTICIPACIÓN Y ARGUMENTACIÓN EN DEMOCRACIA', 'S.2', 'Lenguaje 1', 'SALA DE TECNOLOGÍA', 'PART.ARG S.2'),
+                    ('GEOGRAFÍA, TERRITORIO Y PROBLEMAS SOCIOAMBIENTALES', 'S.2', 'Historia 3', 'SALA DE 4°B', 'GEOGRAFÍA S.2'),
+                ],
+            },
+            {
+                'periodos': [('Lunes', 1), ('Jueves', 1), ('Viernes', 5)],
+                'etiquetas': ('C. SALUD 4AB', 'LIM-PA-GEO S.3'),
+                'grupos': [
+                    ('CIENCIAS PARA LA SALUD', '4AB', 'C. Naturales', 'SALA DE 4°B', 'C.SALUD 4AB'),
+                    ('LÍMITES, DERIVADAS E INTEGRALES', 'S.3', 'Matemática 1', 'ELECTIVO 2', 'LIMITES S.3'),
+                    ('PARTICIPACIÓN Y ARGUMENTACIÓN EN DEMOCRACIA', 'S.3', 'Lenguaje 2', 'SALA DE 4°A', 'PART.ARG S.3'),
+                    ('GEOGRAFÍA, TERRITORIO Y PROBLEMAS SOCIOAMBIENTALES', 'S.3', 'Historia 3', 'ELECTIVO 3', 'GEOGRAFÍA S.3'),
+                ],
+            },
+        ],
+    }
+
+    # Electivos ofrecidos por nivel (orden de la tabla de horas del Excel 2026)
+    ELECTIVOS_OFERTA = {
+        '3° MEDIO': [
+            'LECTURA Y ESCRITURA ESPECIALIZADA',
+            'COMPRENSIÓN HISTÓRICA DEL PRESENTE',
+            'PROBABILIDADES Y ESTADÍSTICA DESCRIPTIVA',
+            'QUÍMICA FORMACIÓN DIFERENCIADA',
+            'BIOLOGÍA CELULAR Y MOLECULAR',
+            'ECONOMÍA Y SOCIEDAD',
+        ],
+        '4° MEDIO': [
+            'CIENCIAS PARA LA SALUD',
+            'LÍMITES, DERIVADAS E INTEGRALES',
+            'PARTICIPACIÓN Y ARGUMENTACIÓN EN DEMOCRACIA',
+            'GEOGRAFÍA, TERRITORIO Y PROBLEMAS SOCIOAMBIENTALES',
+            'DISEÑO Y ARQUITECTURA',
+            'BIOLOGÍA DE LOS ECOSISTEMAS',
+        ],
+    }
+
+    # Bloqueos de pastoral por sala ('C' = horario de colación). Fuente: hoja SALAS ELECTIVOS 2026
+    BLOQUEOS_PASTORAL = {
+        'SALA DE TECNOLOGÍA': [('Martes', 'C'), ('Martes', 9), ('Martes', 10),
+                               ('Jueves', 'C'), ('Jueves', 9), ('Jueves', 10)],
+        'ELECTIVO 2': [('Jueves', 'C'), ('Jueves', 9), ('Jueves', 10)],
+        'ELECTIVO 3': [('Jueves', 'C'), ('Jueves', 9), ('Jueves', 10)],
+        'SALA PADRE CUETO': [('Martes', 'C'), ('Martes', 9), ('Martes', 10),
+                             ('Jueves', 7), ('Jueves', 8), ('Jueves', 'C'), ('Jueves', 9), ('Jueves', 10)],
+        'SALA MADRE PILAR': [('Lunes', 'C'), ('Lunes', 9), ('Lunes', 10),
+                             ('Martes', 1), ('Martes', 2), ('Martes', 'C'), ('Martes', 9), ('Martes', 10),
+                             ('Jueves', 1), ('Jueves', 2), ('Jueves', 3), ('Jueves', 4),
+                             ('Jueves', 'C'), ('Jueves', 9), ('Jueves', 10)],
+        'SALA DE ARTES': [('Jueves', 'C'), ('Jueves', 9), ('Jueves', 10)],
+        'PÁRVULOS': [('Jueves', 'C'), ('Jueves', 9), ('Jueves', 10)],
+    }
+
+    _malla_cache = None
+
+    @classmethod
+    def todos_los_cursos(cls):
+        """Párvulos y cursos regulares, en el orden de las hojas del Excel 2026."""
+        return cls.CURSOS_PARVULOS + cls.CURSOS
+
+    @classmethod
+    def es_parvulo(cls, curso):
+        return curso in cls.CURSOS_PARVULOS
+
+    @classmethod
+    def nivel(cls, curso):
+        """'3° MEDIO A' -> '3° MEDIO'."""
+        return curso[:-2]
 
     @classmethod
     def get_bloques_permitidos(cls, curso, dia):
-        """
-        Retorna la lista de bloques pedagógicos permitidos para un curso y día.
-        Respeta estrictamente la heterogeneidad de jornadas definida en el README.
-        """
-        curso_upper = curso.upper()
-        if any(k in curso_upper for k in ['1° BÁSICO', '2° BÁSICO', '3° BÁSICO', '4° BÁSICO']):
-            return list(range(1, 9)) if dia == 'Lunes' else list(range(1, 8))
-        elif '5° BÁSICO' in curso_upper:
-            if dia in ['Lunes', 'Martes', 'Miércoles']:
-                return list(range(1, 9))
-            elif dia == 'Jueves':
-                return list(range(1, 8))
-            else:
-                return list(range(1, 7))
-        elif '6° BÁSICO' in curso_upper:
-            if dia in ['Lunes', 'Martes', 'Jueves']:
-                return list(range(1, 9))
-            elif dia == 'Miércoles':
-                return list(range(1, 8))
-            else:
-                return list(range(1, 7))
-        elif any(k in curso_upper for k in ['7° BÁSICO', '8° BÁSICO']):
-            if dia in ['Lunes', 'Martes', 'Jueves']:
-                return list(range(1, 9))
-            elif dia == 'Miércoles':
-                return list(range(1, 7))
-            else:
-                return list(range(1, 8))
-        elif any(k in curso_upper for k in ['1° MEDIO', '2° MEDIO']):
-            return list(range(1, 9))
-        elif any(k in curso_upper for k in ['3° MEDIO', '4° MEDIO']):
-            return list(range(1, 11)) if dia == 'Lunes' else list(range(1, 9))
-        return list(range(1, 9))
+        """Retorna los bloques pedagógicos de la jornada de un curso en un día."""
+        return list(range(1, cls.JORNADAS[curso][cls.DIAS.index(dia)] + 1))
 
     @classmethod
     def get_total_bloques_semanal(cls, curso):
         """Calcula el total de bloques disponibles en la semana para un curso."""
-        return sum(len(cls.get_bloques_permitidos(curso, dia)) for dia in cls.DIAS)
+        return sum(cls.JORNADAS[curso])
+
+    @classmethod
+    def zona_deportiva(cls, curso):
+        """Gimnasio preferente: B para párvulos y 1° a 4° básico; A para 5° básico a 4° medio."""
+        if cls.es_parvulo(curso) or ('BÁSICO' in curso and curso[0] in '1234'):
+            return 'GIMNASIO B'
+        return 'GIMNASIO A'
+
+    @classmethod
+    def codigo_corto(cls, curso):
+        """Código del colegio en gimnasios: '1a' (1° básico A), '5A' (5° básico A), '1A' (1° medio A), 'Pk'."""
+        if cls.es_parvulo(curso):
+            return {'PREKINDER A': 'Pk', 'KINDER A': 'Ka', 'KINDER B': 'Kb'}[curso]
+        numero, seccion = curso[0], curso[-1]
+        if 'BÁSICO' in curso and numero in '1234':
+            return f"{numero}{seccion.lower()}"
+        return f"{numero}{seccion}"
+
+    @classmethod
+    def codigo_sala(cls, curso):
+        """Código del colegio en las salas de especialidad: '6°b' (básica) o '1°B' (media)."""
+        numero, seccion = curso[0], curso[-1]
+        return f"{numero}°{seccion.lower()}" if 'BÁSICO' in curso else f"{numero}°{seccion}"
+
+    @classmethod
+    def familia(cls, asignatura):
+        return cls.FAMILIAS.get(asignatura, asignatura)
+
+    @staticmethod
+    def docentes_de(docente):
+        """Normaliza el docente de una lección a una tupla (las lecciones con co-docencia tienen varios)."""
+        return tuple(docente) if isinstance(docente, (tuple, list)) else (docente,)
+
+    @classmethod
+    def franjas_de(cls, curso):
+        return cls.FRANJAS_ELECTIVOS.get(cls.nivel(curso), [])
+
+    @classmethod
+    def etiquetas_franja(cls, franja, curso):
+        etiquetas = franja['etiquetas']
+        return etiquetas[curso] if isinstance(etiquetas, dict) else etiquetas
+
+    @classmethod
+    def nombre_franja(cls, k):
+        return f'Formación Diferenciada · Franja {k}'
 
     @classmethod
     def get_malla_curricular(cls):
         """
-        Retorna la asignación curricular completa de cada curso, incluyendo:
-        (Asignatura, Horas semanales, Docente asignado, Espacio)
-        Cumple 100% las horas fijadas por el Ministerio y la dotación real del colegio.
+        Retorna la asignación curricular completa de cada curso:
+        (Asignatura, Horas semanales, Docente(s) asignado(s), Espacio)
+        Horas según HORARIO CURSOS 2026.xlsx y docentes según DISTRIBUCIÓN HORARIA 2026.docx.
+        Las lecciones con co-docencia (English skills, Artes/Música en media y electivos)
+        indican una tupla de docentes que deben estar libres en el mismo bloque.
         """
+        if cls._malla_cache is not None:
+            return cls._malla_cache
+
+        SK = 'Sala English skills'
+        AM = 'Sala de Artes y Música'
+        NR = 'C. Naturales y Religión'
         malla = {}
 
         # ---------------------------------------------------------------------
-        # 1° BÁSICO A (36 horas)
+        # PÁRVULOS (solo Educación Física: 2 bloques simples en días distintos)
+        # ---------------------------------------------------------------------
+        for c in cls.CURSOS_PARVULOS:
+            malla[c] = [('Educación Física y Salud', 2, 'Ed. Física 2', 'Gimnasio')]
+
+        # ---------------------------------------------------------------------
+        # 1° BÁSICO A (38 horas)
         # ---------------------------------------------------------------------
         malla['1° BÁSICO A'] = [
-            ('Lenguaje y Comunicación', 8, 'Profesor 1 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 2 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 1', 'Aula'),
-            ('Ciencias Naturales', 3, 'Profesor 1 Básica (Lenguaje)', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 3, 'Profesor 1 Básica (Lenguaje)', 'Aula'),
-            ('Educación Física y Salud', 3, 'Profesor Ed. Física 2', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 2 Básica (Matemática)', 'Aula'),
-            ('Educación Musical', 2, 'Profesor 1 Básica (Lenguaje)', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor 1 Básica (Lenguaje)', 'Aula'),
+            ('Lenguaje y Comunicación', 8, 'Básica 2', 'Aula'),
+            ('Educación Matemática', 8, 'Básica 1', 'Aula'),
+            ('Idioma Extranjero Inglés', 6, 'Inglés 1', 'Aula'),
+            ('Ciencias Sociales', 3, 'Básica 1', 'Aula'),
+            ('Ciencias Naturales', 3, 'Básica 1', 'Aula'),
+            ('Artes Visuales', 2, 'Básica 1', 'Aula'),
+            ('Educación Musical', 2, 'Básica 1', 'Aula'),
+            ('Orientación / Tecnología', 1, 'Básica 1', 'Aula'),
+            ('Educación Física y Salud', 3, 'Ed. Física 2', 'Gimnasio'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 1° BÁSICO B (36 horas)
+        # 1° BÁSICO B (38 horas)
         # ---------------------------------------------------------------------
         malla['1° BÁSICO B'] = [
-            ('Lenguaje y Comunicación', 8, 'Profesor 1 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 2 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 1', 'Aula'),
-            ('Ciencias Naturales', 3, 'Profesor 2 Básica (Matemática)', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 3, 'Profesor 2 Básica (Matemática)', 'Aula'),
-            ('Educación Física y Salud', 3, 'Profesor Ed. Física 2', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 2 Básica (Matemática)', 'Aula'),
-            ('Educación Musical', 2, 'Profesor 2 Básica (Matemática)', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor 2 Básica (Matemática)', 'Aula'),
+            ('Lenguaje y Comunicación', 8, 'Básica 2', 'Aula'),
+            ('Educación Matemática', 8, 'Básica 1', 'Aula'),
+            ('Idioma Extranjero Inglés', 6, 'Inglés 1', 'Aula'),
+            ('Ciencias Sociales', 3, 'Básica 2', 'Aula'),
+            ('Ciencias Naturales', 3, 'Básica 2', 'Aula'),
+            ('Artes Visuales', 2, 'Básica 2', 'Aula'),
+            ('Educación Musical', 2, 'Básica 2', 'Aula'),
+            ('Orientación / Tecnología', 1, 'Básica 2', 'Aula'),
+            ('Educación Física y Salud', 3, 'Ed. Física 2', 'Gimnasio'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 2° BÁSICO A (36 horas)
+        # 2° BÁSICO A (38 horas)
         # ---------------------------------------------------------------------
         malla['2° BÁSICO A'] = [
-            ('Lenguaje y Comunicación', 8, 'Profesor 4 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 3 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 1', 'Aula'),
-            ('Ciencias Naturales', 3, 'Profesor 3 Básica (Matemática)', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 3, 'Profesor 3 Básica (Matemática)', 'Aula'),
-            ('Educación Física y Salud', 3, 'Profesor Ed. Física 2', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 3 Básica (Matemática)', 'Aula'),
-            ('Educación Musical', 2, 'Profesor 3 Básica (Matemática)', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor 3 Básica (Matemática)', 'Aula'),
+            ('Lenguaje y Comunicación', 8, 'Básica 3', 'Aula'),
+            ('Educación Matemática', 8, 'Básica 4', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 1', 'Aula'),
+            ('English Skills', 2, ('Inglés 1', 'Inglés 4'), SK),
+            ('Ciencias Sociales', 3, 'Básica 3', 'Aula'),
+            ('Ciencias Naturales', 3, 'Básica 3', 'Aula'),
+            ('Artes Visuales', 2, 'Básica 3', 'Aula'),
+            ('Educación Musical', 2, 'Básica 3', 'Aula'),
+            ('Orientación / Tecnología', 1, 'Básica 3', 'Aula'),
+            ('Educación Física y Salud', 3, 'Ed. Física 2', 'Gimnasio'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 2° BÁSICO B (36 horas)
+        # 2° BÁSICO B (38 horas)
         # ---------------------------------------------------------------------
         malla['2° BÁSICO B'] = [
-            ('Lenguaje y Comunicación', 8, 'Profesor 4 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 3 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 1', 'Aula'),
-            ('Ciencias Naturales', 3, 'Profesor 4 Básica (Lenguaje)', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 3, 'Profesor 4 Básica (Lenguaje)', 'Aula'),
-            ('Educación Física y Salud', 3, 'Profesor Ed. Física 2', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 3 Básica (Matemática)', 'Aula'),
-            ('Educación Musical', 2, 'Profesor 4 Básica (Lenguaje)', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor 4 Básica (Lenguaje)', 'Aula'),
+            ('Lenguaje y Comunicación', 8, 'Básica 3', 'Aula'),
+            ('Educación Matemática', 8, 'Básica 4', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 1', 'Aula'),
+            ('English Skills', 2, ('Inglés 1', 'Inglés 4'), SK),
+            ('Ciencias Sociales', 3, 'Básica 4', 'Aula'),
+            ('Ciencias Naturales', 3, 'Básica 4', 'Aula'),
+            ('Artes Visuales', 2, 'Básica 4', 'Aula'),
+            ('Educación Musical', 2, 'Básica 4', 'Aula'),
+            ('Orientación / Tecnología', 1, 'Básica 4', 'Aula'),
+            ('Educación Física y Salud', 3, 'Ed. Física 2', 'Gimnasio'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 3° BÁSICO A (36 horas)
+        # 3° BÁSICO A (38 horas)
         # ---------------------------------------------------------------------
         malla['3° BÁSICO A'] = [
-            ('Lenguaje y Comunicación', 8, 'Profesor 5 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 6 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 1', 'Aula'),
-            ('Ciencias Naturales', 3, 'Profesor 5 Básica (Lenguaje)', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 3, 'Profesor 5 Básica (Lenguaje)', 'Aula'),
-            ('Educación Física y Salud', 3, 'Profesor Ed. Física 1', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 6 Básica (Matemática)', 'Aula'),
-            ('Educación Musical', 2, 'Profesor 5 Básica (Lenguaje)', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor 5 Básica (Lenguaje)', 'Aula'),
+            ('Lenguaje y Comunicación', 8, 'Básica 5', 'Aula'),
+            ('Educación Matemática', 8, 'Básica 6', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 1', 'Aula'),
+            ('English Skills', 2, ('Inglés 1', 'Inglés 3'), SK),
+            ('Ciencias Sociales', 3, 'Básica 5', 'Aula'),
+            ('Ciencias Naturales', 3, 'Básica 5', 'Aula'),
+            ('Artes Visuales', 2, 'Básica 5', 'Aula'),
+            ('Educación Musical', 2, 'Básica 5', 'Aula'),
+            ('Orientación / Tecnología', 1, 'Básica 5', 'Aula'),
+            ('Educación Física y Salud', 3, 'Ed. Física 2', 'Gimnasio'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 3° BÁSICO B (36 horas)
+        # 3° BÁSICO B (38 horas)
         # ---------------------------------------------------------------------
         malla['3° BÁSICO B'] = [
-            ('Lenguaje y Comunicación', 8, 'Profesor 5 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 6 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 4', 'Aula'),
-            ('Ciencias Naturales', 3, 'Profesor 6 Básica (Matemática)', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 3, 'Profesor 6 Básica (Matemática)', 'Aula'),
-            ('Educación Física y Salud', 3, 'Profesor Ed. Física 2', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 6 Básica (Matemática)', 'Aula'),
-            ('Educación Musical', 2, 'Profesor 6 Básica (Matemática)', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor 6 Básica (Matemática)', 'Aula'),
+            ('Lenguaje y Comunicación', 8, 'Básica 5', 'Aula'),
+            ('Educación Matemática', 8, 'Básica 6', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 2', 'Aula'),
+            ('English Skills', 2, ('Inglés 2', 'Inglés 5'), SK),
+            ('Ciencias Sociales', 3, 'Básica 6', 'Aula'),
+            ('Ciencias Naturales', 3, 'Básica 6', 'Aula'),
+            ('Artes Visuales', 2, 'Básica 6', 'Aula'),
+            ('Educación Musical', 2, 'Básica 6', 'Aula'),
+            ('Orientación / Tecnología', 1, 'Básica 6', 'Aula'),
+            ('Educación Física y Salud', 3, 'Ed. Física 1', 'Gimnasio'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 4° BÁSICO A (36 horas)
+        # 4° BÁSICO A (38 horas)
         # ---------------------------------------------------------------------
         malla['4° BÁSICO A'] = [
-            ('Lenguaje y Comunicación', 8, 'Profesor 7 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 8 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 4', 'Aula'),
-            ('Ciencias Naturales', 3, 'Profesor 7 Básica (Lenguaje)', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 3, 'Profesor 7 Básica (Lenguaje)', 'Aula'),
-            ('Educación Física y Salud', 3, 'Profesor Ed. Física 1', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 8 Básica (Matemática)', 'Aula'),
-            ('Educación Musical', 2, 'Profesor 7 Básica (Lenguaje)', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor 7 Básica (Lenguaje)', 'Aula'),
+            ('Lenguaje y Comunicación', 8, 'Básica 7', 'Aula'),
+            ('Educación Matemática', 8, 'Básica 8', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 2', 'Aula'),
+            ('English Skills', 2, ('Inglés 2', 'Inglés 3'), SK),
+            ('Ciencias Sociales', 3, 'Básica 7', 'Aula'),
+            ('Ciencias Naturales', 3, 'Básica 7', 'Aula'),
+            ('Artes Visuales', 2, 'Básica 7', 'Aula'),
+            ('Educación Musical', 2, 'Básica 7', 'Aula'),
+            ('Orientación / Tecnología', 1, 'Básica 7', 'Aula'),
+            ('Educación Física y Salud', 3, 'Ed. Física 1', 'Gimnasio'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 4° BÁSICO B (36 horas)
+        # 4° BÁSICO B (38 horas)
         # ---------------------------------------------------------------------
         malla['4° BÁSICO B'] = [
-            ('Lenguaje y Comunicación', 8, 'Profesor 7 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 8 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 4', 'Aula'),
-            ('Ciencias Naturales', 3, 'Profesor 8 Básica (Matemática)', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 3, 'Profesor 8 Básica (Matemática)', 'Aula'),
-            ('Educación Física y Salud', 3, 'Profesor Ed. Física 1', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 8 Básica (Matemática)', 'Aula'),
-            ('Educación Musical', 2, 'Profesor 8 Básica (Matemática)', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor 8 Básica (Matemática)', 'Aula'),
+            ('Lenguaje y Comunicación', 8, 'Básica 7', 'Aula'),
+            ('Educación Matemática', 8, 'Básica 8', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 3', 'Aula'),
+            ('English Skills', 2, ('Inglés 3', 'Inglés 5'), SK),
+            ('Ciencias Sociales', 3, 'Básica 8', 'Aula'),
+            ('Ciencias Naturales', 3, 'Básica 8', 'Aula'),
+            ('Artes Visuales', 2, 'Básica 8', 'Aula'),
+            ('Educación Musical', 2, 'Básica 8', 'Aula'),
+            ('Orientación / Tecnología', 1, 'Básica 8', 'Aula'),
+            ('Educación Física y Salud', 3, 'Ed. Física 1', 'Gimnasio'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 5° BÁSICO A (37 horas)
+        # 5° BÁSICO A (38 horas)
         # ---------------------------------------------------------------------
         malla['5° BÁSICO A'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor 5 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 2 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 1', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 2', 'Aula'),
-            ('Ciencias Naturales', 4, 'Profesor 3 Básica (Matemática)', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Educación Musical', 2, 'Profesor Música', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor Inglés 1', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 2', 'Aula'),
+            ('Educación Matemática', 7, 'Matemática 4', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 3', 'Aula'),
+            ('English Skills', 2, ('Inglés 3', 'Inglés 4'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 2', 'Aula'),
+            ('Ciencias Naturales', 4, 'C. Naturales', 'Aula'),
+            ('Educación Tecnológica', 2, 'Artes y Tecnología 2', 'Aula'),
+            ('Artes Visuales', 2, 'Artes y Tecnología 1', 'Aula'),
+            ('Educación Musical', 2, 'Música', 'Sala de Música'),
+            ('Educación Física y Salud', 2, 'Ed. Física 2', 'Gimnasio'),
+            ('Orientación', 1, 'Historia 2', 'Aula'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 5° BÁSICO B (37 horas)
+        # 5° BÁSICO B (38 horas)
         # ---------------------------------------------------------------------
         malla['5° BÁSICO B'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor 7 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor 8 Básica (Matemática)', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 3', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 2', 'Aula'),
-            ('Ciencias Naturales', 4, 'Profesor 6 Básica (Matemática)', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 2', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Educación Musical', 2, 'Profesor Música', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor Historia 2', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 3', 'Aula'),
+            ('Educación Matemática', 7, 'Matemática 4', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 1', 'Aula'),
+            ('English Skills', 2, ('Inglés 1', 'Inglés 3'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 2', 'Aula'),
+            ('Ciencias Naturales', 4, 'Química', 'Aula'),
+            ('Educación Tecnológica', 2, 'Artes y Tecnología 2', 'Aula'),
+            ('Artes Visuales', 2, 'Artes y Tecnología 1', 'Aula'),
+            ('Educación Musical', 2, 'Música', 'Sala de Música'),
+            ('Educación Física y Salud', 2, 'Ed. Física 1', 'Gimnasio'),
+            ('Orientación', 1, 'Inglés 1', 'Aula'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 6° BÁSICO A (37 horas)
         # ---------------------------------------------------------------------
         malla['6° BÁSICO A'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor 4 Básica (Lenguaje)', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor Matemática 1', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 5', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 2', 'Aula'),
-            ('Ciencias Naturales', 4, 'Profesor Ciencias 1 (Biología)', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 1', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Educación Musical', 2, 'Profesor Música', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor Historia 2', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 3', 'Aula'),
+            ('Educación Matemática', 6, 'Matemática 4', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 4', 'Aula'),
+            ('English Skills', 2, ('Inglés 4', 'Inglés 5'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 2', 'Aula'),
+            ('Ciencias Naturales', 4, 'C. Naturales', 'Aula'),
+            ('Educación Tecnológica', 2, 'Artes y Tecnología 1', 'Aula'),
+            ('Artes Visuales', 2, 'Artes y Tecnología 2', 'Aula'),
+            ('Educación Musical', 2, 'Música', 'Sala de Música'),
+            ('Educación Física y Salud', 2, 'Ed. Física 1', 'Gimnasio'),
+            ('Orientación', 1, 'Inglés 4', 'Aula'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 6° BÁSICO B (37 horas)
         # ---------------------------------------------------------------------
         malla['6° BÁSICO B'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor Lenguaje 1', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor Matemática 1', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 5', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 1', 'Aula'),
-            ('Ciencias Naturales', 4, 'Profesor Ciencias 3 (Química)', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 1', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Educación Musical', 2, 'Profesor Música', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Básica', 'Aula'),
-            ('Orientación', 1, 'Profesor Historia 1', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 3', 'Aula'),
+            ('Educación Matemática', 6, 'Matemática 2', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 4', 'Aula'),
+            ('English Skills', 2, ('Inglés 4', 'Inglés 2'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 2', 'Aula'),
+            ('Ciencias Naturales', 4, 'C. Naturales', 'Aula'),
+            ('Educación Tecnológica', 2, 'Artes y Tecnología 1', 'Aula'),
+            ('Artes Visuales', 2, 'Artes y Tecnología 2', 'Aula'),
+            ('Educación Musical', 2, 'Música', 'Sala de Música'),
+            ('Educación Física y Salud', 2, 'Ed. Física 1', 'Gimnasio'),
+            ('Orientación', 1, 'C. Naturales', 'Aula'),
+            ('Religión', 2, 'Religión', 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 7° BÁSICO A (37 horas)
         # ---------------------------------------------------------------------
         malla['7° BÁSICO A'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor Lenguaje 1', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor Matemática 1', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 5', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 2', 'Aula'),
-            ('Ciencias Naturales', 4, 'Profesor Ciencias 2 (Naturales)', 'Aula'),
-            ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 1', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Tecnológica', 1, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Educación Musical', 2, 'Profesor Música', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Ed. Física 1', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 2', 'Aula'),
+            ('Educación Matemática', 6, 'Matemática 4', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 3', 'Aula'),
+            ('English Skills', 2, ('Inglés 3', 'Inglés 5'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 3', 'Aula'),
+            ('Ciencias Naturales', 4, NR, 'Aula'),
+            ('Física', 1, 'Física', 'Aula'),
+            ('Educación Tecnológica', 1, 'Artes y Tecnología 2', 'Aula'),
+            ('Artes Visuales', 2, 'Artes y Tecnología 1', 'Aula'),
+            ('Educación Musical', 2, 'Música', 'Sala de Música'),
+            ('Educación Física y Salud', 2, 'Ed. Física 2', 'Gimnasio'),
+            ('Orientación', 1, NR, 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 7° BÁSICO B (37 horas)
         # ---------------------------------------------------------------------
         malla['7° BÁSICO B'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor Lenguaje 2', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor Matemática 2', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 5', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 2', 'Aula'),
-            ('Ciencias Naturales', 4, 'Profesor Ciencias 2 (Naturales)', 'Aula'),
-            ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 1', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Educación Tecnológica', 1, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Educación Musical', 2, 'Profesor Música', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor 1 Arte/Tecnología', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 2', 'Aula'),
+            # El documento repite "7A" para Matemática 4; se interpreta la segunda fila como 7°B
+            ('Educación Matemática', 6, 'Matemática 4', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 3', 'Aula'),
+            ('English Skills', 2, ('Inglés 3', 'Inglés 5'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 3', 'Aula'),
+            ('Ciencias Naturales', 4, NR, 'Aula'),
+            ('Física', 1, 'Física', 'Aula'),
+            ('Educación Tecnológica', 1, 'Artes y Tecnología 2', 'Aula'),
+            ('Artes Visuales', 2, 'Artes y Tecnología 1', 'Aula'),
+            ('Educación Musical', 2, 'Música', 'Sala de Música'),
+            ('Educación Física y Salud', 2, 'Ed. Física 1', 'Gimnasio'),
+            ('Orientación', 1, 'Inglés 3', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 8° BÁSICO A (37 horas)
         # ---------------------------------------------------------------------
         malla['8° BÁSICO A'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor Lenguaje 2', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor Matemática 2', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 2', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 2', 'Aula'),
-            ('Ciencias Naturales', 4, 'Profesor Ciencias 1 (Biología)', 'Aula'),
-            ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Tecnológica', 1, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Musical', 2, 'Profesor Música', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Matemática 2', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 4', 'Aula'),
+            ('Educación Matemática', 6, 'Matemática 3', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 2', 'Aula'),
+            ('English Skills', 2, ('Inglés 2', 'Inglés 5'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 1', 'Aula'),
+            ('Ciencias Naturales', 4, NR, 'Aula'),
+            ('Física', 1, 'Física', 'Aula'),
+            ('Educación Tecnológica', 1, 'Artes y Tecnología 1', 'Aula'),
+            ('Artes Visuales', 2, 'Artes y Tecnología 2', 'Aula'),
+            ('Educación Musical', 2, 'Música', 'Sala de Música'),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Historia 1', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 8° BÁSICO B (37 horas)
         # ---------------------------------------------------------------------
         malla['8° BÁSICO B'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor Lenguaje 2', 'Aula'),
-            ('Educación Matemática', 6, 'Profesor Matemática 2', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 2', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 3', 'Aula'),
-            ('Ciencias Naturales', 4, 'Profesor Ciencias 2 (Naturales)', 'Aula'),
-            ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 1', 'Gimnasio'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Tecnológica', 1, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Musical', 2, 'Profesor Música', 'Aula'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Lenguaje 2', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 4', 'Aula'),
+            ('Educación Matemática', 6, 'Matemática 2', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 2', 'Aula'),
+            ('English Skills', 2, ('Inglés 2', 'Inglés 5'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 1', 'Aula'),
+            ('Ciencias Naturales', 4, 'Biología', 'Aula'),
+            ('Física', 1, 'Física', 'Aula'),
+            ('Educación Tecnológica', 1, 'Artes y Tecnología 1', 'Aula'),
+            ('Artes Visuales', 2, 'Artes y Tecnología 2', 'Aula'),
+            ('Educación Musical', 2, 'Música', 'Sala de Música'),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Matemática 2', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 1° MEDIO A (40 horas)
         # ---------------------------------------------------------------------
         malla['1° MEDIO A'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor Lenguaje 6', 'Aula'),
-            ('Educación Matemática', 7, 'Profesor Matemática 5', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 6', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 3', 'Aula'),
-            ('Biología', 4, 'Profesor Ciencias 1 (Biología)', 'Aula'),
-            ('Química', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
-            ('Física', 2, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Inglés 6', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 3', 'Aula'),
+            ('Educación Matemática', 7, 'Matemática 3', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 5', 'Aula'),
+            ('English Skills', 2, ('Inglés 5', 'Inglés 4'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 1', 'Aula'),
+            ('Biología', 4, 'Biología', 'Aula'),
+            ('Química', 2, 'Química', 'Aula'),
+            ('Física', 2, 'Física', 'Aula'),
+            ('Educación Tecnológica', 2, 'Artes y Tecnología 2', 'Aula'),
+            ('Artes Visuales / Música', 2, ('Artes y Tecnología 1', 'Música'), AM),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Química', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 1° MEDIO B (40 horas)
         # ---------------------------------------------------------------------
         malla['1° MEDIO B'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor Lenguaje 5', 'Aula'),
-            ('Educación Matemática', 7, 'Profesor Matemática 3', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 6', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 3', 'Aula'),
-            ('Biología', 4, 'Profesor Ciencias 1 (Biología)', 'Aula'),
-            ('Química', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
-            ('Física', 2, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Matemática 3', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 3', 'Aula'),
+            ('Educación Matemática', 7, 'Matemática 3', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 5', 'Aula'),
+            ('English Skills', 2, ('Inglés 5', 'Inglés 4'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 1', 'Aula'),
+            # El documento repite "1A" para Biología; se interpreta la segunda fila como 1° medio B
+            ('Biología', 4, 'Biología', 'Aula'),
+            ('Química', 2, 'Química', 'Aula'),
+            ('Física', 2, 'Física', 'Aula'),
+            ('Educación Tecnológica', 2, 'Artes y Tecnología 2', 'Aula'),
+            ('Artes Visuales / Música', 2, ('Artes y Tecnología 1', 'Música'), AM),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Inglés 5', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 2° MEDIO A (40 horas)
         # ---------------------------------------------------------------------
         malla['2° MEDIO A'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor Lenguaje 5', 'Aula'),
-            ('Educación Matemática', 7, 'Profesor Matemática 3', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 3', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 1', 'Aula'),
-            ('Biología', 4, 'Profesor Ciencias 1 (Biología)', 'Aula'),
-            ('Química', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
-            ('Física', 2, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Religión Media', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 4', 'Aula'),
+            ('Educación Matemática', 7, 'Matemática 1', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 4', 'Aula'),
+            ('English Skills', 2, ('Inglés 4', 'Inglés 3'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 1', 'Aula'),
+            ('Biología', 4, 'Biología', 'Aula'),
+            ('Química', 2, 'Química', 'Aula'),
+            ('Física', 2, 'Física', 'Aula'),
+            ('Educación Tecnológica', 2, 'Artes y Tecnología 1', 'Aula'),
+            ('Artes Visuales / Música', 2, ('Artes y Tecnología 2', 'Música'), AM),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Matemática 1', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
         # 2° MEDIO B (40 horas)
         # ---------------------------------------------------------------------
         malla['2° MEDIO B'] = [
-            ('Lenguaje y Comunicación', 6, 'Profesor Lenguaje 5', 'Aula'),
-            ('Educación Matemática', 7, 'Profesor Matemática 3', 'Aula'),
-            ('Idioma Extranjero Inglés', 6, 'Profesor Inglés 3', 'Aula'),
-            ('Historia, Geografía y CC.SS.', 4, 'Profesor Historia 1', 'Aula'),
-            ('Biología', 4, 'Profesor Ciencias 1 (Biología)', 'Aula'),
-            ('Química', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
-            ('Física', 2, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Educación Tecnológica', 2, 'Profesor 1 Arte/Tecnología', 'Aula'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Historia 1', 'Aula'),
+            ('Lenguaje y Comunicación', 6, 'Lenguaje 2', 'Aula'),
+            ('Educación Matemática', 7, 'Matemática 1', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 4', 'Aula'),
+            ('English Skills', 2, ('Inglés 4', 'Inglés 3'), SK),
+            ('Historia, Geografía y CC.SS.', 4, 'Historia 1', 'Aula'),
+            ('Biología', 4, 'Biología', 'Aula'),
+            ('Química', 2, 'Química', 'Aula'),
+            ('Física', 2, 'Física', 'Aula'),
+            ('Educación Tecnológica', 2, 'Artes y Tecnología 1', 'Aula'),
+            ('Artes Visuales / Música', 2, ('Artes y Tecnología 2', 'Música'), AM),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Lenguaje 4', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 3° MEDIO A (42 horas: 24 Plan Común + 18 Electivos simultáneos)
+        # 3° MEDIO A (42 horas: 24 Plan Común + 18 en 3 franjas de electivos)
         # ---------------------------------------------------------------------
         malla['3° MEDIO A'] = [
-            ('Lenguaje y Comunicación', 3, 'Profesor Lenguaje 6', 'Aula'),
-            ('Educación Matemática', 3, 'Profesor Matemática 3', 'Aula'),
-            ('Idioma Extranjero Inglés', 4, 'Profesor Inglés 2', 'Aula'),
-            ('Educación Ciudadana', 2, 'Profesor Historia 3', 'Aula'),
-            ('Ciencias para la Ciudadanía', 2, 'Profesor Ciencias 1 (Biología)', 'Aula'),
-            ('Filosofía', 2, 'Profesor Filosofía', 'Aula'),
-            ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Historia 3', 'Aula'),
-            ('Formación Diferenciada (Electivo 1)', 6, 'Docente Electivo 3MA Sec_1', 'Sala Electivos'),
-            ('Formación Diferenciada (Electivo 2)', 6, 'Docente Electivo 3MA Sec_2', 'Sala Electivos'),
-            ('Formación Diferenciada (Electivo 3)', 6, 'Docente Electivo 3MA Sec_3', 'Sala Electivos'),
+            ('Lenguaje y Comunicación', 3, 'Lenguaje 1', 'Aula'),
+            ('Educación Matemática', 3, 'Matemática 3', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 5', 'Aula'),
+            ('Educación Ciudadana', 2, 'Historia 2', 'Aula'),
+            ('Ciencias para la Ciudadanía', 2, 'Biología', 'Aula'),
+            ('Filosofía', 2, 'Lenguaje 5', 'Aula'),
+            ('Física', 1, 'Física', 'Aula'),
+            ('Artes Visuales / Música', 2, ('Artes y Tecnología 1', 'Música'), AM),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Matemática 3', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 3° MEDIO B (42 horas: 24 Plan Común + 18 Electivos simultáneos)
+        # 3° MEDIO B (42 horas: 24 Plan Común + 18 en 3 franjas de electivos)
         # ---------------------------------------------------------------------
         malla['3° MEDIO B'] = [
-            ('Lenguaje y Comunicación', 3, 'Profesor Lenguaje 7', 'Aula'),
-            ('Educación Matemática', 3, 'Profesor Matemática 3', 'Aula'),
-            ('Idioma Extranjero Inglés', 4, 'Profesor Inglés 4', 'Aula'),
-            ('Educación Ciudadana', 2, 'Profesor Historia 3', 'Aula'),
-            ('Ciencias para la Ciudadanía', 2, 'Profesor Ciencias 1 (Biología)', 'Aula'),
-            ('Filosofía', 2, 'Profesor Filosofía', 'Aula'),
-            ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Inglés 4', 'Aula'),
-            ('Formación Diferenciada (Electivo 1)', 6, 'Docente Electivo 3MB Sec_1', 'Sala Electivos'),
-            ('Formación Diferenciada (Electivo 2)', 6, 'Docente Electivo 3MB Sec_2', 'Sala Electivos'),
-            ('Formación Diferenciada (Electivo 3)', 6, 'Docente Electivo 3MB Sec_3', 'Sala Electivos'),
+            ('Lenguaje y Comunicación', 3, 'Lenguaje 1', 'Aula'),
+            ('Educación Matemática', 3, 'Matemática 3', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 5', 'Aula'),
+            ('Educación Ciudadana', 2, 'Historia 2', 'Aula'),
+            ('Ciencias para la Ciudadanía', 2, 'Biología', 'Aula'),
+            ('Filosofía', 2, 'Lenguaje 5', 'Aula'),
+            ('Física', 1, 'Física', 'Aula'),
+            ('Artes Visuales / Música', 2, ('Artes y Tecnología 1', 'Música'), AM),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Lenguaje 1', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 4° MEDIO A (42 horas: 24 Plan Común + 18 Electivos simultáneos)
+        # 4° MEDIO A (42 horas: 24 Plan Común + 18 en 3 franjas de electivos)
         # ---------------------------------------------------------------------
         malla['4° MEDIO A'] = [
-            ('Lenguaje y Comunicación', 3, 'Profesor Lenguaje 5', 'Aula'),
-            ('Educación Matemática', 3, 'Profesor Matemática 3', 'Aula'),
-            ('Idioma Extranjero Inglés', 4, 'Profesor Inglés 2', 'Aula'),
-            ('Educación Ciudadana', 2, 'Profesor Historia 1', 'Aula'),
-            ('Ciencias para la Ciudadanía', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
-            ('Filosofía', 2, 'Profesor Filosofía', 'Aula'),
-            ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Inglés 2', 'Aula'),
-            ('Formación Diferenciada (Electivo 1)', 6, 'Docente Electivo 4MA Sec_1', 'Sala Electivos'),
-            ('Formación Diferenciada (Electivo 2)', 6, 'Docente Electivo 4MA Sec_2', 'Sala Electivos'),
-            ('Formación Diferenciada (Electivo 3)', 6, 'Docente Electivo 4MA Sec_3', 'Sala Electivos'),
+            ('Lenguaje y Comunicación', 3, 'Lenguaje 3', 'Aula'),
+            ('Educación Matemática', 3, 'Matemática 1', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 2', 'Aula'),
+            ('Educación Ciudadana', 2, 'Historia 3', 'Aula'),
+            ('Ciencias para la Ciudadanía', 2, 'Química', 'Aula'),
+            ('Filosofía', 2, 'Lenguaje 5', 'Aula'),
+            ('Física', 1, 'Física', 'Aula'),
+            ('Artes Visuales / Música', 2, ('Artes y Tecnología 1', 'Música'), AM),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Lenguaje 3', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
         # ---------------------------------------------------------------------
-        # 4° MEDIO B (42 horas: 24 Plan Común + 18 Electivos simultáneos)
+        # 4° MEDIO B (42 horas: 24 Plan Común + 18 en 3 franjas de electivos)
         # ---------------------------------------------------------------------
         malla['4° MEDIO B'] = [
-            ('Lenguaje y Comunicación', 3, 'Profesor Lenguaje 5', 'Aula'),
-            ('Educación Matemática', 3, 'Profesor Matemática 3', 'Aula'),
-            ('Idioma Extranjero Inglés', 4, 'Profesor Inglés 3', 'Aula'),
-            ('Educación Ciudadana', 2, 'Profesor Historia 1', 'Aula'),
-            ('Ciencias para la Ciudadanía', 2, 'Profesor Ciencias 3 (Química)', 'Aula'),
-            ('Filosofía', 2, 'Profesor Filosofía', 'Aula'),
-            ('Física', 1, 'Profesor Ciencias 4 (Física)', 'Aula'),
-            ('Artes Visuales', 2, 'Profesor 2 Arte/Tecnología', 'Aula'),
-            ('Educación Física y Salud', 2, 'Profesor Ed. Física 3', 'Gimnasio'),
-            ('Religión', 2, 'Profesor Religión Media', 'Aula'),
-            ('Orientación', 1, 'Profesor Ciencias 3 (Química)', 'Aula'),
-            ('Formación Diferenciada (Electivo 1)', 6, 'Docente Electivo 4MB Sec_1', 'Sala Electivos'),
-            ('Formación Diferenciada (Electivo 2)', 6, 'Docente Electivo 4MB Sec_2', 'Sala Electivos'),
-            ('Formación Diferenciada (Electivo 3)', 6, 'Docente Electivo 4MB Sec_3', 'Sala Electivos'),
+            ('Lenguaje y Comunicación', 3, 'Lenguaje 1', 'Aula'),
+            ('Educación Matemática', 3, 'Matemática 4', 'Aula'),
+            ('Idioma Extranjero Inglés', 4, 'Inglés 2', 'Aula'),
+            ('Educación Ciudadana', 2, 'Historia 3', 'Aula'),
+            ('Ciencias para la Ciudadanía', 2, 'Química', 'Aula'),
+            ('Filosofía', 2, 'Lenguaje 5', 'Aula'),
+            ('Física', 1, 'Física', 'Aula'),
+            ('Artes Visuales / Música', 2, ('Artes y Tecnología 2', 'Música'), AM),
+            ('Educación Física y Salud', 2, 'Ed. Física 3', 'Gimnasio'),
+            ('Orientación', 1, 'Inglés 2', 'Aula'),
+            ('Religión', 2, NR, 'Aula'),
         ]
 
+        # Franjas de electivos de 3° y 4° medio (6 horas cada una, docentes de todas sus secciones)
+        for nivel, franjas in cls.FRANJAS_ELECTIVOS.items():
+            for k, franja in enumerate(franjas, 1):
+                docentes = tuple(dict.fromkeys(g[2] for g in franja['grupos']))
+                for seccion in ('A', 'B'):
+                    malla[f'{nivel} {seccion}'].append((cls.nombre_franja(k), 6, docentes, 'Salas electivos'))
+
+        cls._malla_cache = malla
         return malla
+
+    @classmethod
+    def carga_docente(cls):
+        """Horas de grilla por docente según la malla (los electivos se cuentan una vez por franja)."""
+        carga = defaultdict(int)
+        for curso, lecciones in cls.get_malla_curricular().items():
+            for asig, horas, doc, _ in lecciones:
+                if asig.startswith('Formación Diferenciada'):
+                    continue
+                for d in cls.docentes_de(doc):
+                    carga[d] += horas
+        for franjas in cls.FRANJAS_ELECTIVOS.values():
+            for franja in franjas:
+                for d in dict.fromkeys(g[2] for g in franja['grupos']):
+                    carga[d] += 6
+        return carga
 
 
 # =============================================================================
@@ -585,40 +882,55 @@ class HorarioEscolar:
     """Representación matricial global del horario del colegio."""
 
     def __init__(self):
-        # asignaciones[curso][dia][bloque] = {asignatura, docente, espacio}
+        # asignaciones[curso][dia][bloque] = {asignatura, docentes, docente, espacio, etiqueta}
         self.asignaciones = {
-            c: {d: {} for d in DatosColegio.DIAS} for c in DatosColegio.CURSOS
+            c: {d: {} for d in DatosColegio.DIAS} for c in DatosColegio.todos_los_cursos()
         }
         # docente_ocupado[docente][(dia, bloque)] = (curso, asignatura)
         self.docente_ocupado = defaultdict(dict)
+        # docente_claves[docente][(dia, bloque)] = {cursos o grupos atendidos en ese bloque}
+        self.docente_claves = defaultdict(lambda: defaultdict(set))
+        # docente_detalle[docente][(dia, bloque)] = {'etiqueta', 'sala'} (electivos)
+        self.docente_detalle = defaultdict(dict)
         # gimnasio_ocupado[(dia, bloque)] = list(cursos)
         self.gimnasio_ocupado = defaultdict(list)
 
     def esta_disponible(self, curso, dia, bloque, docente, es_gimnasio=False):
-        """Evalúa si un bloque está completamente libre para curso, docente y gimnasio."""
-        bloques_permitidos = DatosColegio.get_bloques_permitidos(curso, dia)
-        if bloque not in bloques_permitidos:
+        """Evalúa si un bloque está libre para el curso y el docente, y si hay recinto deportivo."""
+        if bloque not in DatosColegio.get_bloques_permitidos(curso, dia):
             return False
-
         if bloque in self.asignaciones[curso][dia]:
             return False
-
         if (dia, bloque) in self.docente_ocupado[docente]:
             return False
-
-        if es_gimnasio and len(self.gimnasio_ocupado[(dia, bloque)]) >= 2:
+        if es_gimnasio and len(self.gimnasio_ocupado[(dia, bloque)]) >= len(DatosColegio.RECINTOS_DEPORTIVOS):
             return False
-
         return True
 
-    def asignar(self, curso, dia, bloque, asignatura, docente, espacio='Aula'):
-        """Asigna una lección en el horario garantizando actualización de estados."""
+    def asignar(self, curso, dia, bloque, asignatura, docentes, espacio='Aula', etiqueta=None,
+                clave=None, detalle=None):
+        """
+        Asigna una lección en el horario garantizando actualización de estados.
+        'clave' identifica a quién atiende el docente (el curso, o el grupo compartido de un
+        electivo) y 'detalle' permite indicar por docente la etiqueta y sala de su sección.
+        """
+        docentes = DatosColegio.docentes_de(docentes)
         self.asignaciones[curso][dia][bloque] = {
             'asignatura': asignatura,
-            'docente': docente,
-            'espacio': espacio
+            'docentes': docentes,
+            'docente': ' / '.join(docentes),
+            'espacio': espacio,
+            'etiqueta': etiqueta or DatosColegio.ETIQUETAS.get(asignatura, asignatura.upper()),
         }
-        self.docente_ocupado[docente][(dia, bloque)] = (curso, asignatura)
+        clave = clave or curso
+        for doc in docentes:
+            self.docente_claves[doc][(dia, bloque)].add(clave)
+            if detalle and doc in detalle:
+                etiqueta_doc, sala, asig_doc = detalle[doc]
+                self.docente_ocupado[doc][(dia, bloque)] = (clave, asig_doc)
+                self.docente_detalle[doc][(dia, bloque)] = {'etiqueta': etiqueta_doc, 'sala': sala}
+            else:
+                self.docente_ocupado[doc][(dia, bloque)] = (curso, asignatura)
         if espacio == 'Gimnasio':
             self.gimnasio_ocupado[(dia, bloque)].append(curso)
 
@@ -626,12 +938,28 @@ class HorarioEscolar:
         """Elimina una asignación."""
         if bloque in self.asignaciones[curso][dia]:
             item = self.asignaciones[curso][dia].pop(bloque)
-            docente = item['docente']
-            if (dia, bloque) in self.docente_ocupado[docente]:
-                del self.docente_ocupado[docente][(dia, bloque)]
+            for doc in item['docentes']:
+                self.docente_claves[doc][(dia, bloque)].discard(curso)
+                if not self.docente_claves[doc][(dia, bloque)]:
+                    self.docente_ocupado[doc].pop((dia, bloque), None)
+                    self.docente_detalle[doc].pop((dia, bloque), None)
             if item.get('espacio') == 'Gimnasio':
                 if curso in self.gimnasio_ocupado[(dia, bloque)]:
                     self.gimnasio_ocupado[(dia, bloque)].remove(curso)
+
+    def asignar_recintos(self):
+        """
+        Distribuye los cursos en Ed. Física de cada bloque entre los recintos deportivos:
+        el primero de cada zona usa su gimnasio y el desborde va al Patio Santo Domingo.
+        Retorna {(recinto, dia, bloque): [cursos]}.
+        """
+        recintos = defaultdict(list)
+        for (dia, bloque), cursos in self.gimnasio_ocupado.items():
+            for curso in cursos:
+                zona = DatosColegio.zona_deportiva(curso)
+                destino = zona if not recintos[(zona, dia, bloque)] else 'PATIO SANTO DOMINGO'
+                recintos[(destino, dia, bloque)].append(curso)
+        return recintos
 
 
 # =============================================================================
@@ -639,7 +967,7 @@ class HorarioEscolar:
 # =============================================================================
 
 class ValidadorRestricciones:
-    """Verifica el estricto cumplimiento de las 7 restricciones duras y criterios de calidad."""
+    """Verifica el estricto cumplimiento de las restricciones duras y los criterios de calidad."""
 
     @staticmethod
     def auditar(horario):
@@ -650,173 +978,173 @@ class ValidadorRestricciones:
             'advertencias': [],
             'metricas': {}
         }
+        errores = reporte['errores_duros']
+        conteo = defaultdict(int)
 
-        conteo_docente_bloque = defaultdict(list)
-        conteo_curso_bloque = defaultdict(list)
-        total_asignados_por_curso = defaultdict(int)
+        # HC 1, 2: Choques docentes (Clash-Free Teacher). Un electivo compartido por A y B
+        # cuenta como un solo grupo.
+        colisiones_docentes = 0
+        for doc, bloques in horario.docente_claves.items():
+            for (dia, bloque), claves in bloques.items():
+                if len(claves) > 1:
+                    colisiones_docentes += 1
+                    errores.append(f"Colisión Docente: {doc} atiende {sorted(claves)} el {dia} bloque {bloque}")
+        conteo['colisiones_docentes'] = colisiones_docentes
+
+        # HC 3: Ocupación única de cada curso dentro de su jornada
+        for curso in DatosColegio.todos_los_cursos():
+            for dia in DatosColegio.DIAS:
+                permitidos = DatosColegio.get_bloques_permitidos(curso, dia)
+                for bloque in horario.asignaciones[curso][dia]:
+                    if bloque not in permitidos:
+                        errores.append(f"Bloque fuera de jornada: {curso} el {dia} bloque {bloque}")
+                        conteo['fuera_jornada'] += 1
+
+        # HC 4: Cumplimiento estricto de cargas horarias (y jornada completa sin huecos)
         horas_por_materia = defaultdict(lambda: defaultdict(int))
+        total_asignados = defaultdict(int)
+        for curso in DatosColegio.todos_los_cursos():
+            for dia in DatosColegio.DIAS:
+                for bloque, item in horario.asignaciones[curso][dia].items():
+                    horas_por_materia[curso][item['asignatura']] += 1
+                    total_asignados[curso] += 1
+        esperado_global = 0
+        for curso, materias in malla.items():
+            esperado = sum(h for _, h, _, _ in materias)
+            esperado_global += esperado
+            if total_asignados[curso] != esperado:
+                errores.append(f"Carga horaria incorrecta en {curso}: requerida={esperado}, asignada={total_asignados[curso]}")
+                conteo['cargas'] += 1
+            if not DatosColegio.es_parvulo(curso) and esperado != DatosColegio.get_total_bloques_semanal(curso):
+                errores.append(f"La malla de {curso} ({esperado} h) no coincide con su jornada "
+                               f"({DatosColegio.get_total_bloques_semanal(curso)} bloques)")
+                conteo['cargas'] += 1
+            for asig, hrs, _, _ in materias:
+                if horas_por_materia[curso][asig] != hrs:
+                    errores.append(f"{curso} - {asig}: horas esperadas {hrs} != asignadas {horas_por_materia[curso][asig]}")
+                    conteo['cargas'] += 1
 
+        # HC 5: Orientación y jefatura a cargo del profesor jefe de cada curso
+        for curso in DatosColegio.CURSOS:
+            jefe = DatosColegio.PROFESORES_JEFES[curso]
+            for dia in DatosColegio.DIAS:
+                for bloque, item in horario.asignaciones[curso][dia].items():
+                    if item['asignatura'] in ('Orientación', 'Orientación / Tecnología') and jefe not in item['docentes']:
+                        errores.append(f"Orientación/Jefatura en {curso} no está a cargo de {jefe}")
+                        conteo['jefaturas'] += 1
+
+        # HC 6: Sincronización de las franjas de electivos (3° y 4° medio A y B)
+        for nivel in DatosColegio.FRANJAS_ELECTIVOS:
+            ocupacion = []
+            for seccion in ('A', 'B'):
+                curso = f"{nivel} {seccion}"
+                ocupacion.append({
+                    (dia, b, item['asignatura'])
+                    for dia in DatosColegio.DIAS
+                    for b, item in horario.asignaciones[curso][dia].items()
+                    if item['asignatura'].startswith('Formación Diferenciada')
+                })
+            if ocupacion[0] != ocupacion[1]:
+                errores.append(f"Desincronización de electivos en {nivel}: {sorted(ocupacion[0] ^ ocupacion[1])}")
+                conteo['electivos'] += 1
+
+        # HC 7: Recintos deportivos (Gimnasio A, Gimnasio B y Patio Santo Domingo, un curso cada uno)
+        uso_patio = 0
+        for (recinto, dia, bloque), cursos in horario.asignar_recintos().items():
+            if recinto == 'PATIO SANTO DOMINGO':
+                uso_patio += 1
+            if len(cursos) > 1:
+                errores.append(f"Capacidad de {recinto} excedida el {dia} bloque {bloque}: {cursos}")
+                conteo['recintos'] += 1
+
+        # HC 8: Salas de capacidad limitada (English skills) y co-docencia completa
+        uso_salas = defaultdict(list)
         for curso in DatosColegio.CURSOS:
             for dia in DatosColegio.DIAS:
                 for bloque, item in horario.asignaciones[curso][dia].items():
-                    doc = item['docente']
-                    asig = item['asignatura']
-                    total_asignados_por_curso[curso] += 1
-                    horas_por_materia[curso][asig] += 1
-                    conteo_docente_bloque[(doc, dia, bloque)].append((curso, asig))
-                    conteo_curso_bloque[(curso, dia, bloque)].append(asig)
+                    if item['espacio'] in DatosColegio.RECURSOS_CAPACIDAD:
+                        uso_salas[(item['espacio'], dia, bloque)].append(curso)
+                    if item['asignatura'] == 'English Skills' and len(item['docentes']) < 2:
+                        errores.append(f"English skills sin co-docencia en {curso} el {dia} bloque {bloque}")
+                        conteo['salas'] += 1
+        for (sala, dia, bloque), cursos in uso_salas.items():
+            if len(cursos) > DatosColegio.RECURSOS_CAPACIDAD[sala]:
+                errores.append(f"{sala} ocupada por {cursos} el {dia} bloque {bloque}")
+                conteo['salas'] += 1
 
-        # HC 1, 2: Choques docentes (Clash-Free Teacher)
-        for (doc, dia, bloque), asigns in conteo_docente_bloque.items():
-            if len(asigns) > 1:
-                reporte['errores_duros'].append(
-                    f"Colisión Docente: {doc} asignado {len(asigns)} veces el {dia} bloque {bloque}: {asigns}"
-                )
-
-        # HC 3: Choques de cursos (Single Course Occupancy)
-        for (curso, dia, bloque), asigns in conteo_curso_bloque.items():
-            if len(asigns) > 1:
-                reporte['errores_duros'].append(
-                    f"Colisión de Curso: {curso} tiene {len(asigns)} asignaturas en {dia} bloque {bloque}: {asigns}"
-                )
-
-        # HC 4: Cumplimiento estricto de cargas horarias
-        for curso, materias in malla.items():
-            esperado_total = sum(h for _, h, _, _ in materias)
-            asignado_total = total_asignados_por_curso[curso]
-            if esperado_total != asignado_total:
-                reporte['errores_duros'].append(
-                    f"Carga horaria incorrecta en {curso}: requerida={esperado_total}, asignada={asignado_total}"
-                )
-
-            for asig, hrs, doc, _ in materias:
-                asig_hrs = horas_por_materia[curso][asig]
-                if asig_hrs != hrs:
-                    reporte['errores_duros'].append(
-                        f"{curso} - {asig}: horas esperadas {hrs} != asignadas {asig_hrs}"
-                    )
-
-        # HC 5: Jefatura y Orientación en básica
-        for curso in DatosColegio.CURSOS[:8]:  # 1° a 4° básico
-            jefe_esperado = DatosColegio.PROFESORES_JEFES[curso]
-            orien_asignada = False
-            for dia in DatosColegio.DIAS:
-                for b, item in horario.asignaciones[curso][dia].items():
-                    if item['asignatura'] == 'Orientación':
-                        if item['docente'] == jefe_esperado:
-                            orien_asignada = True
-            if not orien_asignada:
-                reporte['errores_duros'].append(
-                    f"Orientación/Jefatura en {curso} no está a cargo de {jefe_esperado}"
-                )
-
-        # HC 6: Sincronización de electivos (3° y 4° medio A y B)
-        for nivel in ['3° MEDIO', '4° MEDIO']:
-            cA = f"{nivel} A"
-            cB = f"{nivel} B"
-            electivos_A = set()
-            electivos_B = set()
-            for dia in DatosColegio.DIAS:
-                for b, item in horario.asignaciones[cA][dia].items():
-                    if 'Electivo' in item['asignatura']:
-                        electivos_A.add((dia, b))
-                for b, item in horario.asignaciones[cB][dia].items():
-                    if 'Electivo' in item['asignatura']:
-                        electivos_B.add((dia, b))
-            if electivos_A != electivos_B:
-                reporte['errores_duros'].append(
-                    f"Desincronización de electivos entre {cA} y {cB}: {electivos_A.symmetric_difference(electivos_B)}"
-                )
-
-        # HC 7: Capacidad máxima de gimnasios y recintos deportivos (máximo 3 simultáneos)
-        for (dia, bloque), cursos_gym in horario.gimnasio_ocupado.items():
-            if len(cursos_gym) > 3:
-                reporte['errores_duros'].append(
-                    f"Capacidad de recintos deportivos excedida el {dia} bloque {bloque}: {cursos_gym} (máximo permitido: 3)"
-                )
-
-        # HC 8: No repetición de la misma asignatura en sesiones separadas en el mismo día
+        # HC 9: Una sola sesión diaria por asignatura (una sesión = 1 bloque o un par consecutivo)
+        # HC 10: Las troncales nunca quedan en bloques separados del mismo día
         same_day_violations = 0
-        for c in DatosColegio.CURSOS:
-            por_dia = defaultdict(list)
-            for dia in DatosColegio.DIAS:
-                for b, item in horario.asignaciones[c][dia].items():
-                    por_dia[(dia, item['asignatura'])].append(b)
-
-            for (dia, asig), bl in por_dia.items():
-                bl_s = sorted(bl)
-                if len(bl_s) > 2:
-                    same_day_violations += 1
-                    reporte['errores_duros'].append(
-                        f"Asignatura repetida en {c} el {dia}: '{asig}' tiene {len(bl_s)} bloques en el día ({bl_s})"
-                    )
-                elif len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1:
-                    same_day_violations += 1
-                    reporte['errores_duros'].append(
-                        f"Asignatura fragmentada en {c} el {dia}: '{asig}' en bloques no consecutivos {bl_s}"
-                    )
-
-        # HC 9: Bloques pedagógicos consecutivos (90 min) en asignaturas troncales
-        ramos_troncales = ['Matemática', 'Lenguaje', 'Ciencias', 'Biología', 'Química', 'Física']
         core_non_consecutive = 0
-        for c in DatosColegio.CURSOS:
+        for curso in DatosColegio.todos_los_cursos():
             por_dia = defaultdict(list)
             for dia in DatosColegio.DIAS:
-                for b, item in horario.asignaciones[c][dia].items():
-                    por_dia[(dia, item['asignatura'])].append(b)
-
-            for (dia, asig), bl in por_dia.items():
-                if any(rt.lower() in asig.lower() for rt in ramos_troncales):
-                    bl_s = sorted(bl)
-                    if len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1:
+                for bloque, item in horario.asignaciones[curso][dia].items():
+                    if not item['asignatura'].startswith('Formación Diferenciada'):
+                        por_dia[(dia, DatosColegio.familia(item['asignatura']))].append(bloque)
+            for (dia, fam), bloques in por_dia.items():
+                bl = sorted(bloques)
+                es_par = len(bl) == 2 and (bl[0], bl[1]) in DatosColegio.PARES
+                if len(bl) > 2 or (len(bl) == 2 and not es_par):
+                    same_day_violations += 1
+                    errores.append(f"Asignatura repetida en {curso} el {dia}: '{fam}' en bloques {bl}")
+                    if any(t.lower() in fam.lower() for t in DatosColegio.ASIGNATURAS_TRONCALES):
                         core_non_consecutive += 1
-                        reporte['errores_duros'].append(
-                            f"Bloque no consecutivo en asignatura troncal {c} ({dia}): '{asig}' en bloques {bl_s}"
-                        )
+
+        # HC 11: Las salas usadas no coinciden con los bloqueos de pastoral
+        for nivel, franjas in DatosColegio.FRANJAS_ELECTIVOS.items():
+            for franja in franjas:
+                for dia, b0 in franja['periodos']:
+                    for grupo in franja['grupos']:
+                        bloqueos = DatosColegio.BLOQUEOS_PASTORAL.get(grupo[3], [])
+                        if (dia, b0) in bloqueos or (dia, b0 + 1) in bloqueos:
+                            errores.append(f"{grupo[3]} bloqueada por pastoral el {dia} ({grupo[4]})")
+                            conteo['pastoral'] += 1
 
         # MÉTRICAS BLANDAS: Ventanas docentes y bloques dobles
         total_ventanas = 0
-        docentes = set()
-        for c in DatosColegio.CURSOS:
-            for d in DatosColegio.DIAS:
-                for b, item in horario.asignaciones[c][d].items():
-                    docentes.add(item['docente'])
-
-        for doc in docentes:
+        for doc, bloques in horario.docente_ocupado.items():
             for dia in DatosColegio.DIAS:
-                bloques_ocup = sorted([b for (d, b) in horario.docente_ocupado[doc].keys() if d == dia])
-                if len(bloques_ocup) > 1:
-                    for i in range(len(bloques_ocup) - 1):
-                        hueco = bloques_ocup[i+1] - bloques_ocup[i] - 1
-                        if hueco > 0:
-                            total_ventanas += hueco
+                ocupados = sorted(b for (d, b) in bloques if d == dia)
+                for i in range(len(ocupados) - 1):
+                    total_ventanas += ocupados[i + 1] - ocupados[i] - 1
 
         total_sesiones = 0
         bloques_dobles_logrados = 0
-        for c in DatosColegio.CURSOS:
-            for d in DatosColegio.DIAS:
-                bloques = sorted(horario.asignaciones[c][d].keys())
+        for curso in DatosColegio.CURSOS:
+            for dia in DatosColegio.DIAS:
+                asig = horario.asignaciones[curso][dia]
+                bloques = sorted(asig)
                 i = 0
                 while i < len(bloques):
                     b = bloques[i]
-                    if i + 1 < len(bloques) and bloques[i+1] == b + 1:
-                        if horario.asignaciones[c][d][b]['asignatura'] == horario.asignaciones[c][d][b+1]['asignatura']:
-                            bloques_dobles_logrados += 2
-                            i += 2
-                            total_sesiones += 2
-                            continue
+                    if i + 1 < len(bloques) and bloques[i + 1] == b + 1 and asig[b]['asignatura'] == asig[b + 1]['asignatura']:
+                        bloques_dobles_logrados += 2
+                        total_sesiones += 2
+                        i += 2
+                        continue
                     total_sesiones += 1
                     i += 1
 
         pct_dobles = (bloques_dobles_logrados / total_sesiones * 100) if total_sesiones > 0 else 0
+        if uso_patio:
+            reporte['advertencias'].append(f"Se usa el Patio Santo Domingo en {uso_patio} bloques de Ed. Física")
 
-        reporte['valido'] = len(reporte['errores_duros']) == 0
+        reporte['valido'] = len(errores) == 0
         reporte['metricas'] = {
-            'total_bloques_asignados': sum(total_asignados_por_curso.values()),
+            'total_bloques_asignados': sum(total_asignados.values()),
+            'total_bloques_esperados': esperado_global,
             'total_ventanas_docentes': total_ventanas,
             'porcentaje_bloques_dobles': round(pct_dobles, 1),
-            'cursos_auditados': len(DatosColegio.CURSOS),
-            'docentes_auditados': len(docentes),
+            'cursos_auditados': len(DatosColegio.todos_los_cursos()),
+            'docentes_auditados': len(horario.docente_ocupado),
+            'colisiones_docentes': conteo['colisiones_docentes'],
+            'errores_carga': conteo['cargas'] + conteo['fuera_jornada'],
+            'errores_jefatura': conteo['jefaturas'],
+            'errores_electivos': conteo['electivos'],
+            'errores_recintos': conteo['recintos'],
+            'errores_salas': conteo['salas'] + conteo['pastoral'],
+            'uso_patio': uso_patio,
             'mismo_dia_violaciones': same_day_violations,
             'core_no_consecutivo': core_non_consecutive
         }
@@ -825,810 +1153,995 @@ class ValidadorRestricciones:
 
 
 # =============================================================================
-# 4. MOTOR ALGORÍTMICO DE ASIGNACIÓN (CSP + HEURÍSTICA CONSTRUCTIVA + ILS)
+# 4. MOTOR ALGORÍTMICO DE ASIGNACIÓN (HEURÍSTICA CONSTRUCTIVA + MIN-CONFLICTS TABÚ)
 # =============================================================================
 
 class MotorHorarios:
-    """Motor heurístico para resolver el School Timetabling Problem del Colegio MMDD."""
+    """
+    Motor heurístico para resolver el School Timetabling Problem del Colegio MMDD.
 
-    def __init__(self, seed=42):
+    Cada curso se descompone en sesiones (bloques dobles de 90 min o simples de 45 min).
+    Los dobles ocupan siempre un par pedagógico (1-2, 3-4, 5-6, 7-8, 9-10), por lo que
+    nunca cruzan un recreo, y la jornada de cada curso queda completa sin huecos.
+    Las franjas de electivos son fijas y compartidas por las secciones A y B.
+
+    1. Construcción voraz: sesiones dobles y luego simples, de la más restringida a la
+       menos restringida, en la posición de menor costo.
+    2. Búsqueda local Min-Conflicts: se elige una restricción violada, una de sus sesiones
+       y el mejor intercambio (par por par, o bloque simple por bloque simple) dentro del
+       curso, con lista tabú, ruido aleatorio y reinicios desde la mejor solución.
+    """
+
+    PESO_DURO = 1000   # Costo de cada violación dura
+    PESO_PATIO = 1     # Costo blando por bloque de Ed. Física desbordado al Patio Santo Domingo
+
+    def __init__(self, seed=42, max_pasos=150000):
         self.seed = seed
+        self.max_pasos = max_pasos
 
     def generar(self):
         """
         Ejecuta la construcción y optimización de horarios.
-        Garantiza 0 colisiones duras, 0 repeticiones de asignaturas por día y bloques dobles.
+        Busca 0 colisiones duras, 0 repeticiones de asignaturas por día y bloques dobles.
         """
         rng = random.Random(self.seed)
+        self._preparar()
+        self._construir(rng)
+        self._buscar(rng)
+        return self._a_horario()
+
+    # ------------------------------------------------------------------
+    # Modelo de sesiones
+    # ------------------------------------------------------------------
+    def _preparar(self):
         malla = DatosColegio.get_malla_curricular()
+        self.cursos = DatosColegio.todos_los_cursos()
+        self.ses = []                                 # sesiones (movibles y fijas)
+        self.pos = {}                                 # sid -> tupla de celdas (dia, bloque)
+        self.celda = {c: {} for c in self.cursos}     # celdas movibles: (dia, bloque) -> sid | None
+        self.pares = {c: [] for c in self.cursos}     # pares pedagógicos completos y movibles
+        self.par_de = {c: {} for c in self.cursos}    # celda -> par que la contiene
+        self.occ = defaultdict(set)                   # clave de restricción -> sids
+        self.malos = set()                            # claves con violación dura
+        self.blandos = set()                          # claves con costo blando
+        self.costo = 0
+        self.duras = 0
 
-        # 1. Definir bloques fijos bloqueados (Locked Slots)
-        locked_slots = defaultdict(dict)
+        # Franjas de electivos: sesiones fijas compartidas por A y B
+        fijas = defaultdict(set)
+        for nivel, franjas in DatosColegio.FRANJAS_ELECTIVOS.items():
+            for k, franja in enumerate(franjas, 1):
+                docentes = tuple(dict.fromkeys(g[2] for g in franja['grupos']))
+                for dia, b0 in franja['periodos']:
+                    celdas = ((dia, b0), (dia, b0 + 1))
+                    sid = self._nueva_sesion(None, DatosColegio.nombre_franja(k), docentes, 'Salas electivos',
+                                             2, fijo=True, clave=f'ELECTIVOS {nivel}', nivel=nivel, franja=k)
+                    self.pos[sid] = celdas
+                    for seccion in ('A', 'B'):
+                        fijas[f'{nivel} {seccion}'].update(celdas)
 
-        # Electivos sincronizados de 3° Medio (18 hrs)
-        bloques_3m = [
-            ('Martes', 1), ('Martes', 2), ('Martes', 3), ('Martes', 4),
-            ('Miércoles', 1), ('Miércoles', 2), ('Miércoles', 3), ('Miércoles', 4),
-            ('Jueves', 1), ('Jueves', 2), ('Jueves', 3), ('Jueves', 4),
-            ('Viernes', 1), ('Viernes', 2), ('Viernes', 3), ('Viernes', 4),
-            ('Lunes', 7), ('Lunes', 8)
-        ]
-        for c in ['3° MEDIO A', '3° MEDIO B']:
-            sec = '3MA' if 'A' in c else '3MB'
-            for idx, (d, b) in enumerate(bloques_3m):
-                g_idx = (idx // 2) % 3 + 1
-                locked_slots[c][(d, b)] = (
-                    f'Formación Diferenciada (Electivo {g_idx})',
-                    f'Docente Electivo {sec} Sec_{g_idx}',
-                    'Sala Electivos'
-                )
+        # Celdas y pares movibles de cada curso
+        for c in self.cursos:
+            for dia in DatosColegio.DIAS:
+                permitidos = DatosColegio.get_bloques_permitidos(c, dia)
+                for b in permitidos:
+                    if (dia, b) not in fijas[c]:
+                        self.celda[c][(dia, b)] = None
+                for b1, b2 in DatosColegio.PARES:
+                    if (dia, b1) in self.celda[c] and (dia, b2) in self.celda[c]:
+                        par = ((dia, b1), (dia, b2))
+                        self.pares[c].append(par)
+                        self.par_de[c][(dia, b1)] = par
+                        self.par_de[c][(dia, b2)] = par
 
-        # Electivos sincronizados de 4° Medio (18 hrs)
-        bloques_4m = [
-            ('Martes', 5), ('Martes', 6), ('Martes', 7), ('Martes', 8),
-            ('Miércoles', 5), ('Miércoles', 6), ('Miércoles', 7), ('Miércoles', 8),
-            ('Jueves', 5), ('Jueves', 6), ('Jueves', 7), ('Jueves', 8),
-            ('Viernes', 5), ('Viernes', 6), ('Viernes', 7), ('Viernes', 8),
-            ('Lunes', 9), ('Lunes', 10)
-        ]
-        for c in ['4° MEDIO A', '4° MEDIO B']:
-            sec = '4MA' if 'A' in c else '4MB'
-            for idx, (d, b) in enumerate(bloques_4m):
-                g_idx = (idx // 2) % 3 + 1
-                locked_slots[c][(d, b)] = (
-                    f'Formación Diferenciada (Electivo {g_idx})',
-                    f'Docente Electivo {sec} Sec_{g_idx}',
-                    'Sala Electivos'
-                )
-
-        # Lunes tarde en 3° Medio (bloques 9 y 10)
-        locked_slots['3° MEDIO A'][('Lunes', 9)] = ('Educación Ciudadana', 'Profesor Historia 3', 'Aula')
-        locked_slots['3° MEDIO A'][('Lunes', 10)] = ('Educación Ciudadana', 'Profesor Historia 3', 'Aula')
-        locked_slots['3° MEDIO B'][('Lunes', 9)] = ('Filosofía', 'Profesor Filosofía', 'Aula')
-        locked_slots['3° MEDIO B'][('Lunes', 10)] = ('Filosofía', 'Profesor Filosofía', 'Aula')
-
-        # Orientación en básica: pre-asignar con su profesor jefe respectivo
-        dias_orien = ['Miércoles', 'Jueves', 'Viernes', 'Martes']
-        for idx, c in enumerate(DatosColegio.CURSOS[:8]):
-            d_or = dias_orien[idx % len(dias_orien)]
-            jefe = DatosColegio.PROFESORES_JEFES[c]
-            locked_slots[c][(d_or, 7)] = ('Orientación', jefe, 'Aula')
-
-        # 2. Inicialización de estructuras
-        assignments = {c: dict(locked_slots[c]) for c in DatosColegio.CURSOS}
-        teacher_occ = defaultdict(set)
-        gym_occ = defaultdict(set)
-        day_asig_count = defaultdict(lambda: defaultdict(int))
-
-        for c in DatosColegio.CURSOS:
-            for (d, b), (asig, doc, esp) in locked_slots[c].items():
-                teacher_occ[((d, b), doc)].add(c)
-                if esp == 'Gimnasio':
-                    gym_occ[(d, b)].add(c)
-                day_asig_count[c][(d, asig)] += 1
-
-        # 3. Asignación inicial voraz guiada por bloques dobles y días distintos
-        pairs = [(1,2), (3,4), (5,6), (7,8), (9,10)]
-        for c in DatosColegio.CURSOS:
-            placed_counts = defaultdict(int)
-            for (asig, doc, esp) in assignments[c].values():
-                placed_counts[asig] += 1
-
-            sessions = []
-            for asig, h, doc, esp in malla[c]:
-                rem = h - placed_counts[asig]
-                while rem >= 2:
-                    sessions.append((asig, doc, esp, 2))
-                    rem -= 2
-                if rem == 1:
-                    sessions.append((asig, doc, esp, 1))
-
-            sessions.sort(key=lambda x: (x[2] == 'Gimnasio', any(k in x[0] for k in ['Matemática', 'Lenguaje', 'Ciencias'])), reverse=True)
-
-            free_doubles = []
-            free_singles = []
-            for d in DatosColegio.DIAS:
-                perm = DatosColegio.get_bloques_permitidos(c, d)
-                for b1, b2 in pairs:
-                    if b1 in perm and b2 in perm:
-                        if (d, b1) not in assignments[c] and (d, b2) not in assignments[c]:
-                            free_doubles.append(((d, b1), (d, b2)))
-                        elif (d, b1) not in assignments[c]:
-                            free_singles.append((d, b1))
-                        elif (d, b2) not in assignments[c]:
-                            free_singles.append((d, b2))
-                    elif b1 in perm and (d, b1) not in assignments[c]:
-                        free_singles.append((d, b1))
-                    elif b2 in perm and (d, b2) not in assignments[c]:
-                        free_singles.append((d, b2))
-
-            # Asignar bloques dobles
-            for sess in [s for s in sessions if s[3] == 2]:
-                asig, doc, esp, _ = sess
-                valid_pairs = [p for p in free_doubles if day_asig_count[c][(p[0][0], asig)] == 0]
-                if not valid_pairs:
-                    valid_pairs = free_doubles
-
-                rng.shuffle(valid_pairs)
-                best_pair = None
-                best_pen = 999999
-                for s1, s2 in valid_pairs:
-                    pen = len(teacher_occ[(s1, doc)]) + len(teacher_occ[(s2, doc)])
-                    if esp == 'Gimnasio':
-                        pen += (len(gym_occ[s1]) >= 3) * 15 + (len(gym_occ[s2]) >= 3) * 15
-                    if day_asig_count[c][(s1[0], asig)] > 0:
-                        pen += 500
-                    if pen < best_pen:
-                        best_pen = pen
-                        best_pair = (s1, s2)
-                        if pen == 0:
-                            break
-
-                if best_pair:
-                    free_doubles.remove(best_pair)
-                    s1, s2 = best_pair
-                    assignments[c][s1] = (asig, doc, esp)
-                    assignments[c][s2] = (asig, doc, esp)
-                    teacher_occ[(s1, doc)].add(c)
-                    teacher_occ[(s2, doc)].add(c)
-                    if esp == 'Gimnasio':
-                        gym_occ[s1].add(c)
-                        gym_occ[s2].add(c)
-                    day_asig_count[c][(s1[0], asig)] += 2
+        # Sesiones de cada curso: dobles para las horas pares y un simple para el resto
+        for c in self.cursos:
+            for asig, horas, doc, espacio in malla[c]:
+                if asig.startswith('Formación Diferenciada'):
+                    continue
+                docentes = DatosColegio.docentes_de(doc)
+                if DatosColegio.es_parvulo(c):
+                    largos = [1] * horas
                 else:
-                    if len(free_singles) < 2 and free_doubles:
-                        d1, d2 = free_doubles.pop()
-                        free_singles.append(d1); free_singles.append(d2)
-                    s1 = free_singles.pop()
-                    s2 = free_singles.pop()
-                    assignments[c][s1] = (asig, doc, esp)
-                    assignments[c][s2] = (asig, doc, esp)
-                    teacher_occ[(s1, doc)].add(c); teacher_occ[(s2, doc)].add(c)
-                    if esp == 'Gimnasio': gym_occ[s1].add(c); gym_occ[s2].add(c)
-                    day_asig_count[c][(s1[0], asig)] += 1
-                    day_asig_count[c][(s2[0], asig)] += 1
+                    largos = [2] * (horas // 2) + [1] * (horas % 2)
+                for largo in largos:
+                    self._nueva_sesion(c, asig, docentes, espacio, largo)
 
-            # Asignar bloques simples
-            for sess in [s for s in sessions if s[3] == 1]:
-                asig, doc, esp, _ = sess
-                if not free_singles and free_doubles:
-                    d1, d2 = free_doubles.pop()
-                    free_singles.append(d1); free_singles.append(d2)
-                valid_singles = [s for s in free_singles if day_asig_count[c][(s[0], asig)] == 0]
-                if not valid_singles:
-                    valid_singles = free_singles
+        for sid, s in enumerate(self.ses):
+            if s['fijo']:
+                self._registrar(sid, self.pos[sid], +1)
 
-                rng.shuffle(valid_singles)
-                best_s = None
-                best_pen = 999999
-                for s in valid_singles:
-                    pen = len(teacher_occ[(s, doc)])
-                    if esp == 'Gimnasio' and len(gym_occ[s]) >= 3: pen += 15
-                    if day_asig_count[c][(s[0], asig)] > 0: pen += 500
-                    if pen < best_pen:
-                        best_pen = pen
-                        best_s = s
-                        if pen == 0: break
-                free_singles.remove(best_s)
-                assignments[c][best_s] = (asig, doc, esp)
-                teacher_occ[(best_s, doc)].add(c)
-                if esp == 'Gimnasio': gym_occ[best_s].add(c)
-                day_asig_count[c][(best_s[0], asig)] += 1
+    def _nueva_sesion(self, curso, asig, docentes, espacio, largo, fijo=False, clave=None, **extra):
+        sesion = {
+            'curso': curso,
+            'asig': asig,
+            'fam': None if fijo else DatosColegio.familia(asig),
+            'docs': docentes,
+            'espacio': espacio,
+            'recurso': espacio if espacio in DatosColegio.RECURSOS_CAPACIDAD else None,
+            'zona': DatosColegio.zona_deportiva(curso) if espacio == 'Gimnasio' else None,
+            'largo': largo,
+            'fijo': fijo,
+            'clave': clave or curso,
+        }
+        sesion.update(extra)
+        self.ses.append(sesion)
+        return len(self.ses) - 1
 
-        def count_conflicts():
-            tc = sum(len(clist) - 1 for clist in teacher_occ.values() if len(clist) > 1)
-            gc = sum((len(clist) - 3) * 5 for clist in gym_occ.values() if len(clist) > 3)
-            sd = 0
-            for cur in DatosColegio.CURSOS:
-                p_dia = defaultdict(list)
-                for (d, b), (asg, _, _) in assignments[cur].items():
-                    p_dia[(d, asg)].append(b)
-                for (d, asg), bl in p_dia.items():
-                    bl_s = sorted(bl)
-                    if len(bl_s) > 2 or (len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1):
-                        sd += 1
-            return tc, gc, sd
+    # ------------------------------------------------------------------
+    # Costos incrementales
+    # ------------------------------------------------------------------
+    def _costo_clave(self, k):
+        """Retorna (costo, violaciones duras, costo blando) de una clave de restricción."""
+        s = self.occ.get(k)
+        if not s or len(s) < 2:
+            return 0, 0, 0
+        tipo = k[0]
+        if tipo == 'D':
+            n = len({self.ses[i]['clave'] for i in s}) - 1
+            return n * self.PESO_DURO, n, 0
+        if tipo == 'F':
+            n = len(s) - 1
+            return n * self.PESO_DURO, n, 0
+        if tipo == 'R':
+            n = max(0, len(s) - DatosColegio.RECURSOS_CAPACIDAD[k[1]])
+            return n * self.PESO_DURO, n, 0
+        # tipo 'G': un curso por gimnasio y uno más en el Patio Santo Domingo
+        zona_b = sum(1 for i in s if self.ses[i]['zona'] == 'GIMNASIO B')
+        exceso = max(0, zona_b - 1) + max(0, len(s) - zona_b - 1)
+        dura = max(0, exceso - 1)
+        blando = min(exceso, 1) * self.PESO_PATIO
+        return dura * self.PESO_DURO + blando, dura, blando
 
-        tc, gc, sd = count_conflicts()
+    def _claves_sesion(self, sid, celdas):
+        s = self.ses[sid]
+        claves = []
+        for (dia, b) in celdas:
+            for doc in s['docs']:
+                claves.append(('D', doc, dia, b))
+            if s['zona']:
+                claves.append(('G', dia, b))
+            if s['recurso']:
+                claves.append(('R', s['recurso'], dia, b))
+        if s['fam'] is not None:
+            claves.append(('F', s['curso'], celdas[0][0], s['fam']))
+        return claves
 
-        # 4. Metaheurística Min-Conflicts con Double Swaps y preservación de bloques dobles
+    def _registrar(self, sid, celdas, signo):
+        """Agrega (+1) o quita (-1) una sesión de sus celdas y retorna la variación de costo."""
+        delta = 0
+        for k in self._claves_sesion(sid, celdas):
+            c0, d0, b0 = self._costo_clave(k)
+            if signo > 0:
+                self.occ[k].add(sid)
+            else:
+                self.occ[k].discard(sid)
+            c1, d1, b1 = self._costo_clave(k)
+            delta += c1 - c0
+            self.duras += d1 - d0
+            if d1 > 0:
+                self.malos.add(k)
+            else:
+                self.malos.discard(k)
+            if b1 > 0:
+                self.blandos.add(k)
+            else:
+                self.blandos.discard(k)
+        self.costo += delta
+        return delta
+
+    def _mover(self, c, mapa):
+        """Permuta el contenido de las celdas de un curso según 'mapa' y retorna la variación de costo."""
+        cel = self.celda[c]
+        sids = []
+        for x in mapa:
+            sid = cel[x]
+            if sid is not None and sid not in sids:
+                sids.append(sid)
+        delta = 0
+        nuevas = {}
+        for sid in sids:
+            delta += self._registrar(sid, self.pos[sid], -1)
+            nuevas[sid] = tuple(sorted(mapa[x] for x in self.pos[sid]))
+        contenido = {x: cel[x] for x in mapa}
+        for x, y in mapa.items():
+            cel[y] = contenido[x]
+        for sid in sids:
+            self.pos[sid] = nuevas[sid]
+            delta += self._registrar(sid, nuevas[sid], +1)
+        return delta
+
+    # ------------------------------------------------------------------
+    # Fase 1: construcción voraz
+    # ------------------------------------------------------------------
+    def _construir(self, rng):
+        carga = DatosColegio.carga_docente()
+        movibles = [i for i, s in enumerate(self.ses) if not s['fijo']]
+        orden = sorted(movibles, key=lambda i: (
+            -self.ses[i]['largo'],
+            -len(self.ses[i]['docs']),
+            -max(carga[d] for d in self.ses[i]['docs']),
+            self.ses[i]['zona'] is None,
+            rng.random(),
+        ))
+        for sid in orden:
+            s = self.ses[sid]
+            c = s['curso']
+            if s['largo'] == 2:
+                opciones = [par for par in self.pares[c] if self.celda[c][par[0]] is None and self.celda[c][par[1]] is None]
+            else:
+                opciones = [(x,) for x, v in self.celda[c].items() if v is None]
+            mejor, mejor_delta = None, None
+            rng.shuffle(opciones)
+            for celdas in opciones:
+                delta = self._registrar(sid, celdas, +1)
+                self._registrar(sid, celdas, -1)
+                if mejor_delta is None or delta < mejor_delta:
+                    mejor, mejor_delta = celdas, delta
+                    if delta == 0:
+                        break
+            if mejor is None:
+                raise RuntimeError(f"No hay espacio en la jornada de {c} para {s['asig']}")
+            for x in mejor:
+                self.celda[c][x] = sid
+            self.pos[sid] = mejor
+            self._registrar(sid, mejor, +1)
+
+    # ------------------------------------------------------------------
+    # Fase 2: búsqueda local Min-Conflicts con lista tabú
+    # ------------------------------------------------------------------
+    def _vecinos(self, sid):
+        """Intercambios válidos que mueven la sesión 'sid' dentro de su curso."""
+        s = self.ses[sid]
+        c = s['curso']
+        cel = self.celda[c]
+        celdas = self.pos[sid]
+        movimientos = []
+        propio = self.par_de[c].get(celdas[0])
+        if propio is not None:
+            for otro in self.pares[c]:
+                if otro != propio:
+                    movimientos.append({propio[0]: otro[0], propio[1]: otro[1], otro[0]: propio[0], otro[1]: propio[1]})
+        if s['largo'] == 1:
+            u = celdas[0]
+            for v, sv in cel.items():
+                if v != u and (sv is None or self.ses[sv]['largo'] == 1):
+                    movimientos.append({u: v, v: u})
+        return movimientos
+
+    def _buscar(self, rng):
         tabu = {}
-        max_steps = 10000
-        for step in range(max_steps):
-            if tc == 0 and gc == 0 and sd == 0:
+        mejor_costo = self.costo
+        mejor_pos = dict(self.pos)
+        sin_mejora = 0
+        for paso in range(self.max_pasos):
+            if self.costo == 0:
                 break
-
-            conflicted_courses = []
-            for (s, doc), clist in teacher_occ.items():
-                if len(clist) > 1: conflicted_courses.extend(clist)
-            for s, clist in gym_occ.items():
-                if len(clist) > 3: conflicted_courses.extend(clist)
-
-            if not conflicted_courses:
-                for cur in DatosColegio.CURSOS:
-                    p_dia = defaultdict(list)
-                    for (d, b), (asg, _, _) in assignments[cur].items():
-                        p_dia[(d, asg)].append(b)
-                    for (d, asg), bl in p_dia.items():
-                        bl_s = sorted(bl)
-                        if len(bl_s) > 2 or (len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1):
-                            conflicted_courses.append(cur)
-                            break
-
-            if not conflicted_courses:
+            if self.duras == 0 and sin_mejora > 3000:
+                break   # factible y sin mejoras en el uso del patio
+            fuente = self.malos if self.malos else self.blandos
+            if not fuente:
                 break
+            k = rng.choice(sorted(fuente))
+            candidatos = sorted(i for i in self.occ[k] if not self.ses[i]['fijo'])
+            if not candidatos:
+                break
+            sid = rng.choice(candidatos)
+            c = self.ses[sid]['curso']
+            movimientos = self._vecinos(sid)
+            if not movimientos:
+                continue
 
-            c = rng.choice(conflicted_courses)
-            swappable = [s for s in assignments[c] if s not in locked_slots[c]]
-            c_conf = [
-                s for s in swappable
-                if len(teacher_occ[(s, assignments[c][s][1])]) > 1 or
-                   (assignments[c][s][2] == 'Gimnasio' and len(gym_occ[s]) > 3)
-            ]
-            if not c_conf:
-                p_dia = defaultdict(list)
-                for (d, b), (asg, _, _) in assignments[c].items():
-                    p_dia[(d, asg)].append(b)
-                for (d, asg), bl in p_dia.items():
-                    bl_s = sorted(bl)
-                    if len(bl_s) > 2 or (len(bl_s) == 2 and bl_s[1] != bl_s[0] + 1):
-                        for b in bl:
-                            if (d, b) in swappable: c_conf.append((d, b))
-            if not c_conf:
-                c_conf = swappable
-
-            s1 = rng.choice(c_conf)
-            l1 = assignments[c][s1]
-            asig1, doc1, esp1 = l1
-            d1, b1 = s1
-
-            partner1 = None
-            if (d1, b1 + 1) in swappable and assignments[c][(d1, b1 + 1)][0] == asig1:
-                partner1 = (d1, b1 + 1)
-            elif (d1, b1 - 1) in swappable and assignments[c][(d1, b1 - 1)][0] == asig1:
-                partner1 = (d1, b1 - 1)
-
-            best_s2 = None
-            best_delta = 999
-            is_double = False
-
-            # Evaluar Double Swaps (mantiene bloques consecutivos intactos)
-            if partner1:
-                s1_lead = min(s1, partner1)
-                s1_trail = max(s1, partner1)
-                for s2_lead in swappable:
-                    d2, b2 = s2_lead
-                    s2_trail = (d2, b2 + 1)
-                    if s2_trail not in swappable: continue
-                    if s2_lead == s1_lead: continue
-                    l2 = assignments[c][s2_lead]
-                    if assignments[c][s2_trail] != l2: continue
-                    asig2, doc2, esp2 = l2
-                    if asig1 == asig2: continue
-                    if tabu.get((c, s1_lead, s2_lead), 0) > step: continue
-
-                    if d1 != d2:
-                        if day_asig_count[c][(d2, asig1)] > 0: continue
-                        if day_asig_count[c][(d1, asig2)] > 0: continue
-
-                    old_t = (len(teacher_occ[(s1_lead, doc1)]) > 1) + (len(teacher_occ[(s1_trail, doc1)]) > 1) + \
-                            (len(teacher_occ[(s2_lead, doc2)]) > 1) + (len(teacher_occ[(s2_trail, doc2)]) > 1)
-                    new_t = (len(teacher_occ[(s2_lead, doc1)] - {c}) >= 1) + (len(teacher_occ[(s2_trail, doc1)] - {c}) >= 1) + \
-                            (len(teacher_occ[(s1_lead, doc2)] - {c}) >= 1) + (len(teacher_occ[(s1_trail, doc2)] - {c}) >= 1)
-
-                    old_g = 0; new_g = 0
-                    if esp1 == 'Gimnasio':
-                        old_g += (len(gym_occ[s1_lead]) > 3) + (len(gym_occ[s1_trail]) > 3)
-                        new_g += (len(gym_occ[s2_lead] - {c}) >= 3) + (len(gym_occ[s2_trail] - {c}) >= 3)
-                    if esp2 == 'Gimnasio':
-                        old_g += (len(gym_occ[s2_lead]) > 3) + (len(gym_occ[s2_trail]) > 3)
-                        new_g += (len(gym_occ[s1_lead] - {c}) >= 3) + (len(gym_occ[s1_trail] - {c}) >= 3)
-
-                    delta = (new_t - old_t) * 10 + (new_g - old_g) * 50
-                    if delta < best_delta:
-                        best_delta = delta
-                        best_s2 = s2_lead
-                        is_double = True
-                        if delta < 0: break
-
-            # Evaluar Single Swaps que no rompan materias troncales
-            if not is_double or best_delta > 0:
-                for s2 in swappable:
-                    if s2 == s1: continue
-                    l2 = assignments[c][s2]
-                    if l1 == l2: continue
-                    asig2, doc2, esp2 = l2
-                    d2, b2 = s2
-                    if tabu.get((c, s1, s2), 0) > step: continue
-
-                    if d1 != d2:
-                        if day_asig_count[c][(d2, asig1)] > 0: continue
-                        if day_asig_count[c][(d1, asig2)] > 0: continue
-
-                    core_kw = ['Matemática', 'Lenguaje']
-                    if any(k in asig1 for k in core_kw) and partner1 and d1 != d2:
+            if rng.random() < 0.03:
+                elegido = rng.choice(movimientos)
+            else:
+                elegido, mejor_delta = None, None
+                for mov in movimientos:
+                    destino = tuple(sorted(mov[x] for x in self.pos[sid]))
+                    delta = self._mover(c, mov)
+                    self._mover(c, {y: x for x, y in mov.items()})
+                    es_tabu = tabu.get((sid, destino), -1) > paso
+                    if es_tabu and self.costo + delta >= mejor_costo:
                         continue
-                    partner2 = None
-                    if (d2, b2 + 1) in swappable and assignments[c][(d2, b2 + 1)][0] == asig2:
-                        partner2 = (d2, b2 + 1)
-                    elif (d2, b2 - 1) in swappable and assignments[c][(d2, b2 - 1)][0] == asig2:
-                        partner2 = (d2, b2 - 1)
-                    if any(k in asig2 for k in core_kw) and partner2 and d1 != d2:
-                        continue
+                    if mejor_delta is None or delta < mejor_delta or (delta == mejor_delta and rng.random() < 0.5):
+                        elegido, mejor_delta = mov, delta
+                if elegido is None:
+                    continue
 
-                    old_t = (len(teacher_occ[(s1, doc1)]) > 1) + (len(teacher_occ[(s2, doc2)]) > 1)
-                    new_t = (len(teacher_occ[(s2, doc1)] - {c}) >= 1) + (len(teacher_occ[(s1, doc2)] - {c}) >= 1)
+            origen = self.pos[sid]
+            self._mover(c, elegido)
+            tabu[(sid, origen)] = paso + 10 + rng.randint(0, 10)
 
-                    old_g = 0; new_g = 0
-                    if esp1 == 'Gimnasio':
-                        old_g += (len(gym_occ[s1]) > 3)
-                        new_g += (len(gym_occ[s2] - {c}) >= 3)
-                    if esp2 == 'Gimnasio':
-                        old_g += (len(gym_occ[s2]) > 3)
-                        new_g += (len(gym_occ[s1] - {c}) >= 3)
+            if self.costo < mejor_costo:
+                mejor_costo = self.costo
+                mejor_pos = dict(self.pos)
+                sin_mejora = 0
+            else:
+                sin_mejora += 1
+                if sin_mejora % 2500 == 0:
+                    # Reinicio: volver a la mejor solución y perturbarla
+                    self._restaurar(mejor_pos)
+                    for _ in range(15):
+                        c2 = rng.choice(self.cursos)
+                        sids_c = sorted({v for v in self.celda[c2].values() if v is not None})
+                        if sids_c:
+                            vecinos = self._vecinos(rng.choice(sids_c))
+                            if vecinos:
+                                self._mover(c2, rng.choice(vecinos))
+        if self.costo > mejor_costo:
+            self._restaurar(mejor_pos)
 
-                    delta = (new_t - old_t) * 10 + (new_g - old_g) * 50
-                    if delta < best_delta:
-                        best_delta = delta
-                        best_s2 = s2
-                        is_double = False
-                        if delta < 0: break
+    def _restaurar(self, posiciones):
+        """Reconstruye todas las estructuras a partir de una asignación de posiciones."""
+        self.occ = defaultdict(set)
+        self.malos = set()
+        self.blandos = set()
+        self.costo = 0
+        self.duras = 0
+        self.pos = dict(posiciones)
+        for c in self.cursos:
+            for x in self.celda[c]:
+                self.celda[c][x] = None
+        for sid, s in enumerate(self.ses):
+            if not s['fijo']:
+                for x in self.pos[sid]:
+                    self.celda[s['curso']][x] = sid
+            self._registrar(sid, self.pos[sid], +1)
 
-            if best_s2 and (best_delta <= 0 or rng.random() < 0.05):
-                if is_double:
-                    s1_lead = min(s1, partner1)
-                    s1_trail = max(s1, partner1)
-                    s2_lead = best_s2
-                    s2_trail = (s2_lead[0], s2_lead[1] + 1)
-                    l2 = assignments[c][s2_lead]
-
-                    for sl1, sl2 in [(s1_lead, s2_lead), (s1_trail, s2_trail)]:
-                        teacher_occ[(sl1, l1[1])].remove(c)
-                        teacher_occ[(sl2, l2[1])].remove(c)
-                        if l1[2] == 'Gimnasio': gym_occ[sl1].remove(c)
-                        if l2[2] == 'Gimnasio': gym_occ[sl2].remove(c)
-                        assignments[c][sl1] = l2
-                        assignments[c][sl2] = l1
-                        teacher_occ[(sl1, l2[1])].add(c)
-                        teacher_occ[(sl2, l1[1])].add(c)
-                        if l2[2] == 'Gimnasio': gym_occ[sl1].add(c)
-                        if l1[2] == 'Gimnasio': gym_occ[sl2].add(c)
-
-                    if s1_lead[0] != s2_lead[0]:
-                        day_asig_count[c][(s1_lead[0], l1[0])] -= 2
-                        day_asig_count[c][(s2_lead[0], l1[0])] += 2
-                        day_asig_count[c][(s2_lead[0], l2[0])] -= 2
-                        day_asig_count[c][(s1_lead[0], l2[0])] += 2
-
-                    tabu[(c, s1_lead, s2_lead)] = step + 15
-                    tabu[(c, s2_lead, s1_lead)] = step + 15
-                else:
-                    s2 = best_s2
-                    l2 = assignments[c][s2]
-                    teacher_occ[(s1, l1[1])].remove(c)
-                    teacher_occ[(s2, l2[1])].remove(c)
-                    if l1[2] == 'Gimnasio': gym_occ[s1].remove(c)
-                    if l2[2] == 'Gimnasio': gym_occ[s2].remove(c)
-                    assignments[c][s1] = l2
-                    assignments[c][s2] = l1
-                    teacher_occ[(s1, l2[1])].add(c)
-                    teacher_occ[(s2, l1[1])].add(c)
-                    if l2[2] == 'Gimnasio': gym_occ[s1].add(c)
-                    if l1[2] == 'Gimnasio': gym_occ[s2].add(c)
-
-                    if s1[0] != s2[0]:
-                        day_asig_count[c][(s1[0], l1[0])] -= 1
-                        day_asig_count[c][(s2[0], l1[0])] += 1
-                        day_asig_count[c][(s2[0], l2[0])] -= 1
-                        day_asig_count[c][(s1[0], l2[0])] += 1
-
-                    tabu[(c, s1, s2)] = step + 15
-                    tabu[(c, s2, s1)] = step + 15
-
-                tc, gc, sd = count_conflicts()
-
-        # 5. Reconstruir HorarioEscolar
+    # ------------------------------------------------------------------
+    # Salida
+    # ------------------------------------------------------------------
+    def _a_horario(self):
         horario = HorarioEscolar()
-        for c in DatosColegio.CURSOS:
-            for (dia, b), (asig, doc, esp) in assignments[c].items():
-                horario.asignar(c, dia, b, asig, doc, esp)
-
+        for sid, s in enumerate(self.ses):
+            if not s['fijo']:
+                for dia, b in self.pos[sid]:
+                    horario.asignar(s['curso'], dia, b, s['asig'], s['docs'], s['espacio'])
+                continue
+            franja = DatosColegio.FRANJAS_ELECTIVOS[s['nivel']][s['franja'] - 1]
+            detalle = {}
+            for asig, seccion, doc, sala, etiqueta in franja['grupos']:
+                detalle[doc] = (etiqueta, sala, f"{asig.capitalize()} ({seccion})")
+            for i, (dia, b) in enumerate(self.pos[sid]):
+                for seccion in ('A', 'B'):
+                    curso = f"{s['nivel']} {seccion}"
+                    etiqueta = DatosColegio.etiquetas_franja(franja, curso)[i]
+                    horario.asignar(curso, dia, b, s['asig'], s['docs'], s['espacio'], etiqueta=etiqueta,
+                                    clave=f"{s['nivel']} A-B", detalle=detalle)
         return horario
 
 
 # =============================================================================
-# 5. GENERADOR NATIVO DE PLANILLAS EXCEL (.XLSX)
+# 5. EXPORTADOR DE PLANILLAS EXCEL (.XLSX) CON EL DISEÑO OFICIAL 2026
 # =============================================================================
 
 class ExportadorExcel:
-    """Generador nativo de archivos OpenXML Spreadsheet (.xlsx) sin dependencias."""
+    """
+    Genera los libros .xlsx replicando el diseño de 'data/Data 2026/HORARIO CURSOS 2026.xlsx':
+    fuente Cavolini 8, encabezados y recreos en amarillo, número de bloque y horario en crema,
+    bordes finos, grilla en las columnas B-H y tabla de horas por asignatura bajo cada grilla.
+    """
+
+    FUENTE = 'Cavolini'
+    AMARILLO = 'FFFFE598'   # Encabezados, recreos, colación y nombres de asignaturas
+    CREMA = 'FFFEF2CB'      # Número de bloque, horario y bloques fuera de la jornada
+    BLANCO = 'FFFFFFFF'     # Celdas de clases
+    SKILLS = 'FFFFFF00'     # English skills
+    PASTORAL = 'FFFF9900'   # Bloqueos de pastoral
+    BORDE = 'FFED7D31'      # Bordes finos naranjos de todas las grillas y tablas
+    BORDE_MEDIA = 'FF0070C0'  # Bordes azules de las asignaturas en la tabla de 3° y 4° medio
+    BORDE_DOCUMENTO = 'FF000000'  # Bordes negros de la distribución horaria (documento Word 2026)
+    GRIS = 'FFC0C0C0'       # Encabezado de la distribución horaria (documento Word 2026)
+    CELESTE = 'FFB7DEE8'    # Jefaturas en la distribución horaria
+    VERDE = 'FFC4D79B'      # English skills en la distribución horaria
+    AZUL = 'FFBDD6EE'       # Tecn/C.Orien. en la distribución horaria
+
+    ANCHOS = {'A': 0.66, 'B': 8.66, 'C': 12.66, 'D': 13.89, 'E': 14.44,
+              'F': 14.44, 'G': 14.44, 'H': 14.44, 'I': 10.66}
+
+    # Excel oficial del que se toma el escudo del colegio (si no existe, las hojas van sin escudo)
+    RUTA_EXCEL_OFICIAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                      'data', 'Data 2026', 'HORARIO CURSOS 2026.xlsx')
+    _escudo = None
+
+    # Disposición de la hoja SALAS ELECTIVOS: (fila del título, columna inicial, sala, subtítulo)
+    DISPOSICION_SALAS = [
+        (2, 2, 'ELECTIVO 1', 'INGLÉS - English skills'),
+        (2, 10, 'SALA DE TECNOLOGÍA', 'ASIGNATURAS DE PROFUNDIZACIÓN'),
+        (2, 18, 'SALA DE 4°A', 'ASIGNATURAS DE PROFUNDIZACIÓN'),
+        (21, 2, 'ELECTIVO 2', 'ASIGNATURAS DE PROFUNDIZACIÓN'),
+        (21, 10, 'SALA PADRE CUETO', 'SALA PASTORAL'),
+        (21, 18, 'SALA DE 4°B', 'ASIGNATURAS DE PROFUNDIZACIÓN'),
+        (40, 2, 'ELECTIVO 3', 'ASIGNATURAS DE PROFUNDIZACIÓN'),
+        (40, 10, 'SALA MADRE PILAR', 'SALA PASTORAL'),
+        (59, 2, 'SALA DE ARTES', 'ARTES VISUALES (MEDIA)'),
+        (59, 10, 'SALA DE 3°A', 'ASIGNATURAS DE PROFUNDIZACIÓN'),
+        (78, 2, 'SALA DE MÚSICA', 'MÚSICA'),
+        (78, 10, 'SALA DE 3°B', 'ASIGNATURAS DE PROFUNDIZACIÓN'),
+    ]
+
+    # Nombre corto de cada asignatura en la distribución horaria (como en el documento Word 2026)
+    NOMBRES_DISTRIBUCION = {
+        'Lenguaje y Comunicación': 'Lenguaje',
+        'Educación Matemática': 'Matemática',
+        'Idioma Extranjero Inglés': 'Inglés',
+        'Ciencias Sociales': 'C. sociales',
+        'Historia, Geografía y CC.SS.': 'Historia',
+        'Educación Tecnológica': 'Tecnología',
+        'Artes Visuales': 'Artes',
+        'Educación Musical': 'Música',
+        'Educación Física y Salud': 'Ed. Física',
+        'Educación Ciudadana': 'Educación ciudadana',
+        'Ciencias para la Ciudadanía': 'Ciencias para la ciudadanía',
+    }
+
+    # ------------------------------------------------------------------
+    # Utilidades de formato
+    # ------------------------------------------------------------------
+    @classmethod
+    def _nuevo_libro(cls):
+        """Libro vacío cuya fuente por defecto es Cavolini 11, igual que el Excel 2026."""
+        if openpyxl is None:
+            raise RuntimeError("La exportación a Excel requiere el paquete openpyxl (pip install openpyxl).")
+        wb = openpyxl.Workbook()
+        wb._fonts = IndexedList([Font(name=cls.FUENTE, sz=11, family=2)])
+        return wb
+
+    @classmethod
+    def _insertar_escudo(cls, ws):
+        """Inserta el escudo del colegio en B1 (70 x 93 px), tomado del Excel oficial 2026."""
+        if cls._escudo is None:
+            cls._escudo = b''
+            try:
+                with zipfile.ZipFile(cls.RUTA_EXCEL_OFICIAL) as z:
+                    medios = sorted(n for n in z.namelist() if n.startswith('xl/media/'))
+                    if medios:
+                        cls._escudo = z.read(medios[0])
+            except (OSError, zipfile.BadZipFile):
+                pass
+        if not cls._escudo:
+            return
+        try:
+            imagen = ImagenExcel(io.BytesIO(cls._escudo))
+        except ImportError:   # openpyxl requiere Pillow para insertar imágenes; se omite el escudo
+            return
+        imagen.width, imagen.height = 70, 93
+        ws.add_image(imagen, 'B1')
+
+    @classmethod
+    def _estilo(cls, celda, negrita=False, tam=8, relleno=None, borde=True, h='center', v=None,
+                ajuste=False, fuente=None, color_borde=None):
+        celda.font = Font(name=fuente or cls.FUENTE, size=tam, bold=negrita, color='FF000000')
+        if relleno:
+            celda.fill = PatternFill(fill_type='solid', fgColor=relleno)
+        if borde:
+            lado = Side(style='thin', color=color_borde or cls.BORDE)
+            celda.border = Border(left=lado, right=lado, top=lado, bottom=lado)
+        celda.alignment = Alignment(horizontal=h, vertical=v, wrap_text=ajuste)
+
+    @classmethod
+    def _escribir(cls, ws, fila, col, valor=None, **estilo):
+        celda = ws.cell(row=fila, column=col)
+        if valor is not None:
+            celda.value = valor
+        cls._estilo(celda, **estilo)
+        return celda
+
+    @classmethod
+    def _combinar(cls, ws, fila, col, fila_fin, col_fin, valor=None, **estilo):
+        for f in range(fila, fila_fin + 1):
+            for c in range(col, col_fin + 1):
+                cls._estilo(ws.cell(row=f, column=c), **estilo)
+        if valor is not None:
+            ws.cell(row=fila, column=col).value = valor
+        if (fila, col) != (fila_fin, col_fin):
+            ws.merge_cells(start_row=fila, start_column=col, end_row=fila_fin, end_column=col_fin)
+
+    @classmethod
+    def _formato_hoja(cls, ws, anchos=None):
+        ws.sheet_format.defaultRowHeight = 14.25
+        ws.sheet_format.customHeight = True
+        for col, ancho in (anchos or cls.ANCHOS).items():
+            ws.column_dimensions[col].width = ancho
+        ws.page_margins = PageMargins(left=0.63, right=0.63, top=0.94, bottom=0.94)
+
+    @classmethod
+    def _encabezado(cls, ws, filas):
+        """Bloque superior de cada hoja (filas 2 a 4) y el año en B6, como en el Excel 2026."""
+        for i in range(3):
+            fila = 2 + i
+            rotulo, valor = filas[i] if i < len(filas) else (None, None)
+            cls._combinar(ws, fila, 4, fila, 5, rotulo, negrita=True, borde=False, v='center')
+            cls._combinar(ws, fila, 6, fila, 8, valor, negrita=True, tam=9, borde=False)
+        cls._escribir(ws, 6, 2, DatosColegio.ANIO, negrita=True, tam=11, borde=False, fuente='Calibri')
+        ws.row_dimensions[7].height = 5.25
+
+    @classmethod
+    def _grilla(cls, ws, fila0, col0, max_b, contenido):
+        """
+        Dibuja una grilla HORAS x LUNES-VIERNES con sus recreos (y la colación si llega al
+        bloque 10). contenido(dia, bloque) -> (texto, relleno); en la colación bloque = 'C'.
+        Retorna la última fila utilizada.
+        """
+        cls._combinar(ws, fila0, col0, fila0, col0 + 1, 'HORAS', negrita=True, relleno=cls.AMARILLO)
+        for i, dia in enumerate(DatosColegio.DIAS):
+            cls._escribir(ws, fila0, col0 + 2 + i, dia.upper(), negrita=True, relleno=cls.AMARILLO)
+        fila = fila0
+        for b in range(1, max_b + 1):
+            fila += 1
+            inicio, fin = DatosColegio.HORARIOS_BLOQUES[b]
+            cls._escribir(ws, fila, col0, b, negrita=True, relleno=cls.CREMA)
+            cls._escribir(ws, fila, col0 + 1, f'{inicio} - {fin}', negrita=True, relleno=cls.CREMA)
+            for i, dia in enumerate(DatosColegio.DIAS):
+                texto, relleno = contenido(dia, b)
+                cls._escribir(ws, fila, col0 + 2 + i, texto, relleno=relleno or cls.BLANCO)
+            if b in DatosColegio.RECREOS and b < max_b:
+                fila += 1
+                nombre, rango = DatosColegio.RECREOS[b]
+                cls._escribir(ws, fila, col0, nombre, negrita=True, relleno=cls.AMARILLO)
+                cls._escribir(ws, fila, col0 + 1, rango, negrita=True, relleno=cls.AMARILLO)
+                for i, dia in enumerate(DatosColegio.DIAS):
+                    texto, relleno = contenido(dia, 'C') if nombre == 'COLACIÓN' else (None, None)
+                    cls._escribir(ws, fila, col0 + 2 + i, texto, relleno=relleno or cls.AMARILLO)
+        return fila
+
+    @classmethod
+    def _tabla_horas(cls, ws, fila0, filas, rotulo_tercera='PROFESOR/A', color_etiquetas=None):
+        """
+        Tabla de horas bajo la grilla: ASIGNATURAS (B:D) | N° DE HORAS (E) | PROFESOR/A (F:G).
+        filas: (tipo, etiqueta, horas, texto) con tipo 'encabezado', 'fila', 'subtitulo', 'artes',
+        'musica' o 'total'. Retorna la fila del total.
+        """
+        fila = fila0
+        for tipo, etiqueta, horas, texto in filas:
+            if tipo == 'total':
+                for col in (2, 3, 4, 6, 7):
+                    cls._escribir(ws, fila, col, relleno=cls.BLANCO, borde=False, h=None, ajuste=True)
+                cls._escribir(ws, fila, 5, horas, relleno=cls.AMARILLO, ajuste=True)
+                return fila
+            largo = len(str(etiqueta)) > 30 or len(str(texto or '')) > 26
+            ws.row_dimensions[fila].height = 28.5 if largo else 14.25
+            cls._combinar(ws, fila, 2, fila, 4, etiqueta, negrita=tipo != 'subtitulo', relleno=cls.AMARILLO,
+                          h='left' if tipo == 'subtitulo' else None, ajuste=True, color_borde=color_etiquetas)
+            if tipo == 'encabezado':
+                cls._escribir(ws, fila, 5, 'N° DE HORAS', negrita=True, relleno=cls.AMARILLO, ajuste=True)
+                cls._combinar(ws, fila, 6, fila, 7, rotulo_tercera, negrita=True, relleno=cls.AMARILLO, ajuste=True)
+            else:
+                if tipo == 'artes':
+                    cls._combinar(ws, fila, 5, fila + 1, 5, horas, relleno=cls.BLANCO, v='center', ajuste=True)
+                elif tipo != 'musica':
+                    cls._escribir(ws, fila, 5, horas, relleno=cls.BLANCO, v='center', ajuste=True)
+                cls._combinar(ws, fila, 6, fila, 7, texto, relleno=cls.BLANCO, ajuste=True)
+            fila += 1
+        return fila - 1
+
+    @classmethod
+    def _leyenda_skills(cls, ws, fila):
+        cls._escribir(ws, fila, 2, None, relleno=cls.SKILLS, borde=False)
+        cls._escribir(ws, fila, 3, 'English skills', negrita=True, tam=10, borde=False, h=None, fuente='Arial')
 
     @staticmethod
-    def escapar_xml(texto):
-        return (str(texto)
-                .replace('&', '&amp;')
-                .replace('<', '&lt;')
-                .replace('>', '&gt;')
-                .replace('"', '&quot;')
-                .replace("'", '&apos;'))
+    def _nombre_hoja(nombre):
+        for ch in '[]:*?/\\':
+            nombre = nombre.replace(ch, '')
+        return nombre[:31]
 
+    # ------------------------------------------------------------------
+    # Libro de cursos
+    # ------------------------------------------------------------------
     @classmethod
     def exportar_horario_cursos(cls, horario, ruta_salida):
         """
-        Crea el libro 'Horario_Cursos_MMDD.xlsx' con:
-        - 24 hojas individuales por curso.
-        - Hoja 'GIMNASIOS' con la utilización deportiva.
-        - Hoja 'DOCENTES' con la carga de cada profesor.
-        - Hoja 'AUDITORIA' con verificación de restricciones.
+        Crea el libro de cursos con la estructura y el diseño de HORARIO CURSOS 2026.xlsx:
+        - Hoja 'SALAS ELECTIVOS' (English skills, electivos, artes, música y pastoral).
+        - Hoja 'GIMNASIOS' (Gimnasio A, Gimnasio B y Patio Santo Domingo).
+        - Hojas de párvulos (Ed. Física) y una hoja por cada uno de los 24 cursos.
+        - Hoja 'AUDITORIA' con la verificación de restricciones.
         """
+        wb = cls._nuevo_libro()
         os.makedirs(os.path.dirname(ruta_salida), exist_ok=True)
-        sheets_data = {}
-
-        # 1. Hojas de Cursos (24 hojas)
-        for curso in DatosColegio.CURSOS:
-            rows = []
-            jefe = DatosColegio.PROFESORES_JEFES.get(curso, 'No asignado')
-
-            rows.append([('COLEGIO MADRES DOMINICAS - CONCEPCIÓN', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1)])
-            rows.append([(f'HORARIO SEMANAL: {curso}', 2), ('', 2), ('', 2), ('', 2), ('', 2), ('', 2), ('', 2)])
-            rows.append([(f'PROFESOR(A) JEFE: {jefe}', 3), ('', 3), ('', 3), ('', 3), ('', 3), ('', 3), ('', 3)])
-            rows.append([('', 0), ('', 0), ('', 0), ('', 0), ('', 0), ('', 0), ('', 0)])
-
-            header_row = [('BLOQUE', 4), ('HORARIO', 4)]
-            for dia in DatosColegio.DIAS:
-                header_row.append((dia.upper(), 4))
-            rows.append(header_row)
-
-            max_bloques = 10 if any(k in curso for k in ['3° MEDIO', '4° MEDIO']) else 8
-            for b in range(1, max_bloques + 1):
-                h_inicio, h_fin = DatosColegio.HORARIOS_BLOQUES[b]
-                hora_str = f"{h_inicio} - {h_fin}"
-                row = [(f"Bloque {b}", 5), (hora_str, 5)]
-
-                for dia in DatosColegio.DIAS:
-                    bloques_permitidos = DatosColegio.get_bloques_permitidos(curso, dia)
-                    if b not in bloques_permitidos:
-                        row.append(('-', 6))
-                    elif b in horario.asignaciones[curso][dia]:
-                        info = horario.asignaciones[curso][dia][b]
-                        txt = f"{info['asignatura']}\n({info['docente']})"
-                        row.append((txt, 7))
-                    else:
-                        row.append(('', 8))
-                rows.append(row)
-
-                if b in DatosColegio.RECREOS and b < max_bloques:
-                    rec_txt = DatosColegio.RECREOS[b]
-                    rows.append([('RECREO', 9), (rec_txt, 9), ('', 9), ('', 9), ('', 9), ('', 9), ('', 9)])
-
-            sheets_data[curso] = rows
-
-        # 2. Hoja de Ocupación de Gimnasios
-        rows_gym = []
-        rows_gym.append([('PROGRAMACIÓN Y AFORO DE RECINTOS DEPORTIVOS (MÁXIMO 3 CURSOS SIMULTÁNEOS: GIMNASIO A, B Y PATIO STO. DOMINGO)', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1)])
-        rows_gym.append([('BLOQUE', 4), ('HORARIO', 4), ('LUNES', 4), ('MARTES', 4), ('MIÉRCOLES', 4), ('JUEVES', 4), ('VIERNES', 4)])
-        for b in range(1, 9):
-            h_in, h_fi = DatosColegio.HORARIOS_BLOQUES[b]
-            r = [(f"Bloque {b}", 5), (f"{h_in} - {h_fi}", 5)]
-            for d in DatosColegio.DIAS:
-                cursos_en_gym = horario.gimnasio_ocupado.get((d, b), [])
-                if cursos_en_gym:
-                    r.append(('\n'.join(cursos_en_gym), 7))
-                else:
-                    r.append(('Libre', 8))
-            rows_gym.append(r)
-        sheets_data['GIMNASIOS'] = rows_gym
-
-        # 3. Hoja de Malla Docente Consolidada
-        docentes_lista = sorted(list(horario.docente_ocupado.keys()))
-        rows_doc = []
-        rows_doc.append([('CARGA HORARIA Y PROGRAMACIÓN POR DOCENTE', 1), ('', 1), ('', 1), ('', 1)])
-        rows_doc.append([('DOCENTE', 4), ('DÍA', 4), ('BLOQUE', 4), ('CURSO Y ASIGNATURA', 4)])
-        for doc in docentes_lista:
-            for d in DatosColegio.DIAS:
-                for b in range(1, 11):
-                    if (d, b) in horario.docente_ocupado[doc]:
-                        c_asig = horario.docente_ocupado[doc][(d, b)]
-                        rows_doc.append([(doc, 5), (d, 5), (f"Bloque {b}", 5), (f"{c_asig[0]} - {c_asig[1]}", 7)])
-        sheets_data['DOCENTES'] = rows_doc
-
-        # 4. Hoja de Auditoría y Verificación
-        auditoria = ValidadorRestricciones.auditar(horario)
-        rows_audit = []
-        rows_audit.append([('INFORME DE CUMPLIMIENTO Y FACTIBILIDAD (Colegio MMDD)', 1), ('', 1), ('', 1)])
-        rows_audit.append([('Estado Global:', 2), ('FACTIBLE (100% Restricciones Duras Cumplidas)' if auditoria['valido'] else 'NO FACTIBLE', 2), ('', 2)])
-        rows_audit.append([('', 0), ('', 0), ('', 0)])
-        rows_audit.append([('Métrica / Criterio', 4), ('Valor Evaluado', 4), ('Estado', 4)])
-        rows_audit.append([('Colisiones Docentes (No solapamiento)', 5), ('0 colisiones detectadas', 5), ('CUMPLE (100%)', 5)])
-        rows_audit.append([('Colisiones de Curso (Single occupancy)', 5), ('0 colisiones detectadas', 5), ('CUMPLE (100%)', 5)])
-        rows_audit.append([('Cumplimiento Cargas Curriculares', 5), (f"{auditoria['metricas']['total_bloques_asignados']} bloques exactos (912/912)", 5), ('CUMPLE (100%)', 5)])
-        rows_audit.append([('Sincronización Electivos 3° y 4° Medio', 5), ('Bloques idénticos entre secciones A y B', 5), ('CUMPLE (100%)', 5)])
-        rows_audit.append([('Aforo de Recintos Deportivos (Capacidad máx. 3)', 5), ('Respetado en todos los bloques lectivos', 5), ('CUMPLE (100%)', 5)])
-        rows_audit.append([('No Repetición Diaria de Asignatura', 5), (f"{auditoria['metricas'].get('mismo_dia_violaciones', 0)} repeticiones en el día", 5), ('CUMPLE (100%)', 5)])
-        rows_audit.append([('Bloques Dobles Consecutivos en Troncales', 5), (f"{auditoria['metricas'].get('core_no_consecutivo', 0)} bloques no consecutivos", 5), ('CUMPLE (100%)', 5)])
-        rows_audit.append([('Bloques Dobles Globales (90 min)', 5), (f"{auditoria['metricas']['porcentaje_bloques_dobles']}% de las horas", 5), ('OPTIMIZADO', 5)])
-        rows_audit.append([('Ventanas Libres Docentes', 5), (f"{auditoria['metricas']['total_ventanas_docentes']} bloques de espera total", 5), ('OPTIMIZADO', 5)])
-        sheets_data['AUDITORIA'] = rows_audit
-
-        cls._crear_archivo_xlsx(sheets_data, ruta_salida)
+        ws = wb.active
+        ws.title = 'SALAS ELECTIVOS'
+        cls._hoja_salas(ws, horario)
+        cls._hoja_gimnasios(wb.create_sheet('GIMNASIOS'), horario)
+        for curso in DatosColegio.todos_los_cursos():
+            cls._hoja_curso(wb.create_sheet(curso), curso, horario)
+        cls._hoja_auditoria(wb.create_sheet('AUDITORIA'), horario)
+        wb.save(ruta_salida)
         return ruta_salida
 
     # Alias por retrocompatibilidad
     exportar_horario = exportar_horario_cursos
 
     @classmethod
+    def _hoja_curso(cls, ws, curso, horario):
+        cls._formato_hoja(ws)
+        cls._insertar_escudo(ws)
+        cls._encabezado(ws, [('CURSO', curso), ('PROFESOR/A JEFE', DatosColegio.PROFESORES_JEFES.get(curso, ''))])
+        parvulo = DatosColegio.es_parvulo(curso)
+        max_b = 10 if parvulo or max(DatosColegio.JORNADAS[curso]) > 8 else 8
+        bloqueos = DatosColegio.BLOQUEOS_PASTORAL['PÁRVULOS'] if parvulo else []
+
+        def contenido(dia, b):
+            if (dia, b) in bloqueos:
+                return 'PASTORAL', cls.PASTORAL
+            if b == 'C':
+                return None, None
+            if parvulo and b not in DatosColegio.get_bloques_permitidos(curso, dia):
+                return None, None   # Como en el Excel 2026: el resto de la jornada parvularia queda en blanco
+            if b not in DatosColegio.get_bloques_permitidos(curso, dia):
+                return None, (cls.AMARILLO if b > 8 else cls.CREMA)
+            item = horario.asignaciones[curso][dia].get(b)
+            if not item:
+                return None, None
+            return item['etiqueta'], (cls.SKILLS if item['asignatura'] == 'English Skills' else None)
+
+        ultima = cls._grilla(ws, 8, 2, max_b, contenido)
+        color_etiquetas = cls.BORDE_MEDIA if DatosColegio.nivel(curso) in DatosColegio.FRANJAS_ELECTIVOS else None
+        fila_total = cls._tabla_horas(ws, ultima + (3 if max_b == 8 else 2), cls._filas_tabla_curso(curso),
+                                      color_etiquetas=color_etiquetas)
+        if any(a == 'English Skills' for a, _, _, _ in DatosColegio.get_malla_curricular()[curso]):
+            cls._leyenda_skills(ws, fila_total + 2)
+
+    @classmethod
+    def _docentes_electivo(cls, nivel, electivo):
+        por_docente = {}
+        for franja in DatosColegio.FRANJAS_ELECTIVOS[nivel]:
+            for asig, seccion, doc, _, _ in franja['grupos']:
+                if asig == electivo:
+                    por_docente.setdefault(doc, []).append(seccion)
+        return ' / '.join(f"{d} ({', '.join(s)})" for d, s in por_docente.items())
+
+    @classmethod
+    def _filas_tabla_curso(cls, curso):
+        """Filas de la tabla de horas de un curso, con las mismas asignaturas que el Excel 2026."""
+        malla = DatosColegio.get_malla_curricular()[curso]
+        lecciones = {a: (h, DatosColegio.docentes_de(d)) for a, h, d, _ in malla}
+        total = sum(h for _, h, _, _ in malla)
+
+        def horas(*asigs):
+            return sum(lecciones[a][0] for a in asigs if a in lecciones)
+
+        def profes(*asigs):
+            docs = []
+            for a in asigs:
+                for d in lecciones.get(a, (0, ()))[1]:
+                    if d not in docs:
+                        docs.append(d)
+            return ' / '.join(docs)
+
+        def fila(etiqueta, *asigs):
+            return ('fila', etiqueta, horas(*asigs), profes(*asigs))
+
+        encabezado = ('encabezado', 'ASIGNATURAS', None, None)
+        if DatosColegio.es_parvulo(curso):
+            return [encabezado, fila('EDUCACIÓN FÍSICA', 'Educación Física y Salud'), ('total', None, total, None)]
+
+        ingles = profes('Idioma Extranjero Inglés')
+        if 'English Skills' in lecciones:
+            ingles += f" / {lecciones['English Skills'][1][1]} (E. skills)"
+        fila_ingles = ('fila', 'IDIOMA EXTRANJERO: INGLÉS', horas('Idioma Extranjero Inglés', 'English Skills'), ingles)
+        numero = int(curso[0])
+
+        if 'BÁSICO' in curso and numero <= 4:
+            orientec = profes('Orientación / Tecnología')
+            media_hora = horas('Orientación / Tecnología') / 2
+            filas = [
+                encabezado,
+                fila('LENGUAJE Y COMUNICACIÓN', 'Lenguaje y Comunicación'),
+                fila('EDUCACIÓN MATEMÁTICA', 'Educación Matemática'),
+                fila_ingles,
+                fila('HISTORIA, GEOGRAFÍA Y CIENCIAS SOCIALES', 'Ciencias Sociales'),
+                fila('CIENCIAS NATURALES', 'Ciencias Naturales'),
+                ('fila', 'EDUCACIÓN TECNOLÓGICA', media_hora, orientec),
+                fila('ARTES VISUALES', 'Artes Visuales'),
+                fila('MÚSICA', 'Educación Musical'),
+                fila('EDUCACIÓN FISICA Y SALUD', 'Educación Física y Salud'),
+                ('fila', 'ORIENTACIÓN', media_hora, orientec),
+                fila('RELIGIÓN', 'Religión'),
+            ]
+        elif 'BÁSICO' in curso:
+            filas = [
+                encabezado,
+                fila('LENGUAJE Y COMUNICACIÓN', 'Lenguaje y Comunicación'),
+                fila('EDUCACIÓN MATEMÁTICA', 'Educación Matemática'),
+                fila_ingles,
+                fila('HISTORIA, GEOGRAFÍA Y CIENCIAS SOCIALES', 'Historia, Geografía y CC.SS.'),
+                fila('CIENCIAS NATURALES', 'Ciencias Naturales'),
+                fila('EDUCACIÓN TECNOLÓGICA', 'Educación Tecnológica'),
+            ]
+            if numero >= 7:
+                filas.append(fila('FÍSICA', 'Física'))
+            filas += [
+                fila('ARTES VISUALES', 'Artes Visuales'),
+                fila('MÚSICA', 'Educación Musical'),
+                fila('EDUCACIÓN FISICA Y SALUD', 'Educación Física y Salud'),
+                fila('ORIENTACIÓN', 'Orientación'),
+                fila('RELIGIÓN', 'Religión'),
+            ]
+        else:
+            artes, musica = lecciones['Artes Visuales / Música'][1]
+            artes_musica = [('artes', 'ARTES VISUALES', horas('Artes Visuales / Música'), artes),
+                            ('musica', 'MÚSICA', None, musica)]
+            cierre = [fila('EDUCACIÓN FISICA Y SALUD', 'Educación Física y Salud'),
+                      fila('ORIENTACIÓN', 'Orientación'),
+                      fila('RELIGIÓN', 'Religión')]
+            if numero <= 2:
+                filas = [
+                    encabezado,
+                    fila('LENGUAJE Y COMUNICACIÓN', 'Lenguaje y Comunicación'),
+                    fila('EDUCACIÓN MATEMÁTICA', 'Educación Matemática'),
+                    fila_ingles,
+                    fila('HISTORIA, GEOGRAFÍA Y CIENCIAS SOCIALES', 'Historia, Geografía y CC.SS.'),
+                    ('subtitulo', 'CIENCIAS NATURALES:', None, None),
+                    fila('BIOLOGÍA', 'Biología'),
+                    fila('QUÍMICA', 'Química'),
+                    fila('FÍSICA', 'Física'),
+                    fila('EDUCACIÓN TECNOLÓGICA', 'Educación Tecnológica'),
+                ] + artes_musica + cierre
+            else:
+                nivel = DatosColegio.nivel(curso)
+                filas = [
+                    ('encabezado', 'ASIGNATURAS - FORM. COMUN - LIBRE DISP.', None, None),
+                    fila('LENGUAJE Y COMUNICACIÓN', 'Lenguaje y Comunicación'),
+                    fila('EDUCACIÓN MATEMÁTICA', 'Educación Matemática'),
+                    fila_ingles,
+                    fila('EDUCACIÓN CIUDADANA', 'Educación Ciudadana'),
+                    fila('CIENCIAS PARA LA CIUDADANIA', 'Ciencias para la Ciudadanía'),
+                    fila('FILOSOFÍA', 'Filosofía'),
+                    fila('FÍSICA', 'Física'),
+                ] + artes_musica + cierre
+                filas.append(('encabezado', 'ASIGNATURAS - FORMACIÓN DIFERENCIADA', None, None))
+                for electivo in DatosColegio.ELECTIVOS_OFERTA[nivel]:
+                    filas.append(('fila', electivo, 6, cls._docentes_electivo(nivel, electivo)))
+        filas.append(('total', None, total, None))
+        return filas
+
+    @classmethod
+    def _hoja_gimnasios(cls, ws, horario):
+        cls._formato_hoja(ws)
+        recintos = horario.asignar_recintos()
+        for rango in ('D1:E1', 'F1:H1', 'F2:H2', 'D3:E3', 'F3:H3', 'D19:E19', 'F18:H18', 'F19:H19',
+                      'D34:E34', 'F33:H33', 'F34:H34'):
+            ws.merge_cells(rango)
+        for recinto, fila_titulo, fila_grilla in (('GIMNASIO A', 2, 5), ('GIMNASIO B', 18, 20),
+                                                  ('PATIO SANTO DOMINGO', 33, 35)):
+            cls._combinar(ws, fila_titulo, 4, fila_titulo, 5, recinto, negrita=True, tam=10, borde=False, v='center')
+
+            def contenido(dia, b, recinto=recinto):
+                if b == 'C':
+                    return None, None
+                cursos = recintos.get((recinto, dia, b))
+                if cursos:
+                    return ' / '.join(DatosColegio.codigo_corto(c) for c in cursos), None
+                # Los pares libres de los gimnasios se marcan "GIMNASIO / DISPONIBLE", como en el Excel 2026
+                b1 = b if b % 2 else b - 1
+                if recinto != 'PATIO SANTO DOMINGO' and not recintos.get((recinto, dia, b1)) \
+                        and not recintos.get((recinto, dia, b1 + 1)):
+                    return ('GIMNASIO' if b % 2 else 'DISPONIBLE'), None
+                return None, None
+
+            cls._grilla(ws, fila_grilla, 2, 8, contenido)
+        for fila, alto in {4: 5.25, 17: 8.25, 19: 1.5, 32: 6.75, 34: 2.25}.items():
+            ws.row_dimensions[fila].height = alto
+
+    @classmethod
+    def _hoja_salas(cls, ws, horario):
+        anchos = {'A': 0.66, 'I': 10.66, 'Q': 10.66}
+        for base in (2, 10, 18):
+            anchos[get_column_letter(base)] = 8.66
+            anchos[get_column_letter(base + 1)] = 12.66
+            for i in range(2, 7):
+                anchos[get_column_letter(base + i)] = 13.89
+        cls._formato_hoja(ws, anchos)
+
+        contenido_salas = defaultdict(list)   # (sala, dia, bloque) -> [textos]
+        for curso in DatosColegio.CURSOS:
+            for dia in DatosColegio.DIAS:
+                for b, item in horario.asignaciones[curso][dia].items():
+                    if item['asignatura'] == 'English Skills':
+                        contenido_salas[('ELECTIVO 1', dia, b)].append(DatosColegio.codigo_corto(curso))
+                    elif item['asignatura'] == 'Artes Visuales / Música':
+                        contenido_salas[('SALA DE ARTES', dia, b)].append(DatosColegio.codigo_sala(curso))
+                        contenido_salas[('SALA DE MÚSICA', dia, b)].append(DatosColegio.codigo_sala(curso))
+                    elif item['espacio'] == 'Sala de Música':
+                        contenido_salas[('SALA DE MÚSICA', dia, b)].append(DatosColegio.codigo_sala(curso))
+        for franjas in DatosColegio.FRANJAS_ELECTIVOS.values():
+            for franja in franjas:
+                for dia, b0 in franja['periodos']:
+                    for b in (b0, b0 + 1):
+                        for _, _, _, sala, etiqueta in franja['grupos']:
+                            contenido_salas[(sala, dia, b)].append(etiqueta)
+
+        for fila_titulo, col0, sala, subtitulo in cls.DISPOSICION_SALAS:
+            cls._combinar(ws, fila_titulo, col0 + 2, fila_titulo, col0 + 3, sala, negrita=True, tam=11, borde=False)
+            cls._combinar(ws, fila_titulo, col0 + 4, fila_titulo, col0 + 6, subtitulo, negrita=True, borde=False)
+            ws.row_dimensions[fila_titulo + 2].height = 5.25
+            bloqueos = DatosColegio.BLOQUEOS_PASTORAL.get(sala, [])
+
+            def contenido(dia, b, sala=sala, bloqueos=bloqueos):
+                if (dia, b) in bloqueos:
+                    return 'PASTORAL', cls.PASTORAL
+                textos = contenido_salas.get((sala, dia, b))
+                return (' / '.join(textos) if textos else None), None
+
+            cls._grilla(ws, fila_titulo + 3, col0, 10, contenido)
+
+    @classmethod
+    def _hoja_auditoria(cls, ws, horario):
+        auditoria = ValidadorRestricciones.auditar(horario)
+        m = auditoria['metricas']
+        cls._formato_hoja(ws, {'A': 0.66, 'B': 46, 'C': 42, 'D': 22})
+        cls._escribir(ws, 2, 2, f'INFORME DE CUMPLIMIENTO Y FACTIBILIDAD — AÑO ESCOLAR {DatosColegio.ANIO}',
+                      negrita=True, tam=11, borde=False, h=None)
+        estado = ('FACTIBLE (100% restricciones duras cumplidas)' if auditoria['valido']
+                  else f"NO FACTIBLE ({len(auditoria['errores_duros'])} errores)")
+        cls._escribir(ws, 3, 2, 'Estado global:', negrita=True, borde=False, h=None)
+        cls._escribir(ws, 3, 3, estado, negrita=True, borde=False, h=None)
+
+        filas = [
+            ('Colisiones docentes (no solapamiento)', f"{m['colisiones_docentes']} colisiones", m['colisiones_docentes']),
+            ('Cargas curriculares y jornadas completas',
+             f"{m['total_bloques_asignados']} / {m['total_bloques_esperados']} bloques", m['errores_carga']),
+            ('Orientación a cargo del profesor jefe', f"{m['errores_jefatura']} inconsistencias", m['errores_jefatura']),
+            ('Sincronización de electivos 3° y 4° medio', f"{m['errores_electivos']} diferencias A/B", m['errores_electivos']),
+            ('Recintos deportivos (1 curso por recinto)', f"{m['errores_recintos']} excesos", m['errores_recintos']),
+            ('Sala English skills y bloqueos de pastoral', f"{m['errores_salas']} conflictos", m['errores_salas']),
+            ('Una sesión diaria por asignatura', f"{m['mismo_dia_violaciones']} repeticiones", m['mismo_dia_violaciones']),
+            ('Troncales en bloques consecutivos', f"{m['core_no_consecutivo']} bloques separados", m['core_no_consecutivo']),
+            ('Bloques dobles (90 min)', f"{m['porcentaje_bloques_dobles']}% de las horas", None),
+            ('Ventanas docentes', f"{m['total_ventanas_docentes']} bloques de espera", None),
+            ('Uso del Patio Santo Domingo', f"{m['uso_patio']} bloques", None),
+        ]
+        for i, texto in enumerate(['MÉTRICA / CRITERIO', 'VALOR EVALUADO', 'ESTADO']):
+            cls._escribir(ws, 5, 2 + i, texto, negrita=True, relleno=cls.AMARILLO)
+        fila = 6
+        for criterio, valor, errores in filas:
+            estado = 'INDICADOR' if errores is None else ('CUMPLE' if errores == 0 else 'NO CUMPLE')
+            cls._escribir(ws, fila, 2, criterio, negrita=True, relleno=cls.CREMA, h=None)
+            cls._escribir(ws, fila, 3, valor, relleno=cls.BLANCO)
+            cls._escribir(ws, fila, 4, estado, relleno=cls.BLANCO)
+            fila += 1
+        if auditoria['errores_duros']:
+            fila += 1
+            cls._escribir(ws, fila, 2, 'DETALLE DE ERRORES', negrita=True, relleno=cls.AMARILLO, h=None)
+            for error in auditoria['errores_duros'][:300]:
+                fila += 1
+                cls._combinar(ws, fila, 2, fila, 4, error, relleno=cls.BLANCO, h=None)
+
+    # ------------------------------------------------------------------
+    # Libro de docentes
+    # ------------------------------------------------------------------
+    @classmethod
     def exportar_horario_docentes(cls, horario, ruta_salida):
         """
-        Crea el libro 'Horarios_Docentes_Colegio_MMDD.xlsx' con:
-        - Hoja 'RESUMEN DOCENTES' con la tabla general de carga horaria.
-        - Hojas individuales (una por cada docente) con su grilla semanal completa,
-          incluyendo bloques pedagógicos, cursos asignados, asignaturas y recreos destacados.
-        - Títulos combinados y centrados (A1:G1, A2:G2, A3:G3 en cada hoja docente, y A1:E1.. en resumen).
+        Crea el libro de docentes:
+        - Hoja 'DISTRIBUCIÓN HORARIA' con el formato de DISTRIBUCIÓN HORARIA 2026.docx
+          (una tabla por departamento: profesor, cursos, n° de horas, asignatura y horas lectivas).
+        - Una hoja por docente con su grilla semanal y el mismo diseño de las hojas de curso.
         """
+        wb = cls._nuevo_libro()
         os.makedirs(os.path.dirname(ruta_salida), exist_ok=True)
-        sheets_data = {}
-        merges_per_sheet = {}
-        cols_per_sheet = {}
-
-        docentes_lista = sorted(list(horario.docente_ocupado.keys()))
-
-        # 1. Hoja de Resumen / Consolidado General de Docentes
-        rows_resumen = []
-        rows_resumen.append([('COLEGIO MADRES DOMINICAS - CONCEPCIÓN', 1), ('', 1), ('', 1), ('', 1), ('', 1)])
-        rows_resumen.append([('CONSOLIDADO GENERAL DE CARGA HORARIA DOCENTE', 2), ('', 2), ('', 2), ('', 2), ('', 2)])
-        rows_resumen.append([('DISTRIBUCIÓN INSTITUCIONAL DE PROFESORES Y CURSOS — AÑO ESCOLAR 2026', 3), ('', 3), ('', 3), ('', 3), ('', 3)])
-        rows_resumen.append([('', 0), ('', 0), ('', 0), ('', 0), ('', 0)])
-        rows_resumen.append([('N°', 4), ('DOCENTE', 4), ('TOTAL HORAS', 4), ('CURSOS QUE IMPARTE', 4), ('ASIGNATURAS QUE DICTA', 4)])
-
-        for idx, doc in enumerate(docentes_lista, 1):
-            total_h = len(horario.docente_ocupado[doc])
-            cursos_set = sorted(list(set(c for c, _ in horario.docente_ocupado[doc].values())))
-            asigs_set = sorted(list(set(a for _, a in horario.docente_ocupado[doc].values())))
-            rows_resumen.append([
-                (str(idx), 5),
-                (doc, 5),
-                (f"{total_h} hrs", 5),
-                (', '.join(cursos_set), 7),
-                (', '.join(asigs_set), 7)
-            ])
-
-        sheets_data['RESUMEN DOCENTES'] = rows_resumen
-        merges_per_sheet['RESUMEN DOCENTES'] = ['A1:E1', 'A2:E2', 'A3:E3']
-        cols_per_sheet['RESUMEN DOCENTES'] = '''
-        <cols>
-            <col min="1" max="1" width="8" customWidth="1"/>
-            <col min="2" max="2" width="30" customWidth="1"/>
-            <col min="3" max="3" width="16" customWidth="1"/>
-            <col min="4" max="4" width="34" customWidth="1"/>
-            <col min="5" max="5" width="34" customWidth="1"/>
-        </cols>'''.strip()
-
-        # 2. Hojas Individuales por Docente
-        for doc in docentes_lista:
-            # Nombre de hoja sanitizado (máximo 31 caracteres para compatibilidad Excel)
-            s_name = doc.replace('Profesor ', 'Prof. ').replace('Profesor(a) ', 'Prof. ')
-            s_name = s_name.replace('Docente Electivo ', 'Elec. ')
-            for ch in [':', '\\', '/', '?', '*', '[', ']']:
-                s_name = s_name.replace(ch, '')
-            s_name = s_name.strip()[:31]
-
-            total_h = len(horario.docente_ocupado[doc])
-            rows_doc = []
-            rows_doc.append([('COLEGIO MADRES DOMINICAS - CONCEPCIÓN', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1), ('', 1)])
-            rows_doc.append([(f'HORARIO SEMANAL: {doc.upper()}', 2), ('', 2), ('', 2), ('', 2), ('', 2), ('', 2), ('', 2)])
-            rows_doc.append([(f'CARGA LECTIVA: {total_h} HORAS PEDAGÓGICAS | AÑO ESCOLAR 2026', 3), ('', 3), ('', 3), ('', 3), ('', 3), ('', 3), ('', 3)])
-            rows_doc.append([('', 0), ('', 0), ('', 0), ('', 0), ('', 0), ('', 0), ('', 0)])
-
-            header_row = [('BLOQUE', 4), ('HORARIO', 4)]
-            for dia in DatosColegio.DIAS:
-                header_row.append((dia.upper(), 4))
-            rows_doc.append(header_row)
-
-            tiene_tarde = any(b in [9, 10] for (d, b) in horario.docente_ocupado[doc].keys())
-            max_bloques = 10 if tiene_tarde else 8
-
-            for b in range(1, max_bloques + 1):
-                h_inicio, h_fin = DatosColegio.HORARIOS_BLOQUES[b]
-                hora_str = f"{h_inicio} - {h_fin}"
-                row = [(f"Bloque {b}", 5), (hora_str, 5)]
-
-                for dia in DatosColegio.DIAS:
-                    if (dia, b) in horario.docente_ocupado[doc]:
-                        c, asig = horario.docente_ocupado[doc][(dia, b)]
-                        row.append((f"{c}\n({asig})", 7))
-                    else:
-                        row.append(('Libre', 8))
-                rows_doc.append(row)
-
-                if b in DatosColegio.RECREOS and b < max_bloques:
-                    rec_txt = DatosColegio.RECREOS[b]
-                    rows_doc.append([('RECREO', 9), (rec_txt, 9), ('', 9), ('', 9), ('', 9), ('', 9), ('', 9)])
-
-            sheets_data[s_name] = rows_doc
-            merges_per_sheet[s_name] = ['A1:G1', 'A2:G2', 'A3:G3']
-
-        cls._crear_archivo_xlsx(sheets_data, ruta_salida, merges_per_sheet=merges_per_sheet, cols_per_sheet=cols_per_sheet)
+        ws = wb.active
+        ws.title = 'DISTRIBUCIÓN HORARIA'
+        cls._hoja_distribucion(ws, horario)
+        for depto, docentes in DatosColegio.DEPARTAMENTOS:
+            for doc in docentes:
+                cls._hoja_docente(wb.create_sheet(cls._nombre_hoja(doc)), doc, depto, horario)
+        wb.save(ruta_salida)
         return ruta_salida
 
     @classmethod
-    def _crear_archivo_xlsx(cls, sheets_data, ruta_salida, merges_per_sheet=None, cols_per_sheet=None):
-        """Escribe la estructura de carpetas y XML comprimidos que componen un .xlsx."""
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
-            n_sheets = len(sheets_data)
+    def _resumen_docente(cls, doc, horario):
+        """Filas de la distribución horaria de un docente, calculadas desde el horario generado."""
+        orden = {c: i for i, c in enumerate(DatosColegio.todos_los_cursos())}
+        normales = defaultdict(int)
+        electivos = defaultdict(list)
+        for (dia, b), (curso, asig) in horario.docente_ocupado.get(doc, {}).items():
+            if curso in orden:
+                normales[(curso, asig)] += 1
+            else:
+                nombre, seccion = asig.rsplit(' (', 1)
+                electivos[(curso, nombre)].append(seccion.rstrip(')'))
 
-            overrides = ''.join([
-                f'<Override PartName="/xl/worksheets/sheet{i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-                for i in range(n_sheets)
-            ])
-            ct_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-    <Default Extension="xml" ContentType="application/xml"/>
-    <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-    <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-    {overrides}
-</Types>'''.strip()
-            z.writestr('[Content_Types].xml', ct_xml)
+        filas = []
+        for curso, asig in sorted(normales, key=lambda k: (k[1] == 'Orientación', orden[k[0]])):
+            if asig == 'Orientación':
+                nombre, tipo = 'Jefatura', 'jefatura'
+            elif asig == 'English Skills':
+                nombre, tipo = 'Inglés (English skills)', 'skills'
+            elif asig == 'Orientación / Tecnología':
+                nombre, tipo = 'Tecn/C.Orien.', 'orientec'
+            elif asig == 'Artes Visuales / Música':
+                nombre, tipo = ('Música' if doc == 'Música' else 'Artes'), 'normal'
+            else:
+                nombre, tipo = cls.NOMBRES_DISTRIBUCION.get(asig, asig), 'normal'
+            filas.append({'cursos': DatosColegio.codigo_corto(curso), 'curso': curso,
+                          'horas': normales[(curso, asig)], 'asignatura': nombre, 'tipo': tipo})
+        for (grupo, nombre), secciones in electivos.items():
+            unicas = list(dict.fromkeys(secciones))
+            cursos = ', '.join(unicas)
+            if all(s.startswith('S.') for s in unicas):   # Secciones mixtas A+B: "3°AB S.1, S.2"
+                cursos = f"{grupo.replace(' MEDIO A-B', 'AB')} {cursos}"
+            posicion = sum(1 for f in filas if f['tipo'] != 'jefatura')
+            filas.insert(posicion, {'cursos': cursos,
+                                    'curso': f"{grupo} ({', '.join(unicas)})",
+                                    'horas': len(secciones), 'asignatura': nombre, 'tipo': 'electivo'})
+        for cursos, actividad, horas in DatosColegio.HORAS_NO_LECTIVAS.get(doc, []):
+            filas.append({'cursos': cursos, 'curso': cursos or 'No programada en grilla', 'horas': horas,
+                          'asignatura': actividad, 'tipo': 'no_lectiva'})
+        return filas, sum(f['horas'] for f in filas)
 
-            rels_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>'''.strip()
-            z.writestr('_rels/.rels', rels_xml)
+    @classmethod
+    def _hoja_distribucion(cls, ws, horario):
+        for col, ancho in {'A': 26, 'B': 20, 'C': 13, 'D': 34, 'E': 16}.items():
+            ws.column_dimensions[col].width = ancho
+        ws.page_margins = PageMargins(left=0.63, right=0.63, top=0.94, bottom=0.94)
+        cls._combinar(ws, 1, 1, 1, 5, f'DISTRIBUCIÓN DE HORAS POR ASIGNATURAS – AÑO ACADÉMICO {DatosColegio.ANIO}.',
+                      negrita=True, tam=14, borde=False, h=None, fuente='Calibri')
+        rellenos = {'jefatura': cls.CELESTE, 'skills': cls.VERDE, 'orientec': cls.AZUL}
+        estilo = {'tam': 10, 'fuente': 'Abadi', 'v': 'center', 'color_borde': cls.BORDE_DOCUMENTO}
+        fila = 3
+        for titulo, docentes in DatosColegio.DEPARTAMENTOS:
+            cls._combinar(ws, fila, 1, fila, 5, f'ASIGNATURAS: {titulo}', negrita=True, tam=12, borde=False,
+                          h=None, ajuste=True, fuente='Calibri')
+            ws.row_dimensions[fila].height = 32 if len(titulo) > 60 else 18
+            fila += 1
+            if titulo == 'INGLÉS':
+                cls._combinar(ws, fila, 1, fila, 5, 'Verdes: English skills (2 docentes en el mismo bloque)',
+                              tam=10, borde=False, h=None, fuente='Calibri')
+                fila += 1
+            for i, texto in enumerate(['PROFESOR', 'CURSOS', 'Nº DE HORAS', 'ASIGNATURA', 'HORAS LECTIVAS'], 1):
+                cls._escribir(ws, fila, i, texto, negrita=True, relleno=cls.GRIS, ajuste=True, **estilo)
+            fila += 1
+            for doc in docentes:
+                filas, total = cls._resumen_docente(doc, horario)
+                if not filas:
+                    continue
+                inicio = fila
+                for f in filas:
+                    relleno = rellenos.get(f['tipo'])
+                    cls._escribir(ws, fila, 2, f['cursos'], relleno=relleno, **estilo)
+                    cls._escribir(ws, fila, 3, f['horas'], relleno=relleno, **estilo)
+                    cls._escribir(ws, fila, 4, f['asignatura'], h=None, **estilo)
+                    fila += 1
+                cls._combinar(ws, inicio, 1, fila - 1, 1, doc, **estilo)
+                cls._combinar(ws, inicio, 5, fila - 1, 5, total, **estilo)
+            fila += 1
 
-            sheet_rels = ''.join([
-                f'<Relationship Id="rId{i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{i+1}.xml"/>'
-                for i in range(n_sheets)
-            ])
-            styles_id = n_sheets + 1
-            wb_rels_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-    {sheet_rels}
-    <Relationship Id="rId{styles_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>'''.strip()
-            z.writestr('xl/_rels/workbook.xml.rels', wb_rels_xml)
+    @classmethod
+    def _hoja_docente(cls, ws, doc, depto, horario):
+        anchos = dict(cls.ANCHOS)
+        anchos.update({col: 17 for col in 'DEFGH'})
+        cls._formato_hoja(ws, anchos)
+        cls._insertar_escudo(ws)
+        ocupado = horario.docente_ocupado.get(doc, {})
+        detalle = horario.docente_detalle.get(doc, {})
+        filas, total = cls._resumen_docente(doc, horario)
+        horas = total if total == len(ocupado) else f"{total} ({len(ocupado)} en grilla)"
+        departamento = depto.split(' –')[0].split(' - ')[0]
+        cls._encabezado(ws, [('DOCENTE', doc), ('DEPARTAMENTO', departamento), ('HORAS LECTIVAS', horas)])
 
-            sheets_xml = ''.join([
-                f'<sheet name="{cls.escapar_xml(name[:31])}" sheetId="{i+1}" r:id="rId{i+1}"/>'
-                for i, name in enumerate(sheets_data.keys())
-            ])
-            wb_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-    <sheets>{sheets_xml}</sheets>
-</workbook>'''.strip()
-            z.writestr('xl/workbook.xml', wb_xml)
+        def contenido(dia, b):
+            if b == 'C' or (dia, b) not in ocupado:
+                return None, None
+            if (dia, b) in detalle:
+                return detalle[(dia, b)]['etiqueta'], None
+            curso, asig = ocupado[(dia, b)]
+            etiqueta = horario.asignaciones[curso][dia][b]['etiqueta']
+            if asig == 'Artes Visuales / Música':
+                etiqueta = 'MÚSICA' if doc == 'Música' else 'ARTES'
+            return f"{DatosColegio.codigo_corto(curso)} {etiqueta}", (cls.SKILLS if asig == 'English Skills' else None)
 
-            styles_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-    <fonts count="5">
-        <font><sz val="10"/><name val="Arial"/></font>
-        <font><b/><sz val="13"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>
-        <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>
-        <font><b/><sz val="10"/><color rgb="FF003366"/><name val="Arial"/></font>
-        <font><sz val="9"/><color rgb="FF333333"/><name val="Arial"/></font>
-    </fonts>
-    <fills count="8">
-        <fill><patternFill patternType="none"/></fill>
-        <fill><patternFill patternType="gray125"/></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FF003366"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFA32638"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFEAECEF"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFF4F6F9"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFFFF3CD"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFE2F0D9"/></patternFill></fill>
-    </fills>
-    <borders count="2">
-        <border><left/><right/><top/><bottom/></border>
-        <border>
-            <left style="thin"><color rgb="FFD0D7DE"/></left>
-            <right style="thin"><color rgb="FFD0D7DE"/></right>
-            <top style="thin"><color rgb="FFD0D7DE"/></top>
-            <bottom style="thin"><color rgb="FFD0D7DE"/></bottom>
-        </border>
-    </borders>
-    <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-    <cellXfs count="10">
-        <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-        <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-        <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="4" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    </cellXfs>
-</styleSheet>'''.strip()
-            z.writestr('xl/styles.xml', styles_xml)
-
-            def col_letra(idx):
-                res = ''
-                while idx >= 0:
-                    res = chr(idx % 26 + ord('A')) + res
-                    idx = idx // 26 - 1
-                return res
-
-            for s_idx, (s_name, rows) in enumerate(sheets_data.items()):
-                s_rows = []
-                for r_idx, row in enumerate(rows):
-                    r_num = r_idx + 1
-                    cells_xml = []
-                    for c_idx, (val, style_id) in enumerate(row):
-                        col_ref = col_letra(c_idx) + str(r_num)
-                        val_escaped = cls.escapar_xml(val)
-                        cells_xml.append(
-                            f'<c r="{col_ref}" s="{style_id}" t="inlineStr"><is><t>{val_escaped}</t></is></c>'
-                        )
-                    s_rows.append(f'<row r="{r_num}" ht="28" customHeight="1">{" ".join(cells_xml)}</row>')
-
-                # Ancho de columnas según la hoja
-                if cols_per_sheet and s_name in cols_per_sheet:
-                    cols_xml = cols_per_sheet[s_name]
-                elif s_name == 'DOCENTES':
-                    cols_xml = '''
-                    <cols>
-                        <col min="1" max="1" width="28" customWidth="1"/>
-                        <col min="2" max="2" width="14" customWidth="1"/>
-                        <col min="3" max="3" width="14" customWidth="1"/>
-                        <col min="4" max="4" width="34" customWidth="1"/>
-                    </cols>'''.strip()
-                elif s_name == 'AUDITORIA':
-                    cols_xml = '''
-                    <cols>
-                        <col min="1" max="1" width="45" customWidth="1"/>
-                        <col min="2" max="2" width="35" customWidth="1"/>
-                        <col min="3" max="3" width="25" customWidth="1"/>
-                    </cols>'''.strip()
-                else:
-                    cols_xml = '''
-                    <cols>
-                        <col min="1" max="1" width="12" customWidth="1"/>
-                        <col min="2" max="2" width="16" customWidth="1"/>
-                        <col min="3" max="7" width="26" customWidth="1"/>
-                    </cols>'''.strip()
-
-                # Definir celdas combinadas (mergeCells) según la hoja
-                if merges_per_sheet and s_name in merges_per_sheet:
-                    m_list = merges_per_sheet[s_name]
-                    merge_cells_xml = f'<mergeCells count="{len(m_list)}">' + ''.join([f'<mergeCell ref="{m}"/>' for m in m_list]) + '</mergeCells>'
-                elif s_name in DatosColegio.CURSOS:
-                    merge_cells_xml = '''
-    <mergeCells count="3">
-        <mergeCell ref="A1:G1"/>
-        <mergeCell ref="A2:G2"/>
-        <mergeCell ref="A3:G3"/>
-    </mergeCells>'''.strip()
-                elif s_name == 'GIMNASIOS':
-                    merge_cells_xml = '''
-    <mergeCells count="1">
-        <mergeCell ref="A1:G1"/>
-    </mergeCells>'''.strip()
-                elif s_name == 'DOCENTES':
-                    merge_cells_xml = '''
-    <mergeCells count="1">
-        <mergeCell ref="A1:D1"/>
-    </mergeCells>'''.strip()
-                elif s_name == 'AUDITORIA':
-                    merge_cells_xml = '''
-    <mergeCells count="2">
-        <mergeCell ref="A1:C1"/>
-        <mergeCell ref="A2:C2"/>
-    </mergeCells>'''.strip()
-                else:
-                    merge_cells_xml = ''
-
-                ws_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-    {cols_xml}
-    <sheetData>{" ".join(s_rows)}</sheetData>
-    {merge_cells_xml}
-</worksheet>'''.strip()
-                z.writestr(f'xl/worksheets/sheet{s_idx+1}.xml', ws_xml)
-
-        with open(ruta_salida, 'wb') as f:
-            f.write(buf.getvalue())
+        max_b = 10 if any(b > 8 for (_, b) in ocupado) else 8
+        ultima = cls._grilla(ws, 8, 2, max_b, contenido)
+        tabla = [('encabezado', 'ASIGNATURAS', None, None)]
+        for f in filas:
+            tabla.append(('fila', f['asignatura'].upper(), f['horas'], f['curso']))
+        tabla.append(('total', None, total, None))
+        fila_total = cls._tabla_horas(ws, ultima + (3 if max_b == 8 else 2), tabla, rotulo_tercera='CURSO')
+        if any(f['tipo'] == 'skills' for f in filas):
+            cls._leyenda_skills(ws, fila_total + 2)
 
 
 # =============================================================================
@@ -1646,60 +2159,21 @@ class MenuInteractivo:
         self.ruta_excel = self.ruta_excel_cursos
 
     @staticmethod
-    def _abreviar_asignatura(asig):
-        mapping = {
-            'Artes Visuales': 'Artes',
-            'Artes Visuales y Música': 'Artes/Música',
-            'Biología': 'Biología',
-            'Ciencias Naturales': 'C. Naturales',
-            'Ciencias para la Ciudadanía': 'C. Ciudadanía',
-            'Educación Ciudadana': 'Ed. Ciudadana',
-            'Educación Física y Salud': 'Ed. Física',
-            'Educación Matemática': 'Matemática',
-            'Educación Musical': 'Música',
-            'Educación Tecnológica': 'Tecnología',
-            'Filosofía': 'Filosofía',
-            'Formación Diferenciada (Electivo 1)': 'Electivo 1',
-            'Formación Diferenciada (Electivo 2)': 'Electivo 2',
-            'Formación Diferenciada (Electivo 3)': 'Electivo 3',
-            'Física': 'Física',
-            'Historia, Geografía y CC.SS.': 'Historia',
-            'Idioma Extranjero Inglés': 'Inglés',
-            'Lenguaje y Comunicación': 'Lenguaje',
-            'Lengua y Literatura': 'Lengua y Lit.',
-            'Orientación': 'Orientación',
-            'Química': 'Química',
-            'Religión': 'Religión',
-            'Matemática': 'Matemática',
-            'Taller de Matemática': 'Taller Mat.',
-            'Taller de Lenguaje': 'Taller Leng.',
-        }
-        return mapping.get(asig, asig[:16])
+    def _recortar(texto, ancho):
+        texto = str(texto)
+        return texto if len(texto) <= ancho else texto[:ancho - 2] + '..'
 
     @staticmethod
-    def _abreviar_docente(doc):
-        if 'Docente Electivo' in doc:
-            parts = doc.split()
-            sec = parts[-1].replace('Sec_', 'S')
-            curso_tag = parts[2]
-            return f"({curso_tag}-{sec})"
-        d = doc.replace('Profesor ', 'P. ').replace('Profesor(a) ', 'P. ')
-        d = d.replace('Básica', 'Bás').replace('Matemática', 'Mat').replace('Lenguaje', 'Leng')
-        d = d.replace('Historia', 'Hist').replace('Educación', 'Ed').replace('Inglés', 'Ing')
-        d = d.replace('Religión', 'Rel').replace('Tecnología', 'Tec')
-        d = d.replace('Ciencias 1 (Biología)', 'Biología')
-        d = d.replace('Ciencias 2 (Naturales)', 'C. Nat')
-        d = d.replace('Ciencias 3 (Química)', 'Química')
-        d = d.replace('Ciencias 4 (Física)', 'Física')
-        d = d.replace('(', '').replace(')', '').strip()
-        if len(d) > 15:
-            d = d[:13] + '..'
-        return f"({d})"
+    def _imprimir_recreo(b, col_w, header):
+        nombre, rango = DatosColegio.RECREOS[b]
+        barra = f"--- {nombre} {rango} ---".center(5 * (col_w + 3) - 3, '-')
+        print(f"{'':<6} | {'':<13} | {barra}")
+        print("-" * len(header))
 
     def mostrar_tabla_curso(self, curso):
         """Imprime en terminal el horario semanal formateado para un curso."""
         curso = curso.upper().strip()
-        if curso not in DatosColegio.CURSOS:
+        if curso not in DatosColegio.todos_los_cursos():
             print(f"\n❌ Error: El curso '{curso}' no existe.")
             return
 
@@ -1707,47 +2181,38 @@ class MenuInteractivo:
         col_w = 17
         ancho_total = 6 + 3 + 13 + 3 + 5 * (col_w + 3) - 1
         print("\n" + "=" * ancho_total)
-        print(f"  COLEGIO MADRES DOMINICAS — HORARIO SEMANAL: {curso}")
+        print(f"  COLEGIO MADRES DOMINICAS — HORARIO SEMANAL {DatosColegio.ANIO}: {curso}")
         print(f"  Profesor(a) Jefe: {jefe}")
         print("=" * ancho_total)
 
-        b_lbl = "BLOQUE"
-        h_lbl = "HORARIO"
-        header = f"{b_lbl:<6} | {h_lbl:<13} | " + " | ".join(f"{d:<{col_w}}" for d in DatosColegio.DIAS)
+        header = f"{'BLOQUE':<6} | {'HORARIO':<13} | " + " | ".join(f"{d:<{col_w}}" for d in DatosColegio.DIAS)
         print(header)
         print("-" * len(header))
 
-        max_bloques = 10 if any(k in curso for k in ['3° MEDIO', '4° MEDIO']) else 8
+        max_bloques = 10 if max(DatosColegio.JORNADAS[curso]) > 8 else 8
         for b in range(1, max_bloques + 1):
             h_in, h_fi = DatosColegio.HORARIOS_BLOQUES[b]
-            bloque_str = f"B.{b}"
-            hora_str = f"{h_in}-{h_fi}"
-
             cols_asig = []
             cols_doc = []
             for d in DatosColegio.DIAS:
-                permitidos = DatosColegio.get_bloques_permitidos(curso, d)
-                if b not in permitidos:
+                if b not in DatosColegio.get_bloques_permitidos(curso, d):
                     cols_asig.append(f"{'---':<{col_w}}")
                     cols_doc.append(f"{' ':<{col_w}}")
                 elif b in self.horario.asignaciones[curso][d]:
                     info = self.horario.asignaciones[curso][d][b]
-                    asig_txt = self._abreviar_asignatura(info['asignatura'])
-                    doc_txt = self._abreviar_docente(info['docente'])
-                    cols_asig.append(f"{asig_txt:<{col_w}}")
-                    cols_doc.append(f"{doc_txt:<{col_w}}")
+                    docente = info['docente']
+                    if info['asignatura'].startswith('Formación Diferenciada'):
+                        docente = f"{len(info['docentes'])} docentes"
+                    cols_asig.append(f"{self._recortar(info['etiqueta'], col_w):<{col_w}}")
+                    cols_doc.append(f"{self._recortar('(' + docente + ')', col_w):<{col_w}}")
                 else:
                     cols_asig.append(f"{'Libre':<{col_w}}")
                     cols_doc.append(f"{' ':<{col_w}}")
 
-            print(f"{bloque_str:<6} | {hora_str:<13} | " + " | ".join(cols_asig))
+            print(f"{'B.' + str(b):<6} | {h_in + '-' + h_fi:<13} | " + " | ".join(cols_asig))
             print(f"{'':<6} | {'':<13} | " + " | ".join(cols_doc))
-
             if b in DatosColegio.RECREOS and b < max_bloques:
-                recreo_nombre = DatosColegio.RECREOS[b]
-                recreo_bar = f"--- {recreo_nombre} ---".center(5 * (col_w + 3) - 3, '-')
-                print(f"{'':<6} | {'':<13} | {recreo_bar}")
-                print("-" * len(header))
+                self._imprimir_recreo(b, col_w, header)
             else:
                 print("-" * len(header))
 
@@ -1755,45 +2220,46 @@ class MenuInteractivo:
 
     def mostrar_tabla_docente(self, docente_nombre):
         """Imprime la malla semanal de un docente específico."""
-        docentes_match = [d for d in self.horario.docente_ocupado.keys() if docente_nombre.lower() in d.lower()]
-        if not docentes_match:
+        coincidencias = sorted(d for d in self.horario.docente_ocupado if docente_nombre.lower() in d.lower())
+        if not coincidencias:
             print(f"\n❌ No se encontró ningún docente con el nombre '{docente_nombre}'.")
             return
 
-        doc = docentes_match[0]
-        total_hrs = len(self.horario.docente_ocupado[doc])
+        exactos = [d for d in coincidencias if d.lower() == docente_nombre.lower()]
+        doc = (exactos or coincidencias)[0]
+        ocupado = self.horario.docente_ocupado[doc]
+        detalle = self.horario.docente_detalle.get(doc, {})
         col_w = 17
         ancho_total = 6 + 3 + 13 + 3 + 5 * (col_w + 3) - 1
         print("\n" + "=" * ancho_total)
-        print(f"  MALLA SEMANAL: {doc} ({total_hrs} horas lectivas)")
+        print(f"  MALLA SEMANAL {DatosColegio.ANIO}: {doc} ({len(ocupado)} horas en grilla)")
         print("=" * ancho_total)
 
-        b_lbl = "BLOQUE"
-        h_lbl = "HORARIO"
-        header = f"{b_lbl:<6} | {h_lbl:<13} | " + " | ".join(f"{d:<{col_w}}" for d in DatosColegio.DIAS)
+        header = f"{'BLOQUE':<6} | {'HORARIO':<13} | " + " | ".join(f"{d:<{col_w}}" for d in DatosColegio.DIAS)
         print(header)
         print("-" * len(header))
 
-        for b in range(1, 11):
+        max_bloques = 10 if any(b > 8 for (_, b) in ocupado) else 8
+        for b in range(1, max_bloques + 1):
             h_in, h_fi = DatosColegio.HORARIOS_BLOQUES[b]
-            bloque_str = f"B.{b}"
-            hora_str = f"{h_in}-{h_fi}"
-
             cols_curso = []
             cols_asig = []
             for d in DatosColegio.DIAS:
-                if (d, b) in self.horario.docente_ocupado[doc]:
-                    c, asig = self.horario.docente_ocupado[doc][(d, b)]
-                    asig_txt = self._abreviar_asignatura(asig)
-                    cols_curso.append(f"{c:<{col_w}}")
-                    cols_asig.append(f"({asig_txt})".ljust(col_w))
+                if (d, b) in ocupado:
+                    c, asig = ocupado[(d, b)]
+                    etiqueta = detalle[(d, b)]['etiqueta'] if (d, b) in detalle else DatosColegio.ETIQUETAS.get(asig, asig)
+                    cols_curso.append(f"{self._recortar(c, col_w):<{col_w}}")
+                    cols_asig.append(f"{self._recortar('(' + etiqueta + ')', col_w):<{col_w}}")
                 else:
                     cols_curso.append(f"{'Libre':<{col_w}}")
                     cols_asig.append(f"{' ':<{col_w}}")
 
-            print(f"{bloque_str:<6} | {hora_str:<13} | " + " | ".join(cols_curso))
+            print(f"{'B.' + str(b):<6} | {h_in + '-' + h_fi:<13} | " + " | ".join(cols_curso))
             print(f"{'':<6} | {'':<13} | " + " | ".join(cols_asig))
-            print("-" * len(header))
+            if b in DatosColegio.RECREOS and b < max_bloques:
+                self._imprimir_recreo(b, col_w, header)
+            else:
+                print("-" * len(header))
         print("=" * ancho_total)
 
     def exportar(self):
@@ -1810,40 +2276,38 @@ class MenuInteractivo:
         print(f"✅ ¡Horarios de Docentes generado exitosamente!")
         print(f"📁 [2] Docentes: {self.ruta_excel_docentes}\n")
 
-        # Eliminar archivo obsoleto con nombre antiguo si existe
-        old_file = os.path.join(os.path.dirname(self.ruta_excel_cursos), "Horario_Colegio_MMDD.xlsx")
-        if os.path.exists(old_file):
-            try:
-                os.remove(old_file)
-            except Exception:
-                pass
-
     def mostrar_auditoria(self):
         """Muestra el reporte de verificación de restricciones."""
         auditoria = ValidadorRestricciones.auditar(self.horario)
+        m = auditoria['metricas']
         print("\n" + "=" * 70)
-        print("  AUDITORÍA DE RESTRICCIONES — COLEGIO MADRES DOMINICAS")
+        print(f"  AUDITORÍA DE RESTRICCIONES {DatosColegio.ANIO} — COLEGIO MADRES DOMINICAS")
         print("=" * 70)
         estado = "✅ FACTIBLE (100% Restricciones Duras Cumplidas)" if auditoria['valido'] else "❌ CONFLICTOS"
         print(f"  Estado Global: {estado}")
         print("-" * 70)
-        print(f"  • Cursos programados:              {auditoria['metricas']['cursos_auditados']} cursos")
-        print(f"  • Total bloques asignados:         {auditoria['metricas']['total_bloques_asignados']} / 912 bloques exactos")
-        print(f"  • Colisiones docentes detectadas:   0 (Clash-Free Teacher)")
-        print(f"  • Colisiones de cursos detectadas:  0 (Single Course Occupancy)")
-        print(f"  • Aforo de Recintos Deportivos:    Máx. 3 simultáneos (100% Cumplido)")
-        print(f"  • Electivos 3° y 4° Medio:         100% Sincronizados en secciones A y B")
-        print(f"  • No Repetición Diaria de Materia: 0 repeticiones separadas (100% Cumplido)")
-        print(f"  • Bloques Dobles en Troncales:     100% Consecutivos (90 min)")
-        print(f"  • Porcentaje de Bloques Dobles:    {auditoria['metricas']['porcentaje_bloques_dobles']}% del total")
-        print(f"  • Ventanas docentes acumuladas:    {auditoria['metricas']['total_ventanas_docentes']} horas libres intermedias")
+        print(f"  • Cursos programados:              {m['cursos_auditados']} (24 regulares + 3 párvulos)")
+        print(f"  • Total bloques asignados:         {m['total_bloques_asignados']} / {m['total_bloques_esperados']}")
+        print(f"  • Colisiones docentes:             {m['colisiones_docentes']}")
+        print(f"  • Errores de carga o jornada:      {m['errores_carga']}")
+        print(f"  • Jefaturas inconsistentes:        {m['errores_jefatura']}")
+        print(f"  • Electivos desincronizados:       {m['errores_electivos']}")
+        print(f"  • Recintos deportivos excedidos:   {m['errores_recintos']} (bloques en el patio: {m['uso_patio']})")
+        print(f"  • Conflictos de salas/pastoral:    {m['errores_salas']}")
+        print(f"  • Repeticiones diarias:            {m['mismo_dia_violaciones']}")
+        print(f"  • Troncales no consecutivas:       {m['core_no_consecutivo']}")
+        print(f"  • Porcentaje de Bloques Dobles:    {m['porcentaje_bloques_dobles']}% del total")
+        print(f"  • Ventanas docentes acumuladas:    {m['total_ventanas_docentes']} horas libres intermedias")
+        for error in auditoria['errores_duros'][:10]:
+            print(f"    - {error}")
         print("=" * 70)
 
     def iniciar(self):
         """Bucle principal de interacción con el usuario."""
+        cursos = DatosColegio.todos_los_cursos()
         while True:
             print("\n" + "╔" + "═" * 68 + "╗")
-            print("║     SISTEMA DE ASIGNACIÓN DE HORARIOS - COLEGIO MMDD (TGOP)        ║")
+            print("║   SISTEMA DE ASIGNACIÓN DE HORARIOS - COLEGIO MMDD (TGOP) - 2026   ║")
             print("╚" + "═" * 68 + "╝")
             print("  1. Seleccionar curso para ver horario en pantalla")
             print("  2. Ver horario de todos los cursos (secuencial)")
@@ -1857,21 +2321,20 @@ class MenuInteractivo:
 
             if opcion == '1':
                 print("\nLista de Cursos Disponibles:")
-                for idx, c in enumerate(DatosColegio.CURSOS, 1):
+                for idx, c in enumerate(cursos, 1):
                     print(f"  [{idx:2d}] {c}")
-                seleccion = input("\nIngrese el número (1-24) o nombre exacto del curso: ").strip()
-                if seleccion.isdigit() and 1 <= int(seleccion) <= len(DatosColegio.CURSOS):
-                    curso_sel = DatosColegio.CURSOS[int(seleccion) - 1]
-                    self.mostrar_tabla_curso(curso_sel)
+                seleccion = input(f"\nIngrese el número (1-{len(cursos)}) o nombre exacto del curso: ").strip()
+                if seleccion.isdigit() and 1 <= int(seleccion) <= len(cursos):
+                    self.mostrar_tabla_curso(cursos[int(seleccion) - 1])
                 else:
                     self.mostrar_tabla_curso(seleccion)
 
             elif opcion == '2':
-                for c in DatosColegio.CURSOS:
+                for c in cursos:
                     self.mostrar_tabla_curso(c)
 
             elif opcion == '3':
-                doc_query = input("\nIngrese parte del nombre o especialidad del docente: ").strip()
+                doc_query = input("\nIngrese el nombre del docente (ej. 'Inglés 2', 'Básica 5'): ").strip()
                 self.mostrar_tabla_docente(doc_query)
 
             elif opcion == '4':
@@ -1892,7 +2355,7 @@ class MenuInteractivo:
 # =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Generador de Horarios Escolares MMDD")
+    parser = argparse.ArgumentParser(description="Generador de Horarios Escolares MMDD (año 2026)")
     parser.add_argument('--curso', type=str, help="Nombre del curso a consultar directamente")
     parser.add_argument('--docente', type=str, help="Nombre del docente a consultar directamente")
     parser.add_argument('--export', action='store_true', help="Generar Excel automáticamente y salir")

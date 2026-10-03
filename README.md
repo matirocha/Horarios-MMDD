@@ -1,27 +1,30 @@
 # Timetabling Colegio Madres Dominicas (MMDD)
-### Herramienta de Apoyo Algorítmico para la Programación de Horarios Escolares
+### Herramienta de Apoyo Algorítmico para la Programación de Horarios Escolares — Año Escolar 2026
 
 [![Universidad de Concepción](https://img.shields.io/badge/UdeC-Ingenier%C3%ADa%20Civil%20Industrial-003366?style=flat-square)](https://www.udec.cl)
-[![Curso](https://img.shields.io/badge/Asignatura-Taller%20de%20Gesti%C3%B3n%20de%20Operaciones%20(TGOP)-A32638?style=flat-square)](#créditos-y-equipo)
+[![Curso](https://img.shields.io/badge/Asignatura-Taller%20de%20Gesti%C3%B3n%20de%20Operaciones%20(TGOP)-A32638?style=flat-square)](#-créditos-y-equipo)
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Estado-En%20Desarrollo%20/%20Calibraci%C3%B3n-2F7A54?style=flat-square)](#metodología-de-solución)
+[![Status](https://img.shields.io/badge/Estado-En%20Desarrollo%20/%20Calibraci%C3%B3n-2F7A54?style=flat-square)](#-metodología-de-solución)
 
-Este repositorio contiene el desarrollo, formulación matemática, algoritmos de optimización (metaheurísticas) y plataforma de visualización para la **generación y programación automatizada de horarios semanales** del **Colegio Madres Dominicas** (Concepción, Chile).
+Este repositorio contiene el desarrollo, formulación matemática, algoritmos de optimización (metaheurísticas) y plataforma de visualización para la **generación y programación automatizada de horarios semanales** del **Colegio Madres Dominicas** (Concepción, Chile). El modelo está parametrizado con los **datos oficiales del año escolar 2026** (`data/Data 2026`).
 
 ---
 
 ## 📋 Tabla de Contenidos
 1. [Introducción y Contexto del Proyecto](#-introducción-y-contexto-del-proyecto)
-2. [Estructura de Cursos y Niveles](#-estructura-de-cursos-y-niveles)
-3. [Parámetros del Sistema: Dotación Docente](#-parámetros-del-sistema-dotación-docente)
-4. [Cargas Horarias Curriculares por Nivel](#-cargas-horarias-curriculares-por-nivel)
-5. [Estructura de Bloques Horarios y Jornadas](#-estructura-de-bloques-horarios-y-jornadas)
-6. [Restricciones del Modelo de Optimización](#-restricciones-del-modelo-de-optimización)
-   - [Restricciones Duras (Hard Constraints)](#1-restricciones-duras-hard-constraints)
-   - [Restricciones Blandas / Criterios de Calidad (Soft Constraints)](#2-restricciones-blandas-criterios-de-calidad-soft-constraints)
-7. [Arquitectura y Estructura del Repositorio](#-arquitectura-y-estructura-del-repositorio)
-8. [Metodología de Solución](#-metodología-de-solución)
-9. [Créditos y Equipo](#-créditos-y-equipo)
+2. [Fuentes de Datos y Cambios respecto de 2024](#-fuentes-de-datos-y-cambios-respecto-de-2024)
+3. [Estructura de Cursos y Niveles](#-estructura-de-cursos-y-niveles)
+4. [Parámetros del Sistema: Dotación Docente 2026](#-parámetros-del-sistema-dotación-docente-2026)
+5. [Cargas Horarias Curriculares por Nivel](#-cargas-horarias-curriculares-por-nivel)
+6. [Estructura de Bloques Horarios y Jornadas](#-estructura-de-bloques-horarios-y-jornadas)
+7. [Formación Diferenciada: Franjas de Electivos](#-formación-diferenciada-franjas-de-electivos)
+8. [Recintos Deportivos y Salas](#-recintos-deportivos-y-salas)
+9. [Restricciones del Modelo de Optimización](#-restricciones-del-modelo-de-optimización)
+10. [Supuestos e Inconsistencias de los Datos 2026](#-supuestos-e-inconsistencias-de-los-datos-2026)
+11. [Arquitectura y Estructura del Repositorio](#-arquitectura-y-estructura-del-repositorio)
+12. [Metodología de Solución](#-metodología-de-solución)
+13. [Plataforma de Ejecución y Salidas Excel](#-plataforma-de-ejecución-y-salidas-excel)
+14. [Créditos y Equipo](#-créditos-y-equipo)
 
 ---
 
@@ -31,8 +34,9 @@ El **Colegio Madres Dominicas** es un establecimiento educacional con más de 13
 
 ### La Problemática: School Timetabling Problem (STP)
 Tradicionalmente, la construcción de la malla horaria escolar se realiza de manera **manual**, basándose en métodos de prueba y error sobre planillas de cálculo. Esta tarea enfrenta una complejidad combinatoria crítica debido a:
-* **Heterogeneidad de jornadas:** Distintos ciclos académicos finalizan su jornada en bloques distintos según el día de la semana.
-* **Recursos compartidos:** Profesores de asignaturas especializadas y espacios restringidos (gimnasios, laboratorios de ciencias, salas de enlaces) compartidos entre múltiples niveles.
+* **Heterogeneidad de jornadas:** Cada curso termina su jornada en bloques distintos según el día de la semana (incluso cursos paralelos A y B pueden diferir).
+* **Recursos compartidos:** Profesores de asignaturas especializadas, gimnasios y salas de especialidad compartidos entre múltiples niveles.
+* **Co-docencia:** Las horas de *English skills* y el bloque de Artes/Música de enseñanza media requieren **dos docentes en el mismo bloque**.
 * **Electivos de formación diferenciada en 3° y 4° medio:** Los estudiantes de los cursos A y B se mezclan en secciones electivas simultáneas, obligando a coordinar bloques idénticos y sin solapamiento con el plan común.
 
 ### Objetivo General
@@ -40,9 +44,34 @@ Diseñar e implementar una **herramienta algorítmica basada en Python y metaheu
 
 ---
 
+## 🗂️ Fuentes de Datos y Cambios respecto de 2024
+
+El modelo se alimenta de dos documentos oficiales del colegio para el año 2026:
+
+| Archivo | Contenido utilizado |
+| :--- | :--- |
+| `data/Data 2026/HORARIO CURSOS 2026.xlsx` | Bloques y horarios, jornada de cada curso, horas por asignatura, franjas de electivos, gimnasios, salas, bloqueos de pastoral y diseño de las planillas (incluido el escudo del colegio). |
+| `data/Data 2026/DISTRIBUCIÓN HORARIA 2026.docx` | Dotación docente (37 docentes) y asignación profesor–curso–asignatura, jefaturas, *English skills*, intervención y ACLE. |
+
+Los datos de 2024 (`data/Data 2024`) se conservan como referencia histórica. Principales cambios incorporados al modelo:
+
+| Parámetro | 2024 | 2026 |
+| :--- | :---: | :---: |
+| Duración de los bloques | 45 min (bloques 6 a 10 de 40 min) | **45 min todos** |
+| Fin de jornada (bloque 8) / lunes 3°–4° medio | 14:20 / 16:10 | **14:40 / 16:40** |
+| Carga 1° a 4° básico | 36 h (Matemática 6 h) | **38 h (Matemática 8 h)** |
+| Carga 5° básico | 37 h (Matemática 6 h) | **38 h (Matemática 7 h)** |
+| Dotación docente | 46 registros (con duplicados en 5° y 6°) | **37 docentes** |
+| *English skills* (2 docentes) | Implícito, sin marcar | **2° básico a 2° medio, 2 de las 6 h de inglés** |
+| Electivos de 4° medio | Taller de Literatura | **Diseño y Arquitectura** (sale Taller de Literatura) |
+| Uso de gimnasios | Mixto | **Gimnasio A: 5° básico–4° medio · Gimnasio B: 1°–4° básico y párvulos** |
+| Salas registradas | 8 | **12** (se suman las salas de 3°A, 3°B, 4°A y 4°B) |
+
+---
+
 ## 🎓 Estructura de Cursos y Niveles
 
-El modelo abarca formalmente **24 cursos regulares** (2 cursos paralelos, A y B, por cada nivel desde 1° básico hasta 4° medio):
+El modelo programa formalmente **24 cursos regulares** (2 cursos paralelos, A y B, por cada nivel desde 1° básico hasta 4° medio):
 
 | Ciclo Educativo | Niveles Comprendidos | N° Cursos por Nivel | Total Cursos |
 | :--- | :--- | :---: | :---: |
@@ -53,208 +82,223 @@ El modelo abarca formalmente **24 cursos regulares** (2 cursos paralelos, A y B,
 | **Enseñanza Media (Diferenciada)** | 3° Medio, 4° Medio | 2 (A y B) | **4 cursos** |
 | **Total Global del Modelo** | **1° Básico a 4° Medio** | **2 por nivel** | **24 cursos** |
 
-> **Nota sobre Educación Parvularia en los Datos Institucionales:**
-> En los registros oficiales del establecimiento (`HORARIO CURSOS (1).xlsx` y `PROPUESTA HORARIA_MATIAS (1).xls`), el colegio cuenta además con niveles de educación parvularia (**Prekínder A, Kínder A y Kínder B**). Aunque el motor de optimización matemática enfoca la programación automática en los 24 cursos regulares (1° básico a 4° medio), las secciones de párvulos están presentes en los datos de entrada debido a que comparten recursos críticos como docentes de Educación Física y espacios deportivos.
+> **Nota sobre Educación Parvularia:**
+> El colegio cuenta además con **Prekínder A, Kínder A y Kínder B**. El motor programa únicamente su **Educación Física** (2 bloques simples semanales en días distintos, con *Ed. Física 2*), porque comparte docente y Gimnasio B con 1° a 4° básico. El resto de la jornada parvularia no forma parte del modelo.
 
 ---
 
-## 👥 Parámetros del Sistema: Dotación Docente
+## 👥 Parámetros del Sistema: Dotación Docente 2026
 
-La planta docente documentada en la propuesta oficial del colegio (`PROPUESTA HORARIA_MATIAS (1).xls`) contempla **46 docentes / asignaciones docentes**, organizados por especialidad, departamentos y rangos de niveles autorizados:
+La planta docente de `DISTRIBUCIÓN HORARIA 2026.docx` contempla **37 docentes**, identificados por su área tal como en el documento oficial:
 
-| Especialidad Docente | Cantidad en Planilla | Rango de Niveles Habilitados | Funciones, Menciones y Asignaciones Reales |
-| :--- | :---: | :---: | :--- |
-| **Profesores de Educación Básica** | **8** | 1° Básico a 6° Básico | Divididos en dos perfiles:<br>• **Mención Matemática (4):** Dictan Matemática (1°-4° y 5°), Ciencias Naturales, Ciencias Sociales, Artes Visuales y Orientación/Tecnología.<br>• **Mención Lenguaje (4):** Dictan Lenguaje (1°-4° y 5°-6°), Ciencias Naturales, Ciencias Sociales, Música y Orientación/Tecnología.<br>• Cada docente tiene asignada obligatoriamente **1 hora semanal integrada de Orientación y Tecnología** (Jefatura) en cursos de 1° a 4° básico. |
-| **Profesores de Lenguaje** | **7** | 5° Básico a 4° Medio | • **4 docentes de Básica/Media Inicial:** Dictan Lenguaje en 5° y 6° básico (`Profesor lenguaje 1` a `4`).<br>• **3 docentes de Media Superior:** Dictan Lenguaje de 7° básico a 4° medio (`Profesor lenguaje 5` a `7`), asignaturas de profundización (Lectura y Escritura Especializada, Taller de Literatura, Participación y Argumentación) y Jefatura de Departamento. |
-| **Profesores de Matemática** | **6** | 5° Básico a 4° Medio | • **2 docentes de Básica Inicial:** Dictan Matemática en 5° básico (`Profesor matemática 1` y `2`).<br>• **1 docente de Básica Superior:** Dicta Matemática de 6° a 8° básico (`Profesor matemática 4`).<br>• **3 docentes de Media:** Dictan Matemática en Media (`Profesor matemática 3`, `5` y `6`), cubriendo 1° a 4° medio (7 hrs en 1°-2° medio, 3 hrs en 3°-4° medio), electivos (Probabilidades y Estadística, Límites y Derivadas) y Jefatura de Departamento. |
-| **Profesores de Inglés** | **6** | 1° Básico a 4° Medio | Dictan Idioma Extranjero Inglés en todos los niveles del colegio (`Profesor Inglés 1` a `6`) y Jefatura de Departamento. |
-| **Profesores de Historia** | **3** | 5° Básico a 4° Medio | Dictan Historia, Geografía y Ciencias Sociales, Educación Ciudadana y electivos de formación diferenciada (Comprensión Histórica del Presente, Geografía y Problemas Socioambientales, Economía y Sociedad), además de Jefatura de Departamento (`Profesor Historia 1` a `3`). |
-| **Profesores de Ciencias** | **7** | 5° Básico a 4° Medio | • **2 docentes:** Dictan Ciencias Naturales en 5° básico (`Profesor de Ciencias 1` y `2`).<br>• **1 Profesor de Química:** Cubre Química en 1°-2° medio, Ciencias para la Ciudadanía en 4° medio, Ciencias Naturales en 6°B, electivo Química Diferenciada en 3° medio y Jefatura de Departamento (`Profesor Ciencias 3`).<br>• **2 Profesores de Biología:** Cubren Biología en 1°-2° medio, Ciencias para la Ciudadanía en 3° medio, Ciencias Naturales en 6°A y 8°A, y electivos de Biología Celular y Biología de los Ecosistemas (`Profesor de Ciencias 4` y `6`).<br>• **1 Profesor de Cs. Naturales:** Cubre Ciencias Naturales en 7°A, 7°B y 8°B (`Profesor de Ciencias 5`).<br>• **1 Profesor de Física:** Dicta Física transversalmente desde 7° básico hasta 4° medio (`Profesor de Ciencias 7`). |
-| **Profesores de Religión y Filosofía** | **3** | 1° Básico a 4° Medio | Agrupados en el departamento institucional:<br>• **Profesor Religión 1:** Dicta Religión y Formación Valórica de 1° a 6° básico.<br>• **Profesor Religión 2:** Dicta **Filosofía** en 3° y 4° medio.<br>• **Profesor Religión 3:** Dicta Religión de 7° básico a 4° medio. |
-| **Profesores de Artes, Tecnología y Música** | **3** | 5° Básico a 4° Medio | • **Profesor 1 (Tecnología):** Dicta Educación Tecnológica de 5° básico a 2° medio (y Artes en 7°B).<br>• **Profesor 2 (Artes Visuales):** Dicta Artes Visuales de 5° básico a 4° medio (y Tecnología en 8° básico).<br>• **Profesor 3 (Música):** Dicta Educación Musical de 5° básico a 4° medio. |
-| **Profesores de Educación Física** | **3** | Prekínder a 4° Medio | Dictan Educación Física y Salud en todos los niveles (`PROFESOR ED 1`, `2` y `3`), cubriendo también los niveles de educación parvularia. |
-| **Total Planta Docente en Planilla Oficial** | **46** | **Prekínder a 4° Medio** | **Dotación completa de asignaciones docentes del colegio** |
+| Departamento | N° | Docentes | Cobertura y funciones |
+| :--- | :---: | :--- | :--- |
+| **Lenguaje y Filosofía** | 5 | `Lenguaje 1` a `Lenguaje 5` | Lenguaje de 5° básico a 4° medio; electivos *Lectura y Escritura Especializada* (3°) y *Participación y Argumentación en Democracia* (4°). `Lenguaje 5` dicta **Filosofía** en 3° y 4° medio. |
+| **Matemática** | 4 | `Matemática 1` a `Matemática 4` | Matemática de 5° básico a 4° medio; electivos *Probabilidades y Estadística* (3°) y *Límites, Derivadas e Integrales* (4°). `Matemática 2` tiene además 24 h de intervención en media y 2 h de ACLE. |
+| **Inglés** | 5 | `Inglés 1` a `Inglés 5` | Inglés de 1° básico a 4° medio y co-docencia de *English skills*. |
+| **Historia** | 3 | `Historia 1` a `Historia 3` | Historia de 5° básico a 2° medio, Educación Ciudadana en 3° y 4° medio, electivos *Comprensión Histórica del Presente*, *Economía y Sociedad* (3°) y *Geografía, Territorio y Problemas Socioambientales* (4°). |
+| **Ciencias y Religión** | 6 | `Química`, `Biología`, `C. Naturales y Religión`, `C. Naturales`, `Física`, `Religión` | Ciencias Naturales de 5° a 8° básico, Biología, Química y Física en media, Ciencias para la Ciudadanía, electivos de ciencias. `C. Naturales y Religión` combina Ciencias (7° y 8°A) con Religión de 7° básico a 4° medio; `Religión` dicta de 1° a 6° básico. |
+| **Artes, Tecnología y Música** | 3 | `Artes y Tecnología 1`, `Artes y Tecnología 2`, `Música` | Los dos docentes mixtos se reparten Artes y Tecnología de 5° básico a 4° medio y el electivo *Diseño y Arquitectura* (4°A y 4°B); `Música` dicta de 5° básico a 4° medio. |
+| **Educación Física** | 3 | `Ed. Física 1` a `Ed. Física 3` | Desde párvulos hasta 4° medio. |
+| **Educación General Básica** | 8 | `Básica 1` a `Básica 8` | 1° a 4° básico: cada docente dicta Matemática **o** Lenguaje en los cursos A y B de un nivel, más C. Sociales, C. Naturales, Artes, Música y Orientación/Tecnología de su curso de jefatura. Siete de ellas tienen 6–7 h de intervención. |
+| **Total** | **37** | | |
+
+### Profesores Jefes 2026
+
+| Curso | Jefatura | Curso | Jefatura | Curso | Jefatura |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1° Básico A | Básica 1 | 5° Básico A | Historia 2 | 1° Medio A | Química |
+| 1° Básico B | Básica 2 | 5° Básico B | Inglés 1 | 1° Medio B | Inglés 5 |
+| 2° Básico A | Básica 3 | 6° Básico A | Inglés 4 | 2° Medio A | Matemática 1 |
+| 2° Básico B | Básica 4 | 6° Básico B | C. Naturales | 2° Medio B | Lenguaje 4 |
+| 3° Básico A | Básica 5 | 7° Básico A | C. Naturales y Religión | 3° Medio A | Matemática 3 |
+| 3° Básico B | Básica 6 | 7° Básico B | Inglés 3 | 3° Medio B | Lenguaje 1 |
+| 4° Básico A | Básica 7 | 8° Básico A | Historia 1 | 4° Medio A | Lenguaje 3 |
+| 4° Básico B | Básica 8 | 8° Básico B | Matemática 2 | 4° Medio B | Inglés 2 *(supuesto)* |
 
 ---
 
 ## 📚 Cargas Horarias Curriculares por Nivel
 
-Cada curso cuenta con una exigencia semanal de horas pedagógicas (bloques lectivos de 1 hora) fijadas por el plan curricular del establecimiento y el Ministerio de Educación, validadas directamente con las mallas de `HORARIO CURSOS (1).xlsx`:
+Cada curso cuenta con una exigencia semanal de horas pedagógicas (bloques de 45 minutos), validada con las tablas de horas de `HORARIO CURSOS 2026.xlsx`. La carga de cada curso coincide exactamente con su jornada, por lo que **no quedan bloques libres**.
+
+> **English skills:** de 2° básico a 2° medio, **2 de las 6 horas de Inglés** se dictan con **dos docentes simultáneos** (marcadas en amarillo en las planillas). 1° básico y 3°–4° medio no tienen *English skills*.
 
 ### 1. Primer Ciclo Básico: 1°, 2°, 3° y 4° Básico
-> **Carga Semanal Total:** 36 horas pedagógicas
+> **Carga Semanal Total:** 38 horas pedagógicas
 
 * **Lenguaje y Comunicación:** 8 horas
-* **Educación Matemática:** 6 horas
-* **Idioma Extranjero Inglés:** 6 horas
-* **Ciencias Naturales:** 3 horas
+* **Educación Matemática:** 8 horas *(sube desde 6 h en 2024)*
+* **Idioma Extranjero Inglés:** 6 horas *(2° a 4°: 4 h + 2 h de English skills)*
 * **Ciencias Sociales / Historia:** 3 horas
-* **Educación Física y Salud:** 3 horas
+* **Ciencias Naturales:** 3 horas
 * **Artes Visuales:** 2 horas
-* **Educación Musical:** 2 horas
+* **Música:** 2 horas
+* **Educación Física y Salud:** 3 horas
 * **Religión:** 2 horas
-* **Orientación y Tecnología (Integrada):** 1 hora *(sesión semanal de 1 bloque pedagógico `C.ORIEN./TEC.` que integra curricularmente 0.5 horas de Orientación y 0.5 horas de Educación Tecnológica, impartida por el/la profesor/a jefe de básica)*
-
----
+* **Orientación y Tecnología (Integrada):** 1 hora *(bloque `ORIEN/TEC.` a cargo del profesor/a jefe; equivale a 0,5 h de Orientación + 0,5 h de Tecnología)*
 
 ### 2. Segundo Ciclo Básico: 5° y 6° Básico
-> **Carga Semanal Total:** 37 horas pedagógicas
+> **Carga Semanal Total:** 38 horas en 5° básico · 37 horas en 6° básico
 
 * **Lenguaje y Comunicación:** 6 horas
-* **Educación Matemática:** 6 horas
-* **Idioma Extranjero Inglés:** 6 horas
+* **Educación Matemática:** 7 horas en 5° básico · 6 horas en 6° básico
+* **Idioma Extranjero Inglés:** 6 horas (4 h + 2 h de English skills)
 * **Historia, Geografía y Ciencias Sociales:** 4 horas
 * **Ciencias Naturales:** 4 horas
-* **Educación Física y Salud:** 2 horas
-* **Artes Visuales:** 2 horas
 * **Educación Tecnológica:** 2 horas
-* **Educación Musical:** 2 horas
-* **Religión:** 2 horas
+* **Artes Visuales:** 2 horas
+* **Música:** 2 horas
+* **Educación Física y Salud:** 2 horas
 * **Orientación:** 1 hora
-
----
+* **Religión:** 2 horas
 
 ### 3. Segundo Ciclo Básico Superior: 7° y 8° Básico
 > **Carga Semanal Total:** 37 horas pedagógicas
 
 * **Lenguaje y Comunicación:** 6 horas
 * **Educación Matemática:** 6 horas
-* **Idioma Extranjero Inglés:** 6 horas
+* **Idioma Extranjero Inglés:** 6 horas (4 h + 2 h de English skills)
 * **Historia, Geografía y Ciencias Sociales:** 4 horas
 * **Ciencias Naturales:** 4 horas
 * **Física:** 1 hora
-* **Educación Física y Salud:** 2 horas
+* **Educación Tecnológica:** 1 hora
 * **Artes Visuales:** 2 horas
-* **Educación Tecnológica:** 1 hora *(a diferencia de 5° y 6° que tienen 2 horas)*
-* **Educación Musical:** 2 horas
-* **Religión:** 2 horas
+* **Música:** 2 horas
+* **Educación Física y Salud:** 2 horas
 * **Orientación:** 1 hora
-
----
+* **Religión:** 2 horas
 
 ### 4. Enseñanza Media Inicial: 1° y 2° Medio
 > **Carga Semanal Total:** 40 horas pedagógicas
 
 * **Lenguaje y Comunicación:** 6 horas
-* **Educación Matemática:** 7 horas *(plan reforzado de 7 horas semanales en 1° y 2° medio)*
-* **Idioma Extranjero Inglés:** 6 horas
+* **Educación Matemática:** 7 horas
+* **Idioma Extranjero Inglés:** 6 horas (4 h + 2 h de English skills)
 * **Historia, Geografía y Ciencias Sociales:** 4 horas
 * **Biología:** 4 horas
 * **Química:** 2 horas
 * **Física:** 2 horas
 * **Educación Tecnológica:** 2 horas
-* **Artes Visuales:** 2 horas
+* **Artes Visuales / Música:** 2 horas *(bloque `ARTES-MÚSICA`: el curso se divide y ambos docentes dictan en simultáneo)*
 * **Educación Física y Salud:** 2 horas
-* **Religión:** 2 horas
 * **Orientación:** 1 hora
-
----
+* **Religión:** 2 horas
 
 ### 5. Enseñanza Media Superior: 3° y 4° Medio
-> **Carga Semanal Total:** 42 horas pedagógicas (24 horas Plan Común Base + 18 horas Formación Diferenciada / Electivos)
+> **Carga Semanal Total:** 42 horas pedagógicas (24 horas Plan Común + 18 horas de Formación Diferenciada)
 
-**Plan Común Base (24 horas pedagógicas):**
-* **Lenguaje y Comunicación:** 3 horas
-* **Educación Matemática:** 3 horas
-* **Idioma Extranjero Inglés:** 4 horas
-* **Educación Ciudadana:** 2 horas
-* **Ciencias para la Ciudadanía:** 2 horas
-* **Filosofía:** 2 horas
-* **Física:** 1 hora
-* **Artes Visuales:** 2 horas
-* **Educación Física y Salud:** 2 horas
-* **Religión:** 2 horas
-* **Orientación:** 1 hora
+**Plan Común (24 horas pedagógicas):** Lenguaje 3, Matemática 3, Inglés 4, Educación Ciudadana 2, Ciencias para la Ciudadanía 2, Filosofía 2, Física 1, Artes Visuales / Música 2 *(co-docencia)*, Educación Física 2, Orientación 1 y Religión 2.
 
-**Módulos de Formación Diferenciada (18 horas pedagógicas):**
-3 asignaturas electivas por curso de 6 horas semanales cada una, programadas en bloques simultáneos y coordinados entre cursos paralelos A y B:
-* **En 3° Medio:**
-  * *Lectura y Escritura Especializada* (6 hrs)
-  * *Comprensión Histórica del Presente* (6 hrs)
-  * *Probabilidades y Estadística Descriptiva* (6 hrs)
-  * *Química Formación Diferenciada* (6 hrs)
-  * *Biología Celular y Molecular* (6 hrs)
-  * *Economía y Sociedad* (6 hrs)
-* **En 4° Medio:**
-  * *Taller de Literatura* (6 hrs)
-  * *Límites, Derivadas e Integrales* (6 hrs)
-  * *Participación y Argumentación en Democracia* (6 hrs)
-  * *Geografía, Territorio y Problemas Socioambientales* (6 hrs)
-  * *Biología de los Ecosistemas* (6 hrs, 4° Medio A) / *Ciencias para la Salud* (6 hrs, 4° Medio B)
+**Formación Diferenciada (18 horas pedagógicas):** 3 franjas de 6 horas, cada una con varios electivos dictados en paralelo (ver sección siguiente).
 
 ---
 
 ## ⏱️ Estructura de Bloques Horarios y Jornadas
 
-La jornada escolar está compuesta por bloques pedagógicos de **1 hora** (o módulos de 40-45 minutos organizados en bloques secuenciales). Los límites diarios y totales semanales de bloques disponibles coinciden exactamente con la carga curricular oficial:
+Todos los bloques duran **45 minutos**. Los bloques dobles (90 minutos) se forman con los pares 1-2, 3-4, 5-6, 7-8 y 9-10, que nunca cruzan un recreo:
 
-| Nivel / Ciclo | Lunes | Martes | Miércoles | Jueves | Viernes | Total Bloques Disponibles Semanal | Carga Curricular Requerida |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1° a 4° Básico** | Bloques 1 a 8 | Bloques 1 a 7 | Bloques 1 a 7 | Bloques 1 a 7 | Bloques 1 a 7 | **36 bloques** | **36 horas** |
-| **5° Básico** | Bloques 1 a 8 | Bloques 1 a 8 | Bloques 1 a 8 | Bloques 1 a 7 | Bloques 1 a 6 | **37 bloques** | **37 horas** |
-| **6° a 8° Básico** | Bloques 1 a 8 | Bloques 1 a 8 | Bloques 1 a 7 *(o 6)* | Bloques 1 a 8 | Bloques 1 a 6 *(o 7)* | **37 bloques** | **37 horas** |
-| **1° y 2° Medio** | Bloques 1 a 8 | Bloques 1 a 8 | Bloques 1 a 8 | Bloques 1 a 8 | Bloques 1 a 8 | **40 bloques** | **40 horas** |
-| **3° y 4° Medio** | Bloques 1 a 10 *(tarde)* | Bloques 1 a 8 | Bloques 1 a 8 | Bloques 1 a 8 | Bloques 1 a 8 | **42 bloques** | **42 horas** |
+| Bloque | Horario | | Bloque | Horario |
+| :---: | :---: | :---: | :---: | :---: |
+| 1 | 08:00 - 08:45 | | 6 | 12:15 - 13:00 |
+| 2 | 08:45 - 09:30 | | *Recreo* | *13:00 - 13:10* |
+| *Recreo* | *09:30 - 09:45* | | 7 | 13:10 - 13:55 |
+| 3 | 09:45 - 10:30 | | 8 | 13:55 - 14:40 |
+| 4 | 10:30 - 11:15 | | *Colación* | *14:40 - 15:10* |
+| *Recreo* | *11:15 - 11:30* | | 9 | 15:10 - 15:55 |
+| 5 | 11:30 - 12:15 | | 10 | 15:55 - 16:40 |
 
-> **Nota sobre la jornada de la tarde:**
-> Los bloques 9 y 10 (jornada de la tarde, posterior a colación de 14:20 a 14:50) aplican **exclusivamente los días lunes para 3° y 4° medio**. El resto de la semana y los demás ciclos operan íntegramente en horario matutino hasta el bloque 8 (14:20 hrs) o anterior.
+Jornada de cada curso (último bloque lectivo de cada día), según las mallas 2026:
+
+| Curso | Lunes | Martes | Miércoles | Jueves | Viernes | Total |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1° a 4° Básico** (A y B) | 1–8 | 1–8 | 1–7 | 1–8 | 1–7 | **38** |
+| **5° Básico A** | 1–8 | 1–8 | 1–8 | 1–6 | 1–8 | **38** |
+| **5° Básico B** | 1–8 | 1–8 | 1–8 | 1–8 | 1–6 | **38** |
+| **6° y 7° Básico** (A y B) | 1–8 | 1–8 | 1–7 | 1–8 | 1–6 | **37** |
+| **8° Básico A** | 1–6 | 1–8 | 1–7 | 1–8 | 1–8 | **37** |
+| **8° Básico B** | 1–8 | 1–8 | 1–7 | 1–8 | 1–6 | **37** |
+| **1° y 2° Medio** | 1–8 | 1–8 | 1–8 | 1–8 | 1–8 | **40** |
+| **3° y 4° Medio** | 1–10 *(tarde)* | 1–8 | 1–8 | 1–8 | 1–8 | **42** |
+| **Párvulos** *(supuesto, solo Ed. Física)* | 1–6 | 1–6 | 1–6 | 1–6 | 1–6 | 2 |
+
+> Los bloques 9 y 10 (posteriores a la colación) se usan **solo los lunes en 3° y 4° medio**.
+
+---
+
+## 🎯 Formación Diferenciada: Franjas de Electivos
+
+Las 18 horas de electivos de cada nivel se organizan en **3 franjas institucionales de 6 horas** (3 periodos dobles), fijas según la grilla oficial 2026 y compartidas por los cursos A y B. En cada franja se dicta un electivo propio de la franja y tres electivos que rotan en 3 secciones (S.1, S.2 y S.3). Las franjas de 3° y 4° medio nunca se superponen, por lo que un mismo docente puede dictar en ambos niveles.
+
+### 3° Medio
+
+| Franja | Periodos dobles | Electivos (docente → sala) |
+| :---: | :--- | :--- |
+| **1** | Lun 3-4 · Mar 7-8 · Jue 5-6 | Comprensión Histórica del Presente 3AB (Historia 3 → Sala 3°A) · Lectura y Escritura S.1 (Lenguaje 1 → Sala 3°B) · Química S.1 (Química → Electivo 2) · Economía S.1 (Historia 1 → Electivo 3) |
+| **2** | Lun 7-8 · Mié 1-2 · Jue 3-4 | Probabilidades y Estadística 3AB (Matemática 1 → Sala 3°A) · Lectura y Escritura S.2 (Lenguaje 1 → Sala 3°B) · Química S.2 (Química → Electivo 2) · Economía S.2 (Historia 1 → Electivo 3) |
+| **3** | Mar 5-6 · Mié 3-4 · Jue 7-8 | Biología Celular y Molecular 3AB (Biología → Sala 3°A) · Lectura y Escritura S.3 (Lenguaje 4 → Sala 3°B) · Química S.3 (Química → Electivo 2) · Economía S.3 (Historia 2 → Electivo 3) |
+
+### 4° Medio
+
+| Franja | Periodos dobles | Electivos (docente → sala) |
+| :---: | :--- | :--- |
+| **1** | Mar 1-2 · Mié 7-8 · Vie 1-2 | Diseño y Arquitectura 4A (Artes y Tecnología 1 → Sala 4°A) y 4B (Artes y Tecnología 2 → Sala 4°B) · Límites S.1 (Matemática 3 → Electivo 2) · Participación y Argumentación S.1 (Lenguaje 1 → Sala de Tecnología) · Geografía S.1 (Historia 3 → Electivo 3) |
+| **2** | Mar 3-4 · Mié 5-6 · Vie 3-4 | Biología de los Ecosistemas 4A (Biología → Sala 4°A) y 4B (C. Naturales → Electivo 3) · Límites S.2 (Matemática 1 → Electivo 2) · Participación y Argumentación S.2 (Lenguaje 1 → Sala de Tecnología) · Geografía S.2 (Historia 3 → Sala 4°B) |
+| **3** | Lun 1-2 · Jue 1-2 · Vie 5-6 | Ciencias para la Salud 4AB (C. Naturales → Sala 4°B) · Límites S.3 (Matemática 1 → Electivo 2) · Participación y Argumentación S.3 (Lenguaje 2 → Sala 4°A) · Geografía S.3 (Historia 3 → Electivo 3) |
+
+---
+
+## 🏟️ Recintos Deportivos y Salas
+
+* **Recintos deportivos (un curso por bloque en cada uno):**
+  * **Gimnasio A:** Educación Física de 5° básico a 4° medio.
+  * **Gimnasio B:** Educación Física de 1° a 4° básico y párvulos.
+  * **Patio Santo Domingo:** recibe el desborde de cualquiera de los gimnasios; su uso se penaliza en la función objetivo (en los datos oficiales 2026 no se usa).
+* **Salas registradas (12):** *Electivo 1* (English skills, un curso por bloque), *Electivo 2*, *Electivo 3*, *Sala de Tecnología*, *Sala Padre Cueto*, *Sala Madre Pilar*, *Sala de Artes* (Artes de media), *Sala de Música* (Música de 5° básico a 4° medio) y las salas de *3°A, 3°B, 4°A y 4°B* para electivos.
+* **Bloqueos de pastoral:** Sala de Tecnología, Electivos 2 y 3, Sala Padre Cueto, Sala Madre Pilar, Sala de Artes y párvulos tienen franjas reservadas (principalmente colación y bloques 9-10 de martes y jueves; además martes 1-2 y jueves 1-4 en Madre Pilar y jueves 7-8 en Padre Cueto).
 
 ---
 
 ## 🔒 Restricciones del Modelo de Optimización
 
-El problema de asignación se formula mediante un modelo matemático que diferencia estrictamente entre restricciones duras (factibilidad) y blandas (calidad de servicio).
+El problema de asignación diferencia estrictamente entre restricciones duras (factibilidad) y blandas (calidad de servicio). Todas las restricciones duras se verifican de forma independiente en la auditoría (`ValidadorRestricciones`).
 
 ### 1. Restricciones Duras (Hard Constraints)
 Deben cumplirse en el 100% de los casos para que un horario sea considerado factible:
 
-1. **Especialidad y Habilitación por Nivel:**
-   * Ningún profesor puede impartir asignaturas fuera de su especialidad ni fuera de su rango de niveles permitido, según la planta oficial de 46 docentes:
-   * **Profesores de Educación Básica (8):** Mención Matemática (imparten asignaturas de ciclo básico 1° a 6° excepto Lenguaje) y Mención Lenguaje (imparten ciclo básico 1° a 6° excepto Matemática).
-   * **Profesores de Lenguaje (7):** `Profesor lenguaje 1` a `4` asignados al ciclo básico inicial (5° y 6° básico); `Profesor lenguaje 5` a `7` habilitados de 7° básico a 4° medio y electivos de profundización.
-   * **Profesores de Matemática (6):** `Profesor matemática 1` y `2` asignados a 5° básico; `Profesor matemática 4` a cargo de 6° a 8° básico; `Profesor matemática 3`, `5` y `6` habilitados en enseñanza media (1° a 4° medio) y electivos.
-   * **Profesores de Inglés (6):** Habilitados para impartir desde 1° básico hasta 4° medio.
-   * **Profesores de Historia (3):** Habilitados para impartir desde 5° básico hasta 4° medio y electivos del área.
-   * **Profesores de Ciencias (7):** Profesores 1 y 2 en 5° básico; Profesor 3 en Química y Cs. Naturales 6°B; Profesores 4 y 6 en Biología y electivos; Profesor 5 en Cs. Naturales (7° y 8°B); Profesor 7 en Física transversal (7° básico a 4° medio).
-   * **Profesores de Religión y Filosofía (3):** Profesor Religión 1 (1° a 6° básico), Profesor Religión 2 (Filosofía en 3° y 4° medio) y Profesor Religión 3 (Religión de 7° básico a 4° medio).
-   * **Profesores de Artes, Tecnología y Música (3):** Profesor 1 en Tecnología (5° a 2° medio), Profesor 2 en Artes Visuales (5° a 4° medio) y Profesor 3 en Música (5° a 4° medio).
-   * **Profesores de Educación Física (3):** Habilitados desde educación parvularia (Prekínder y Kínder) hasta 4° medio.
+1. **Asignación docente oficial:** Cada asignatura de cada curso la dicta el docente indicado en `DISTRIBUCIÓN HORARIA 2026.docx` (ver tabla de dotación).
+2. **No Solapamiento Docente (Clash-Free Teacher):** Un docente no puede atender más de un curso o grupo en un mismo bloque. En las lecciones con co-docencia, todos los docentes involucrados deben estar libres; un electivo compartido por A y B cuenta como un solo grupo.
+3. **Ocupación Única y Jornada Completa:** Cada curso recibe exactamente una actividad por bloque de su jornada, sin huecos y sin bloques fuera de ella.
+4. **Cumplimiento Estricto de Cargas Horarias:** Las horas asignadas por asignatura coinciden exactamente con la malla (38 h en 1°–5° básico, 37 h en 6°–8° básico, 40 h en 1°–2° medio y 42 h en 3°–4° medio).
+5. **Orientación y Jefatura:** La Orientación (y el bloque `ORIEN/TEC.` de 1° a 4° básico) está a cargo del profesor/a jefe de cada curso.
+6. **Franjas de Electivos Sincronizadas (3° y 4° Medio):** Las 3 franjas de cada nivel ocupan bloques idénticos en las secciones A y B, sin choques con el plan común.
+7. **Recintos Deportivos:** Un curso por recinto y bloque; cada curso usa el gimnasio de su ciclo y solo el desborde va al Patio Santo Domingo.
+8. **English skills:** Se dicta con sus dos docentes simultáneos, en la sala *Electivo 1*, que admite un curso por bloque.
+9. **Una Sesión Diaria por Asignatura:** Ninguna asignatura se reparte en dos sesiones el mismo día (las English skills cuentan como Inglés).
+10. **Bloques Pedagógicos Dobles:** Las asignaturas se programan en pares de 90 minutos dentro de un par pedagógico; solo las horas impares (p. ej. 3 h de Ciencias Naturales o 7 h de Matemática) agregan un bloque simple en otro día. Las troncales (Matemática, Lenguaje y Ciencias) nunca quedan partidas en el mismo día.
+11. **Bloqueos de Pastoral:** Ninguna actividad programada ocupa una sala en una franja reservada para pastoral.
 
-2. **No Solapamiento Docente (Clash-Free Teacher):**
-   * Un docente no puede estar asignado a más de un curso o sección en un mismo bloque horario $t$.
-
-3. **No Solapamiento de Cursos (Single Course Occupancy):**
-   * Un curso $c$ solo puede recibir una asignatura o actividad pedagógica en cada bloque horario $t$.
-
-4. **Cumplimiento Estricto de Cargas Horarias:**
-   * La suma total de bloques asignados a cada asignatura en la semana debe ser exactamente igual a la carga curricular exigida por curso (36 hrs en 1°-4° básico, 37 hrs en 5°-8° básico, 40 hrs en 1°-2° medio y 42 hrs en 3°-4° medio).
-
-5. **Orientación y Jefatura en Básica:**
-   * A cada uno de los 8 profesores de básica le corresponde obligatoriamente la hora semanal integrada de Orientación y Tecnología (`C.ORIEN./TEC.`) en un curso de 1° a 4° básico.
-
-6. **Coordinación y Simultaneidad de Electivos (3° y 4° Medio):**
-   * Los bloques destinados a las asignaturas de formación diferenciada (3 electivos de 6 horas por curso) deben programarse de manera coordinada y simultánea para las secciones paralelas A y B de cada nivel, impidiendo choques con asignaturas del plan común.
-
-7. **Restricción de Capacidad en Espacios Físicos Compartidos:**
-   * **Recintos Deportivos:** El establecimiento cuenta con **3 espacios diferenciados**: **Gimnasio A**, **Gimnasio B** y **Patio Santo Domingo**. Cada recinto solo puede albergar un curso por bloque lectivo (máximo 3 cursos simultáneos en Educación Física en el colegio, considerando básica, media y párvulos).
-   * **Salas de Especialidad y Electivos:** La planilla oficial coordina **8 salas específicas** (*Electivo 1, Electivo 2, Electivo 3, Sala de Tecnología, Sala Padre Cueto, Sala Madre Pilar, Sala de Artes y Sala de Música*), las cuales no admiten solapamiento entre distintas secciones.
-   * **Bloqueos Institucionales por Actividades Pastorales:** Determinados recintos (ej. Sala Padre Cueto, Sala Madre Pilar y Sala de Música) tienen franjas bloqueadas para actividades de pastoral escolar (*Comunidad Misionera* y *Amigos Servidores*), restringiendo su uso lectivo.
-
-8. **No Repetición Diaria de Asignaturas (At Most One Session Per Day):**
-   * Ningún curso puede tener la misma asignatura repartida en dos sesiones o momentos separados durante el mismo día escolar. Toda carga diaria de una asignatura debe impartirse en una única sesión continua (evitando, por ejemplo, tener Matemática a primera hora y nuevamente en la tarde).
-
-9. **Bloques Pedagógicos Consecutivos (90 minutos) para Asignaturas Troncales:**
-   * Para asignaturas clave y de alta demanda cognitiva (**Educación Matemática**, **Lenguaje y Comunicación**, y **Ciencias**: Ciencias Naturales, Biología, Química y Física), los bloques lectivos deben programarse obligatoriamente de forma consecutiva (pares pedagógicos de 90 minutos contiguos). No se admiten bloques aislados de 1 hora para estas materias salvo remanentes impares estricta y curricularmente autorizados.
+### 2. Restricciones Blandas / Criterios de Calidad (Soft Constraints)
+* **Uso del Patio Santo Domingo** *(implementado en la función objetivo)*: se penaliza cada bloque de Educación Física que no cabe en el gimnasio de su ciclo.
+* **Porcentaje de bloques dobles y ventanas docentes** *(medidos en la auditoría)*: proporción de horas en pares de 90 minutos y bloques libres intermedios en la jornada de cada docente.
+* **Pendiente de incorporar a la optimización:** minimizar las ventanas docentes, distribuir las asignaturas de alta carga cognitiva a lo largo de la semana y balancear la carga diaria de cada curso.
 
 ---
 
-### 2. Restricciones Blandas / Criterios de Calidad (Soft Constraints)
-Definen la función de evaluación (fitness) para seleccionar la mejor solución entre múltiples opciones factibles:
+## ⚠️ Supuestos e Inconsistencias de los Datos 2026
 
-* **Minimización de Bloques Libres Docentes ("Ventanas"):** Compactar la jornada laboral de los profesores para evitar esperas intermedias improductivas.
-* **Distribución Semanal Equilibrada:** Distribuir asignaturas de alta carga cognitiva (como Matemática y Lenguaje) a lo largo de los días de la semana, evitando sobrecargas en un solo día.
-* **Bloques Pedagógicos Dobles Contiguos:** Priorizar que asignaturas prácticas o de experimentación (Educación Física, Artes, Tecnología, Laboratorio de Ciencias) se programen en bloques consecutivos de 2 horas.
-* **Control de Carga Diaria:** Balancear la intensidad académica diaria de los cursos.
+Los documentos oficiales contienen algunas inconsistencias. El modelo adopta los siguientes supuestos, que conviene **confirmar con el colegio**:
+
+| Situación en los datos | Supuesto adoptado |
+| :--- | :--- |
+| `Matemática 4` aparece dos veces con "7A" y 7° básico B queda sin profesor de Matemática. | La segunda fila corresponde a **7° básico B**. |
+| `Biología` aparece dos veces con "1A" y 1° medio B queda sin profesor de Biología. | La segunda fila corresponde a **1° medio B**. |
+| La jefatura de 4° medio A está asignada a `Lenguaje 3` y a `Inglés 2`; 4° medio B no tiene jefatura. | 4°A → `Lenguaje 3`; **4°B → `Inglés 2`**. |
+| `Lenguaje 4` figura con "3A-B s. 2" en Lectura y Escritura, sección que ya dicta `Lenguaje 1`. | Corresponde a la **sección 3**. |
+| La fila "ACLE 2 h" no indica docente. | Pertenece a `Matemática 2` (su total declarado es 39 h). |
+| La hoja de 8° básico B no marca las English skills en amarillo. | Se modelan igual que en el resto de los cursos, según el documento de distribución. |
+| La jornada de párvulos no figura en los datos. | Su Educación Física se programa entre los bloques 1 y 6. |
+| Las horas de intervención (básica y media) y ACLE no tienen curso ni horario definidos. | Se informan en la distribución docente, pero **no se programan** en la grilla. |
 
 ---
 
@@ -262,20 +306,23 @@ Definen la función de evaluación (fitness) para seleccionar la mejor solución
 
 ```text
 Horarios-MMDD/
-├── data/                                # Datos de entrada y planillas oficiales del colegio
-│   ├── HORARIO CURSOS (1).xlsx          # Mallas horarias de referencia por curso y espacio
-│   └── PROPUESTA HORARIA_MATIAS (1).xls # Propuesta de distribución y dotación docente
-├── notebooks/                           # Jupyter Notebooks de experimentación y prototipado
-│   ├── generador_horarios.py            # Motor algorítmico y optimizador en Python
-│   └── Outputs Excel/                   # Libros generados automáticamente en formato Excel
-│       ├── Horario_Cursos_MMDD.xlsx     # Horarios oficiales por curso (24 cursos + resúmenes)
-│       └── Horarios_Docentes_Colegio_MMDD.xlsx # Horarios individualizados por docente (51 docentes)
-├── Presentacion de avance/              # Documentación de entregas académicas
-│   ├── Presentacion_Avance1_Grupo5.html # Presentación interactiva del proyecto (Informe de Avance)
-│   └── Presentacion_Avance1_Grupo5.pdf  # Versión PDF de la presentación
-├── Paginas Web/                         # Plataforma web para visualización de mallas horarias
-├── .gitignore                           # Archivos y temporales ignorados por Git
-└── README.md                            # Documentación integral del repositorio
+├── data/
+│   ├── Data 2024/                              # Datos históricos (referencia)
+│   │   ├── HORARIO CURSOS (1).xlsx
+│   │   └── PROPUESTA HORARIA_MATIAS (1).xls
+│   └── Data 2026/                              # Datos oficiales vigentes del modelo
+│       ├── HORARIO CURSOS 2026.xlsx            # Mallas, jornadas, electivos, gimnasios, salas y diseño
+│       └── DISTRIBUCIÓN HORARIA 2026.docx      # Dotación docente y asignación profesor-curso
+├── notebooks/
+│   ├── generador_horarios.py                   # Motor algorítmico, auditoría y exportación a Excel
+│   └── Outputs Excel/                          # Libros generados automáticamente
+│       ├── Horario_Cursos_MMDD.xlsx            # Mismo formato que HORARIO CURSOS 2026.xlsx
+│       └── Horarios_Docentes_Colegio_MMDD.xlsx # Distribución horaria y grilla de cada docente
+├── papers/                                     # Bibliografía de timetabling
+├── Actas/                                      # Actas y planificación del grupo
+├── Presentacion de avance/                     # Documentación de entregas académicas
+├── tgop_syllabus.pdf · tgop_informes.pdf       # Documentos de la asignatura
+└── README.md                                   # Documentación integral del repositorio
 ```
 
 ---
@@ -298,21 +345,51 @@ flowchart LR
 4. **Calibración y Ajuste:** Afinamiento de parámetros computacionales y ponderaciones de la función de aptitud frente a la escala combinatoria real.
 5. **Validación y Despliegue:** Contraste de horarios generados versus horarios manuales históricos y despliegue en la plataforma web interactiva.
 
+### Motor actual (`MotorHorarios`)
+1. **Modelo de sesiones:** cada asignatura se descompone en sesiones dobles (90 min, siempre dentro de un par pedagógico) y, si sus horas son impares, una sesión simple. Las franjas de electivos se fijan primero y se comparten entre A y B.
+2. **Construcción voraz:** se ubican primero las sesiones dobles y luego las simples, de la más restringida (co-docencia, docentes con mayor carga, Educación Física) a la menos restringida, en la posición de menor costo.
+3. **Búsqueda local Min-Conflicts con lista tabú:** se elige una restricción violada, una de sus sesiones y el mejor intercambio dentro del curso (par por par o bloque por bloque, lo que mantiene la jornada completa), con ruido aleatorio y reinicios desde la mejor solución encontrada.
+
+Con la semilla por defecto (`--seed 3`) el motor obtiene en menos de un segundo un horario con **936/936 bloques asignados, 0 violaciones duras, 92% de las horas en bloques dobles y sin uso del Patio Santo Domingo**.
+
 ---
 
 ## 📊 Plataforma de Ejecución y Salidas Excel
 
-El sistema cuenta con un motor algorítmico autocontenido en Python (`notebooks/generador_horarios.py`) que genera la programación horaria factible y exporta automáticamente dos libros Excel estructurados en `notebooks/Outputs Excel/`:
+### Requisitos e instrucciones
+* Python 3.9 o superior.
+* `openpyxl` para generar los Excel y `Pillow` para insertar el escudo del colegio (si falta Pillow, las hojas se generan sin escudo).
+
+```bash
+pip install openpyxl pillow
+```
+
+```bash
+python notebooks/generador_horarios.py
+```
+
+Opciones de línea de comandos (los Excel se generan siempre al iniciar):
+
+| Opción | Descripción |
+| :--- | :--- |
+| *(sin opciones)* | Menú interactivo en consola. |
+| `--export` | Genera los Excel y termina. |
+| `--audit` | Muestra la auditoría de restricciones. |
+| `--curso "3° MEDIO A"` | Muestra el horario de un curso. |
+| `--docente "Inglés 1"` | Muestra el horario de un docente. |
+| `--seed N` | Cambia la semilla del generador (por defecto 3). |
 
 ### 1. `Horario_Cursos_MMDD.xlsx` (Horario por Cursos)
-* **24 Hojas de Cursos:** Una pestaña por cada curso (1° Básico A a 4° Medio B) con títulos institucionales en las filas 1, 2 y 3 unificados mediante **Combinar y Centrar (`A1:G1`, `A2:G2` y `A3:G3`)**, paleta de colores corporativa (azul marino y carmesí), bloques lectivos y recreos destacados.
-* **Hoja de Gimnasios:** Monitoreo y control de aforo para los 3 recintos deportivos (*Gimnasio A, Gimnasio B y Patio Santo Domingo*).
-* **Hoja de Docentes:** Consolidado de carga horaria semanal y programación general.
-* **Hoja de Auditoría:** Informe matemático de verificación de las restricciones duras (*Hard Constraints*).
+Replica la estructura y el diseño de `HORARIO CURSOS 2026.xlsx`: fuente Cavolini, encabezados y recreos en amarillo, bloques y horarios en crema, bordes naranjos y el escudo del colegio.
+* **SALAS ELECTIVOS:** grilla de las 12 salas (English skills, electivos por sección, Artes y Música de media, bloqueos de pastoral).
+* **GIMNASIOS:** Gimnasio A, Gimnasio B y Patio Santo Domingo, con los pares libres marcados como *GIMNASIO / DISPONIBLE*.
+* **PREKINDER A, KINDER A y KINDER B:** Educación Física de párvulos.
+* **24 hojas de cursos:** grilla semanal (English skills en amarillo) y tabla de horas por asignatura con el docente asignado y el profesor/a jefe.
+* **AUDITORIA:** verificación de todas las restricciones duras e indicadores de calidad.
 
 ### 2. `Horarios_Docentes_Colegio_MMDD.xlsx` (Horario por Docente)
-* **Hoja RESUMEN DOCENTES:** Matriz consolidada de toda la planta docente con N°, Nombre del Docente, Horas Totales asignadas, Cursos a cargo y Asignaturas impartidas, con cabecera combinada y centrada (`A1:E1`, `A2:E2`, `A3:E3`).
-* **51 Hojas Individuales de Docentes:** Una pestaña personalizada por cada profesor/a con su malla horaria semanal detallada (Bloque, Horario, Lunes a Viernes), indicando curso y asignatura en cada bloque asignado, bloques libres/ventanas y recreos/colaciones, con cabecera combinada y centrada (`A1:G1`, `A2:G2`, `A3:G3`).
+* **DISTRIBUCIÓN HORARIA:** tablas por departamento con el formato de `DISTRIBUCIÓN HORARIA 2026.docx` (profesor, cursos, n° de horas, asignatura y horas lectivas), calculadas desde el horario generado; jefaturas en celeste, English skills en verde y Orientación/Tecnología en azul.
+* **37 hojas individuales:** grilla semanal de cada docente con el mismo diseño de las hojas de curso, y su tabla de asignaturas y cursos (incluidas las horas de intervención y ACLE no programadas en grilla).
 
 ---
 

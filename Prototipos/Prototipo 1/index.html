@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Horarios MMDD</title>
+<meta name="description" content="Visualizador de los horarios generados para el Colegio Madres Dominicas (Prototipo 1, TGOP UdeC).">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="estilos.css">
+<script>
+  // Aplica el tema guardado antes de pintar para evitar parpadeos
+  try { var t = localStorage.getItem('mmdd-tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</head>
+<body>
+
+<div class="appbar">
+  <header class="topbar">
+    <div class="marca">
+      <span class="sello" aria-hidden="true">MD</span>
+      <div class="marca-texto">
+        <h1>Horarios Colegio Madres Dominicas</h1>
+        <p id="subtitulo">Prototipo 1</p>
+      </div>
+    </div>
+    <div class="acciones">
+      <span id="estado-global"></span>
+      <button type="button" class="btn no-print" data-accion="abrir" title="Abrir otro horario generado con exportar_datos.py">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="M12 4v12"/><path d="m7 9 5-5 5 5"/></svg>
+        <span class="btn-txt">Abrir horario</span>
+      </button>
+      <button type="button" class="btn no-print" data-accion="imprimir" title="Imprimir la vista actual">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>
+        <span class="btn-txt">Imprimir</span>
+      </button>
+      <button type="button" class="btn btn-icono no-print" data-accion="tema" aria-label="Cambiar entre tema claro y oscuro" title="Tema claro / oscuro">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+  </header>
+  <nav class="pestanas no-print" id="pestanas" aria-label="Vistas"></nav>
+</div>
+
+<div class="layout" id="layout">
+  <aside class="lateral no-print" id="lateral"></aside>
+  <main class="principal" id="principal"></main>
+</div>
+
+<input type="file" id="archivo" accept=".js,.json" hidden>
+<div class="aviso" id="aviso" role="status" aria-live="polite"></div>
+
+<script src="datos_horarios.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Algoritmos del Generador de Horarios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@1,400;1,500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Layout: escenario fijo 1280×720 escalado a la ventana; diapositivas claras sobre papel, portada y cierre en tinta (misma identidad del informe de avance) */
+  --ink:#151A28; --ink-2:#242C42; --ink-3:#3A4460;
+  --paper:#ECEEF2; --card:#FFFFFF;
+  --crimson:#A32638; --crimson-deep:#75182A; --crimson-soft:#F6E1E4;
+  --slate:#6C7488; --slate-2:#9AA1B1; --line:#D3D7E0;
+  --amber:#B0771A; --amber-soft:#F7EAD2;
+  --green:#2F7A54; --green-soft:#DDEFE4;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+  --math:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+  /* asignaturas: fondo / texto */
+  --len-b:#DCE5F4; --len-f:#23477F;
+  --mat-b:#FAE6C1; --mat-f:#704300;
+  --ing-b:#DAEBDB; --ing-f:#2A6336;
+  --cna-b:#D2ECE8; --cna-f:#1B5F58;
+  --his-b:#EADFD3; --his-f:#5B4430;
+  --efi-b:#E6DDF3; --efi-f:#533585;
+  --art-b:#E8ECCB; --art-f:#4F5A0E;
+  --mus-b:#EFDDEB; --mus-f:#72305D;
+  --rel-b:#E1E4EB; --rel-f:#394155;
+  /* bloques fijos (siempre oscuros) */
+  --fix-1:#263049; --fix-2:#3B5675; --fix-3:#5F4D7C;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:#0B0E16;font-family:var(--sans);color:var(--ink)}
+#stage{position:absolute;top:50%;left:50%;width:1280px;height:720px;transform-origin:center center;background:var(--paper);overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.55)}
+
+.slide{position:absolute;inset:0;padding:44px 72px 70px;display:none;flex-direction:column;background:var(--paper);color:var(--ink)}
+.slide.is-active{display:flex}
+.slide.dark{background:var(--ink);color:#fff}
+
+/* ---------- tipografía ---------- */
+h1{font-size:64px;font-weight:600;line-height:1.02;letter-spacing:-.028em;text-wrap:balance}
+h2{font-size:36px;font-weight:600;line-height:1.12;letter-spacing:-.018em;text-wrap:balance}
+h3{font-size:19px;font-weight:600;line-height:1.25}
+h4{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--slate)}
+p{font-size:16px;line-height:1.55;color:var(--ink-2)}
+.dark p{color:#C6CBD8}
+.lede{font-size:18px;line-height:1.5;max-width:72ch;margin-top:10px;color:var(--ink-2)}
+.kicker{display:flex;align-items:center;gap:12px;font-size:14px;font-weight:600;color:var(--crimson);letter-spacing:.02em;margin-bottom:10px}
+.kicker::after{content:"";flex:1;height:1px;background:var(--line)}
+.dark .kicker{color:#E4899A}
+.dark .kicker::after{background:rgba(255,255,255,.16)}
+.m{font-family:var(--math);font-style:italic;font-weight:400;letter-spacing:0}
+.mono{font-family:var(--mono)}
+b,strong{font-weight:600}
+.muted{color:var(--slate)}
+.tiny{font-size:12.5px;line-height:1.45;color:var(--slate)}
+
+/* ---------- apariciones ---------- */
+.frag{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .5s cubic-bezier(.2,.7,.3,1)}
+.frag.on{opacity:1;transform:none}
+.rise{opacity:0;transform:translateY(14px)}
+.is-active .rise{animation:rise .6s cubic-bezier(.2,.7,.3,1) forwards;animation-delay:var(--d,0s)}
+@keyframes rise{to{opacity:1;transform:none}}
+@keyframes pop{0%{transform:scale(.5);opacity:.2}65%{transform:scale(1.07);opacity:1}100%{transform:none}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 2px var(--ink)}50%{box-shadow:0 0 0 5px rgba(21,26,40,.25)}}
+@keyframes shake{0%,100%{transform:none}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
+
+/* ---------- cuadrícula de horario ---------- */
+.g{display:grid;gap:3px;position:relative;align-content:start;justify-content:start}
+.gh{font:500 10.5px/16px var(--mono);color:var(--slate);text-align:center;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.gr{font:500 11px var(--mono);color:var(--slate);display:flex;align-items:center;justify-content:flex-end;padding-right:6px;white-space:nowrap}
+.cell{border-radius:4px;background:var(--sb,var(--card));color:var(--sf,var(--ink));border:1px solid transparent;display:flex;align-items:center;justify-content:center;flex-direction:column;font:600 11px/1.15 var(--mono);letter-spacing:.02em;position:relative;text-align:center;transition:background-color .25s,color .25s,opacity .3s,box-shadow .2s}
+.cell[data-a=""]{background:var(--card);border-color:var(--line)}
+.cell.off{background:repeating-linear-gradient(135deg,#D9DCE4 0 2px,transparent 2px 7px);border-color:transparent}
+.cell.pop{animation:pop .42s cubic-bezier(.2,.7,.3,1)}
+.cell.fx{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.12) 0 2px,transparent 2px 6px)}
+.cell.long{font:600 12px/1.15 var(--sans);letter-spacing:0}
+.cell small{display:block;font:400 10.5px/1.2 var(--sans);opacity:.85;margin-top:2px}
+.cell.clash{box-shadow:0 0 0 2px var(--crimson)}
+.cell.clash::before{content:"";position:absolute;top:-5px;right:-5px;width:10px;height:10px;border-radius:50%;background:var(--crimson);border:2px solid var(--paper);z-index:2}
+.cell.dim{opacity:.28}
+.cell.hl{box-shadow:0 0 0 2.5px var(--ink);z-index:1}
+.cell.hl-a{box-shadow:0 0 0 2.5px var(--amber);z-index:1}
+.cell.hl-r{box-shadow:0 0 0 2.5px var(--crimson);z-index:1}
+.cell.ok{box-shadow:0 0 0 2px var(--green)}
+
+.dark .gh,.dark .gr{color:var(--slate-2)}
+.dark .cell[data-a=""]{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1)}
+.dark .cell.off{background:repeating-linear-gradient(135deg,rgba(255,255,255,.07) 0 2px,transparent 2px 7px);border-color:transparent}
+
+[data-a=LEN]{--sb:var(--len-b);--sf:var(--len-f)}
+[data-a=MAT]{--sb:var(--mat-b);--sf:var(--mat-f)}
+[data-a=ING]{--sb:var(--ing-b);--sf:var(--ing-f)}
+[data-a=CNA]{--sb:var(--cna-b);--sf:var(--cna-f)}
+[data-a=HIS]{--sb:var(--his-b);--sf:var(--his-f)}
+[data-a=EFI]{--sb:var(--efi-b);--sf:var(--efi-f)}
+[data-a=ART]{--sb:var(--art-b);--sf:var(--art-f)}
+[data-a=MUS]{--sb:var(--mus-b);--sf:var(--mus-f)}
+[data-a=REL]{--sb:var(--rel-b);--sf:var(--rel-f)}
+[data-a=ORI],[data-a=E1]{--sb:var(--fix-1);--sf:#fff}
+[data-a=E2],[data-a=CIU]{--sb:var(--fix-2);--sf:#fff}
+[data-a=E3],[data-a=FIL]{--sb:var(--fix-3);--sf:#fff}
+
+.chip{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;background:var(--sb,var(--card));color:var(--sf,var(--ink));font:600 13px/1.5 var(--sans);white-space:nowrap}
+.btn{font:600 13px var(--sans);padding:8px 14px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--slate-2)}
+.btn.pri{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn:focus-visible,#nav button:focus-visible{outline:2px solid var(--crimson);outline-offset:2px}
+.box{background:var(--card);border-radius:10px;padding:18px 22px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+figure{margin:0}
+figcaption,.glabel{font:600 12px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:8px}
+
+/* ---------- navegación ---------- */
+#nav{position:absolute;left:72px;right:22px;bottom:16px;display:flex;justify-content:space-between;align-items:center;font:500 12px var(--mono);color:var(--slate);z-index:30}
+#nav .r{display:flex;align-items:center;gap:10px}
+#nav button{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:transparent;color:inherit;font:600 16px/1 var(--sans);cursor:pointer}
+#nav button:hover{background:rgba(127,127,127,.12)}
+#dots{display:flex;gap:4px}
+#dots i{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.25}
+#dots i.on{opacity:.9}
+#stage.on-dark #nav{color:rgba(255,255,255,.5)}
+#stage.on-dark #nav button{border-color:rgba(255,255,255,.2)}
+#bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(127,127,127,.15);z-index:30}
+#bar i{display:block;height:100%;width:0;background:var(--crimson);transition:width .35s ease}
+
+/* ================= S1 portada ================= */
+.hero{flex:1;display:grid;grid-template-columns:1fr auto;gap:56px;align-items:center}
+.univ{font-size:14px;color:#9BA3B7;line-height:1.6;margin-bottom:28px}
+#s1 h1{color:#fff}
+.rule{height:3px;width:110px;background:var(--crimson);margin:26px 0 22px}
+.sub{font-size:20px;line-height:1.5;color:#C6CBD8;max-width:30ch;margin-bottom:40px}
+.meta{display:flex;gap:48px;font-size:14px;color:#9BA3B7;line-height:1.7}
+.meta b{display:block;color:#fff;font-size:13px;margin-bottom:4px}
+.hero-fig figcaption{color:var(--slate-2);margin:12px 0 0;text-transform:none;letter-spacing:0;font-weight:400;font-size:13px}
+.hint{position:absolute;left:72px;bottom:20px;font-size:13px;color:rgba(255,255,255,.45)}
+
+/* ================= S2 problema ================= */
+.facts{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.facts span{background:var(--card);border-radius:999px;padding:6px 14px;font-size:14px;color:var(--ink-2)}
+.facts b{font-family:var(--mono);color:var(--crimson);margin-right:4px}
+.tl-wrap{margin-top:26px}
+.tl-title{font:600 12px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:26px}
+.tl{position:relative;height:64px}
+.tb{position:absolute;top:0;height:56px;border-radius:5px;background:var(--ink);color:#fff;padding:7px 8px;display:flex;flex-direction:column;justify-content:space-between;transform-origin:left center;transform:scaleX(0)}
+.is-active .tb{animation:grow .5s cubic-bezier(.2,.7,.3,1) forwards;animation-delay:var(--d)}
+@keyframes grow{to{transform:scaleX(1)}}
+.tb b{font:600 18px/1 var(--mono)}
+.tb span{font:400 10.5px/1 var(--mono);opacity:.75;white-space:nowrap}
+.tb.late{background:var(--ink-3);background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.1) 0 2px,transparent 2px 7px)}
+.tl-note{position:absolute;top:-20px;font:500 11.5px var(--sans);color:var(--slate);white-space:nowrap}
+.tl-lunch{position:absolute;top:18px;font:500 11px var(--sans);color:var(--slate);text-align:center}
+.ticks{list-style:none;display:grid;gap:8px;margin-top:10px}
+.ticks li{position:relative;padding-left:24px;font-size:15.5px;line-height:1.45;color:var(--ink-2)}
+.ticks li::before{content:"";position:absolute;left:2px;top:5px;width:11px;height:11px;border-radius:2px;background:var(--crimson)}
+.ticks.soft li::before{background:transparent;border:2px solid var(--amber);border-radius:50%}
+#s2 .two{margin-top:22px}
+
+/* ================= S3 notación ================= */
+.nota{display:grid;grid-template-columns:auto 1fr;gap:44px;margin-top:20px;align-items:start}
+.nota-l{display:flex;flex-direction:column;gap:14px}
+#s3grid .cell{font:600 12px var(--sans);letter-spacing:0}
+.callout{background:var(--card);border-radius:8px;padding:10px 14px;font-size:14.5px;line-height:1.5;color:var(--ink-2);max-width:470px}
+.callout .m{font-size:16px}
+.defs{display:grid;gap:12px}
+.def{display:grid;grid-template-columns:150px 1fr;gap:16px;align-items:baseline;border-top:1px solid var(--line);padding-top:12px}
+.def .sym{font-family:var(--math);font-style:italic;font-size:21px;color:var(--crimson-deep)}
+.def h3{font-size:16.5px;margin-bottom:3px}
+.def p{font-size:14.5px;line-height:1.5}
+.def ul{list-style:none;display:grid;gap:4px;margin-top:4px}
+.def li{font-size:14.5px;line-height:1.45;color:var(--ink-2)}
+
+/* ================= S4 fases ================= */
+.phases{display:grid;grid-template-columns:1fr 34px 1fr 34px 1fr;gap:10px;margin-top:26px;align-items:stretch}
+.ph{background:var(--card);border-radius:12px;padding:20px 20px 18px;display:flex;flex-direction:column;gap:8px}
+.ph-n{font:600 40px/1 var(--mono);color:var(--crimson)}
+.ph h3{font-size:21px}
+.fn{font:500 13px var(--mono);color:var(--slate)}
+.ph p{font-size:14.5px;line-height:1.5;flex:1}
+.thumb{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.thumb span{font-size:12px;color:var(--slate)}
+.thumb .cell{border-radius:2px;font-size:0}
+.thumb .cell.clash::before{width:7px;height:7px;top:-4px;right:-4px;border-width:1.5px}
+.arrow{align-self:center;justify-self:center;width:30px;height:30px;position:relative}
+.arrow::before{content:"";position:absolute;left:2px;right:8px;top:14px;height:2px;background:var(--slate-2)}
+.arrow::after{content:"";position:absolute;right:4px;top:8px;width:12px;height:12px;border-top:2px solid var(--slate-2);border-right:2px solid var(--slate-2);transform:rotate(45deg)}
+.badge-ok{display:inline-flex;align-items:center;gap:6px;font:600 12px var(--sans);color:var(--green)}
+
+/* ================= S5 electivos ================= */
+.el-wrap{display:grid;grid-template-columns:auto auto 1fr;gap:34px;margin-top:22px;align-items:start}
+.el-side{display:flex;flex-direction:column;gap:14px}
+.fcard{background:var(--card);border-radius:10px;padding:16px 18px}
+.fc-label{font-size:13px;color:var(--slate);margin-bottom:6px}
+.fc-main{font-size:30px;color:var(--ink);margin-bottom:10px}
+.fc-live{font:500 14px/1.7 var(--mono);color:var(--ink-2);min-height:120px}
+.fc-live .res{margin-top:4px;color:var(--ink)}
+.fc-live .where{font:400 12.5px/1.4 var(--sans);color:var(--slate);margin-top:6px}
+.el-count{display:flex;gap:10px;flex-wrap:wrap}
+.el-count .chip{font-size:12.5px}
+.el-side p{font-size:14px}
+
+/* ================= S6 lunes tarde y orientación ================= */
+.s6{display:grid;grid-template-columns:1fr 1.15fr;gap:40px;margin-top:22px}
+.s6 h3{margin-bottom:6px}
+.s6 p{font-size:15px;margin-bottom:16px}
+.pair-row{display:flex;gap:22px;align-items:flex-start}
+.leg{list-style:none;display:grid;gap:10px;font-size:13.5px;color:var(--ink-2)}
+.leg li{display:grid;gap:3px}
+.ori-side{display:flex;flex-direction:column;gap:8px;min-width:0}
+.ori-side .m{font-size:22px}
+.foot-note{margin-top:auto;font-size:14.5px;color:var(--slate);border-top:1px solid var(--line);padding-top:12px}
+
+/* ================= S7 sesiones ================= */
+.s7{display:grid;grid-template-columns:560px 1fr;gap:40px;margin-top:20px}
+.mrow{display:grid;grid-template-columns:132px 42px 1fr;align-items:center;height:33px}
+.mrow .chip{font-size:12.5px;justify-self:start}
+.hrs{font:500 13px var(--mono);color:var(--slate)}
+.sess{display:flex;align-items:center;gap:4px;transition:gap .5s ease}
+.ses{display:inline-flex;align-items:center;gap:4px;padding:0;border-radius:6px;border:1.5px solid transparent;transition:padding .5s ease,border-color .5s ease,gap .5s ease}
+.sq{display:block;width:15px;height:15px;border-radius:3px;background:var(--sb);box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.ses b{font:600 11px var(--mono);color:var(--sf);max-width:0;overflow:hidden;opacity:0;transition:max-width .5s ease,opacity .4s ease}
+.ses.locked .sq{background:var(--fix-1)}
+.sess em{font-size:12.5px;color:var(--slate);font-style:normal;margin-left:8px}
+#s7.at1 .sess{gap:12px}
+#s7.at1 .ses{padding:3px 5px;border-color:var(--sf);gap:3px}
+#s7.at1 .ses b{max-width:30px;opacity:1}
+#s7.at1 .ses.locked{border-color:var(--fix-1)}
+.rule-card{background:var(--card);border-radius:10px;padding:14px 18px;font-size:14.5px;line-height:1.5;color:var(--ink-2)}
+.queue{display:grid;gap:12px}
+.qg{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:start}
+.qg h4{padding-top:5px;line-height:1.35}
+.qchips{display:flex;flex-wrap:wrap;gap:5px}
+.q{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;background:var(--sb);color:var(--sf);font:600 11.5px var(--mono)}
+.q i{font-style:normal;font-weight:400;opacity:.8}
+.frag.on .q{animation:pop .4s both;animation-delay:calc(var(--i)*45ms)}
+
+/* ================= S8 huecos ================= */
+.s8{display:grid;grid-template-columns:auto 1fr;gap:48px;margin-top:20px;align-items:start}
+#gapGrid .cell{font:600 12px var(--sans)}
+.br{position:absolute;border-radius:7px;pointer-events:none;animation:pop .35s both}
+.br.f2{border:2.5px solid var(--crimson)}
+.br.f1{border:2.5px dashed var(--amber)}
+.counters{display:flex;gap:14px;margin:6px 0 18px}
+.ctr{background:var(--card);border-radius:10px;padding:12px 16px;min-width:170px}
+.ctr b{display:block;font:600 34px/1 var(--mono);font-variant-numeric:tabular-nums}
+.ctr span{font-size:13px;color:var(--slate)}
+.ctr.c2 b{color:var(--crimson)}
+.ctr.c1 b{color:var(--amber)}
+.s8 p{font-size:15.5px;margin-bottom:12px}
+.key{display:inline-block;width:26px;height:14px;border-radius:4px;vertical-align:-2px;margin-right:6px}
+.key.f2{border:2.5px solid var(--crimson)}
+.key.f1{border:2.5px dashed var(--amber)}
+
+/* ================= S9 penalización ================= */
+.formula{display:flex;align-items:stretch;gap:12px;margin-top:22px}
+.term{background:var(--card);border-radius:10px;padding:14px 16px;flex:1;display:flex;flex-direction:column;gap:8px}
+.term .m{font-size:20px;color:var(--ink)}
+.term span{font-size:14px;line-height:1.45;color:var(--ink-2)}
+.term .w{font:600 12px var(--mono);color:var(--crimson)}
+.op{align-self:center;font:500 24px var(--mono);color:var(--slate)}
+.eq-name{align-self:center;font:600 18px var(--sans);white-space:nowrap}
+.ex-head{display:flex;align-items:center;gap:12px;margin:24px 0 12px;font-size:15px;color:var(--ink-2)}
+.cands4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.cand{background:var(--card);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;border:2px solid transparent;transition:border-color .4s,opacity .4s}
+.cand h3{font-size:16px}
+.cand p{font-size:13.5px;line-height:1.45;flex:1}
+.cand .calc{font:500 13px var(--mono);color:var(--slate)}
+.cand .tot{font:600 30px/1 var(--mono)}
+.cand.out{opacity:.55}
+.cand.out .tot{color:var(--slate)}
+#s9.at2 .cand.win{border-color:var(--green)}
+#s9.at2 .cand:not(.win){opacity:.55}
+.win-tag{font:600 12px var(--sans);color:var(--green);opacity:0;transition:opacity .4s}
+#s9.at2 .win-tag{opacity:1}
+.s9-rule{margin-top:14px;font-size:15px}
+
+/* ================= S10 simulación voraz ================= */
+.sim{display:grid;grid-template-columns:auto 1fr;gap:34px;margin-top:16px;min-height:0}
+#gB .cell{font:600 12px var(--sans);letter-spacing:0}
+.cell.cand{outline:2px solid var(--cc);outline-offset:-2px;background:var(--cbg)}
+.cell.pen0{--cc:var(--green);--cbg:var(--green-soft)}
+.cell.penL{--cc:var(--amber);--cbg:var(--amber-soft)}
+.cell.penH{--cc:var(--crimson);--cbg:var(--crimson-soft)}
+.cell[data-pen]::after{content:attr(data-pen);position:absolute;top:-8px;right:-8px;min-width:20px;height:18px;padding:0 5px;border-radius:9px;background:var(--cc);color:#fff;font:600 11px/18px var(--mono);z-index:3}
+.sim-r{display:grid;grid-template-columns:1fr 262px;grid-template-rows:auto 1fr auto;gap:14px 22px;min-width:0}
+.now{grid-column:1/-1;background:var(--card);border-radius:10px;padding:12px 16px;display:grid;gap:6px}
+.now-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:14.5px;color:var(--ink-2)}
+.now-k{font:500 12px var(--mono);color:var(--slate);margin-left:auto}
+.note{font-size:13.5px;line-height:1.45;color:var(--slate);min-height:20px}
+.clist{list-style:none;display:grid;gap:4px;margin-top:8px}
+.clist li{display:flex;justify-content:space-between;align-items:center;background:var(--card);border-radius:6px;padding:5px 10px;font:500 13px var(--mono)}
+.clist li b{min-width:30px;text-align:center;border-radius:9px;color:#fff;font-size:12px;padding:1px 6px}
+.clist li.ch{box-shadow:0 0 0 2px var(--ink)}
+.clist li em{font:600 11px var(--sans);font-style:normal;color:var(--ink);margin-left:auto;margin-right:10px}
+.clist .more{background:transparent;color:var(--slate);font:400 12px var(--sans);padding:2px 10px}
+#gA .cell{font-size:9.5px}
+.cell.busy{box-shadow:0 0 0 2px var(--crimson);opacity:1}
+.ctrl{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ctrl .stat{margin-left:auto;font:500 13px var(--sans);color:var(--ink-2)}
+.ctrl .stat b{font-family:var(--mono);color:var(--crimson)}
+.sim-note{font-size:12px;color:var(--slate);margin-top:10px;max-width:480px;line-height:1.45}
+
+/* ================= S11 conflictos ================= */
+.cf{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:24px}
+.cfc{background:var(--card);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.cfc .sym{font:italic 400 34px/1 var(--math);color:var(--crimson)}
+.cfc h3{font-size:18px}
+.cfc p{font-size:14px;line-height:1.5}
+.ill{height:150px;display:flex;align-items:center;justify-content:center;gap:14px;background:var(--paper);border-radius:8px;position:relative}
+.ill .col{display:flex;flex-direction:column;gap:4px;align-items:center}
+.ill .col span{font:500 11px var(--mono);color:var(--slate)}
+.ill .cell{width:74px;height:34px}
+.frag.on .ill .clash{animation:shake .4s 2 .5s}
+.tlink{font:500 11.5px var(--sans);color:var(--crimson);text-align:center;line-height:1.3;position:relative;padding:0 2px}
+.tlink::before,.tlink::after{content:"";display:block;height:2px;background:var(--crimson);margin:4px 0}
+.gym{display:flex;flex-direction:column;gap:6px;align-items:center}
+.gym-box{display:flex;gap:6px;padding:8px;border:2px solid var(--efi-f);border-radius:8px}
+.gym-box .cell,.gym .over{width:52px;height:30px}
+.gym-l{font:500 11px var(--sans);color:var(--slate)}
+.over{position:absolute;right:16px;top:58px}
+.frag.on .over{animation:shake .4s 3 .6s}
+.calc{font:500 13.5px var(--mono);color:var(--ink-2);background:var(--paper);border-radius:6px;padding:6px 10px}
+.fcol{display:flex;flex-direction:column;gap:3px;align-items:center}
+.fcol .cell{width:58px;height:19px;font-size:10px}
+.fcol span{font:500 11px var(--sans);color:var(--slate);margin-bottom:2px}
+.cf-sum{margin-top:18px;font-size:16px;color:var(--ink-2)}
+.cf-sum .m{font-size:19px}
+
+/* ================= S12 ciclo ================= */
+.s12{display:grid;grid-template-columns:580px 1fr;gap:36px;margin-top:6px;flex:1;min-height:0}
+.ring{position:relative;width:580px;height:470px}
+.ring svg{position:absolute;inset:0}
+.rn{position:absolute;width:180px;transform:translate(-50%,-50%);background:var(--card);border-radius:10px;padding:9px 12px 10px;box-shadow:0 1px 0 rgba(0,0,0,.04);opacity:0;transition:opacity .4s,background-color .3s,color .3s,transform .3s}
+.rn.vis{opacity:1}
+.rn.act{background:var(--ink);color:#fff;transform:translate(-50%,-50%) scale(1.05)}
+.rn .n{font:600 11px var(--mono);color:var(--crimson)}
+.rn.act .n{color:#E4899A}
+.rn b{display:block;font-size:15px;line-height:1.25}
+.rn span{display:block;font-size:12.5px;line-height:1.35;color:var(--slate);margin-top:2px}
+.rn.act span{color:#C6CBD8}
+.ring-c{position:absolute;left:290px;top:235px;transform:translate(-50%,-50%);text-align:center;font-size:13.5px;line-height:1.45;color:var(--slate);width:170px}
+.ring-c b{display:block;font:600 22px var(--mono);color:var(--ink)}
+.rdet{position:relative;align-self:center}
+.rd{display:none}
+.rd.show{display:block;animation:fadeUp .45s both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.rd .n{font:600 13px var(--mono);color:var(--crimson);margin-bottom:6px}
+.rd h3{font-size:24px;margin-bottom:10px}
+.rd p{font-size:16.5px;line-height:1.6;margin-bottom:10px}
+.rd .fnn{font:500 13px var(--mono);color:var(--slate)}
+
+/* ================= S13 tipos de intercambio ================= */
+.s13{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:20px}
+.s13 .box{display:flex;flex-direction:column;gap:12px}
+.s13 .box p{font-size:14.5px}
+.s13 .cell{font:600 12px var(--sans)}
+.s13 .g .cell{transition:transform .5s cubic-bezier(.5,0,.3,1),background-color .25s,box-shadow .2s}
+.rules{list-style:none;display:grid;gap:7px}
+.rules li{position:relative;padding-left:22px;font-size:14px;line-height:1.45;color:var(--ink-2)}
+.rules li::before{position:absolute;left:0;top:0;font:700 14px/1.45 var(--sans)}
+.rules li.no::before{content:"✕";color:var(--crimson)}
+.rules li.yes::before{content:"✓";color:var(--green)}
+.sw-tag{font:500 12px var(--mono);color:var(--slate)}
+
+/* ================= S14 un intercambio ================= */
+.s14{display:grid;grid-template-columns:auto 1fr;gap:36px;margin-top:16px}
+.s14 .grids{display:flex;gap:22px}
+.s14 .cell{font:600 12.5px var(--sans);letter-spacing:0}
+.s14 .cell small{font-size:10.5px}
+.tbadge{margin-top:16px;display:inline-flex;align-items:center;gap:10px;background:var(--card);border-radius:8px;padding:8px 14px;font:500 14px var(--sans)}
+.tbadge b{font:600 22px var(--mono);color:var(--crimson);transition:color .3s}
+.tbadge.zero b{color:var(--green)}
+.tabu-tag{margin-top:10px;font:500 13px var(--mono);color:var(--ink-2);background:var(--amber-soft);border-radius:6px;padding:6px 10px;display:inline-block}
+.steps14{display:grid;gap:8px;align-content:start}
+.st{background:var(--card);border-radius:10px;padding:9px 14px;font-size:14px;line-height:1.45;color:var(--ink-2)}
+.st b.h{display:block;color:var(--ink);font-size:14.5px;margin-bottom:2px}
+.dl{display:grid;grid-template-columns:34px 22px 1fr;gap:1px 8px;font-size:13.5px;margin-top:2px;align-items:baseline}
+.dl .m{font-size:16px;color:var(--ink)}
+.dl .v{font:600 14px var(--mono)}
+.dl .x{color:var(--slate);font-size:12.5px}
+.dres{margin-top:6px;font:600 15px var(--mono);color:var(--green)}
+
+/* ================= S15 tabú y ε ================= */
+.s15{display:grid;grid-template-columns:660px 1fr;gap:30px;margin-top:14px}
+#land{width:660px;height:372px;display:block}
+#land .lbl{font:500 12.5px var(--sans);fill:var(--slate)}
+#land .lbl-b{font:600 13px var(--sans);fill:var(--ink)}
+#land .fade{opacity:0;transition:opacity .5s}
+#land .fade.on{opacity:1}
+.s15 .side{display:grid;gap:12px;align-content:start}
+.s15 .box{padding:14px 18px}
+.s15 .box h3{font-size:16.5px;margin-bottom:4px}
+.s15 .box p{font-size:14px}
+.s15 .box .m{font-size:17px}
+
+/* ================= S16 demo ================= */
+.s16{display:grid;grid-template-columns:auto 1fr;gap:34px;margin-top:12px}
+.toyg{display:grid;grid-template-columns:auto auto;gap:14px 24px}
+.toyg figure{padding:6px;border-radius:9px;transition:background-color .25s,box-shadow .25s}
+.toyg figure.cur{background:var(--card);box-shadow:0 0 0 2px var(--ink)}
+.toyg figcaption{margin-bottom:5px}
+.toyg .cell{font:600 10.5px var(--mono);transition:transform .38s cubic-bezier(.5,0,.3,1),box-shadow .2s,background-color .25s}
+.cell.s1{box-shadow:0 0 0 2.5px var(--ink);z-index:2;animation:pulse .8s infinite}
+.cell.s2{box-shadow:0 0 0 2.5px var(--ink);outline:2px dashed var(--paper);outline-offset:-5px;z-index:2}
+.toyr{display:flex;flex-direction:column;gap:12px;min-width:0}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kpi{background:var(--card);border-radius:10px;padding:10px 14px}
+.kpi b{display:block;font:600 30px/1.05 var(--mono);font-variant-numeric:tabular-nums}
+.kpi span{font-size:12.5px;color:var(--slate)}
+.kpi.t b{color:var(--crimson);transition:color .3s}
+.kpi.t.zero b{color:var(--green)}
+.chartbox{background:var(--card);border-radius:10px;padding:10px 12px 6px}
+#toyChart{width:100%;height:150px;display:block}
+#toyChart text{font:500 10.5px var(--mono);fill:var(--slate)}
+.log{list-style:none;display:grid;gap:3px;font:500 12.5px var(--mono);color:var(--ink-2);min-height:96px}
+.log li{background:var(--card);border-radius:5px;padding:4px 10px;display:flex;gap:8px}
+.log li:first-child{box-shadow:inset 3px 0 0 var(--ink)}
+.log li .acc{color:var(--green);margin-left:auto}
+.log li .rej{color:var(--slate);margin-left:auto}
+.log li .wrs{color:var(--amber);margin-left:auto}
+.done-msg{font:600 14px var(--sans);color:var(--green);min-height:20px}
+
+/* ================= S17 cierre ================= */
+#s17 h2{color:#fff}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:28px}
+.sum article{border-top:3px solid var(--crimson);padding-top:16px}
+.sum .n{font:600 13px var(--mono);color:#E4899A}
+.sum h3{color:#fff;font-size:20px;margin:6px 0 4px}
+.sum .fn{color:var(--slate-2);margin-bottom:10px}
+.sum p{font-size:15px}
+.params{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin-top:34px;background:rgba(255,255,255,.08);border-radius:10px;overflow:hidden}
+.params div{background:var(--ink-2);padding:16px 18px}
+.params .m{display:block;font-size:24px;color:#fff}
+.params span{display:block;font-size:13px;color:var(--slate-2);margin-top:4px;line-height:1.4}
+.closing{margin-top:26px;font-size:17px;color:#C6CBD8;max-width:80ch}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+
+<!-- ======================= 1 · PORTADA ======================= -->
+<section class="slide dark" id="s1">
+  <div class="hero">
+    <div>
+      <div class="univ rise" style="--d:.1s">Universidad de Concepción · Departamento de Ingeniería Industrial<br>Taller de Gestión de Operaciones · Grupo 5</div>
+      <h1 class="rise" style="--d:.25s">Cómo se arma<br>el horario</h1>
+      <div class="rule rise" style="--d:.4s"></div>
+      <p class="sub rise" style="--d:.5s">Los tres algoritmos del generador de horarios del Colegio Madres Dominicas, explicados paso a paso.</p>
+      <div class="meta rise" style="--d:.65s">
+        <div><b>Integrantes</b>Carlos Pacheco<br>Ignacio Valenzuela<br>Matías Rocha</div>
+        <div><b>Profesor</b>Eduardo Salazar Hornig</div>
+        <div><b>Semestre</b>2026-2</div>
+      </div>
+    </div>
+    <figure class="hero-fig rise" style="--d:.3s">
+      <div id="heroGrid"></div>
+      <figcaption>1° básico B, construido bloque a bloque por el algoritmo voraz</figcaption>
+    </figure>
+  </div>
+  <div class="hint">→ o espacio para avanzar · ← para volver · F para pantalla completa</div>
+</section>
+
+<!-- ======================= 2 · PROBLEMA ======================= -->
+<section class="slide" id="s2" data-sec="El problema">
+  <div class="kicker">El problema</div>
+  <h2>Un horario semanal para 24 cursos</h2>
+  <p class="lede">Para cada curso y cada bloque de la semana hay que decidir qué asignatura se dicta, qué docente la dicta y en qué espacio.</p>
+  <div class="facts">
+    <span><b>24</b>cursos, de 1° básico a 4° medio (A y B)</span>
+    <span><b>5</b>días hábiles</span>
+    <span><b>10</b>bloques como máximo por día</span>
+    <span><b>3</b>cursos a la vez en recintos deportivos</span>
+  </div>
+  <div class="tl-wrap">
+    <div class="tl-title">Un día de clases, bloque por bloque</div>
+    <div class="tl" id="tl"></div>
+  </div>
+  <div class="two">
+    <div class="box frag" data-f="1">
+      <h3>Reglas obligatorias</h3>
+      <ul class="ticks">
+        <li>Un docente no puede estar en dos cursos en el mismo bloque.</li>
+        <li>Como máximo 3 cursos usan los recintos deportivos al mismo tiempo.</li>
+        <li>Cada asignatura recibe exactamente las horas semanales de su malla.</li>
+        <li>Cada curso usa solo los bloques de su jornada.</li>
+      </ul>
+    </div>
+    <div class="box frag" data-f="2">
+      <h3>Preferencias</h3>
+      <ul class="ticks soft">
+        <li>Clases en bloques dobles de 90 minutos.</li>
+        <li>La misma asignatura repartida en días distintos.</li>
+        <li>Ninguna asignatura en bloques separados dentro de un mismo día.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 3 · NOTACIÓN ======================= -->
+<section class="slide" id="s3" data-sec="Notación">
+  <div class="kicker">Antes de empezar</div>
+  <h2>Cómo leer la notación del pseudocódigo</h2>
+  <div class="nota">
+    <div class="nota-l">
+      <figure><figcaption>Extracto del horario de 1° básico B</figcaption><div id="s3grid"></div></figure>
+      <div class="callout" id="s3call"></div>
+    </div>
+    <div class="defs">
+      <div class="def"><div class="sym">s = (d, b)</div><div><h3>Bloque</h3><p>Un día <span class="m">d</span> y un número de bloque <span class="m">b</span> entre 1 y 10. Cada bloque dura 45 minutos (40 en la tarde).</p></div></div>
+      <div class="def frag" data-f="1"><div class="sym">ℓ = (a, p, e)</div><div><h3>Lección</h3><p>Asignatura, docente y espacio (Aula, Gimnasio o Sala Electivos). <span class="m">X<sub>c</sub>(s) = ℓ</span> dice que el curso <span class="m">c</span> tiene la lección <span class="m">ℓ</span> en el bloque <span class="m">s</span>.</p></div></div>
+      <div class="def frag" data-f="2"><div class="sym">M<sub>c</sub></div><div><h3>Malla curricular</h3><p>Lo que el curso debe recibir cada semana, como tuplas (asignatura, horas, docente, espacio). El horario final cubre exactamente esas horas.</p></div></div>
+      <div class="def frag" data-f="3"><div class="sym">T, G, N</div><div><h3>Contadores</h3><ul>
+        <li><span class="m">T(s, p)</span>: cursos que tienen al docente <span class="m">p</span> en el bloque <span class="m">s</span>. Más de uno es un choque.</li>
+        <li><span class="m">G(s)</span>: cursos en recintos deportivos en <span class="m">s</span>. El máximo es <span class="m">κ</span> = 3.</li>
+        <li><span class="m">N<sub>c</sub>(d, a)</span>: bloques de la asignatura <span class="m">a</span> que el curso <span class="m">c</span> tiene el día <span class="m">d</span>.</li>
+      </ul><p class="tiny">Se actualizan con cada asignación, así los choques se revisan al instante sin recorrer todo el horario.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 4 · TRES FASES ======================= -->
+<section class="slide" id="s4" data-sec="Visión general">
+  <div class="kicker">Visión general</div>
+  <h2>El método trabaja en tres fases</h2>
+  <p class="lede">Cada fase recibe el horario que dejó la anterior. El programa las ejecuta en orden dentro de <span class="mono">GenerarHorario</span>.</p>
+  <div class="phases">
+    <article class="ph">
+      <div class="ph-n">1</div>
+      <h3>Fijar lo que no se mueve</h3>
+      <div class="fn">BloquesFijos</div>
+      <p>Reserva los electivos de 3° y 4° medio, el lunes tarde de 3° medio y la Orientación de 1° a 4° básico.</p>
+      <div class="thumb"><div id="th1"></div><span>Ej.: 3° medio A, solo con sus bloques fijos</span></div>
+    </article>
+    <div class="arrow frag" data-f="1"></div>
+    <article class="ph frag" data-f="1">
+      <div class="ph-n">2</div>
+      <h3>Llenar rápido</h3>
+      <div class="fn">ConstrucciónVoraz</div>
+      <p>Completa cada curso sesión por sesión, eligiendo siempre el hueco con menor penalización. Queda completo, pero puede tener choques.</p>
+      <div class="thumb"><div id="th2"></div><span>Ej.: 1° básico B, con 2 choques de docente</span></div>
+    </article>
+    <div class="arrow frag" data-f="2"></div>
+    <article class="ph frag" data-f="2">
+      <div class="ph-n">3</div>
+      <h3>Reparar</h3>
+      <div class="fn">MinConflictosTabú</div>
+      <p>Intercambia lecciones dentro de cada curso hasta que no quedan choques de docentes, sobrecupo deportivo ni asignaturas fragmentadas.</p>
+      <div class="thumb"><div id="th3"></div><span class="badge-ok">✓ Mismo curso, sin choques</span></div>
+    </article>
+  </div>
+</section>
+
+<!-- ======================= 5 · ELECTIVOS ======================= -->
+<section class="slide" id="s5" data-sec="Fase 1 · Bloques fijos">
+  <div class="kicker">Fase 1 de 3 · Bloques fijos</div>
+  <h2>Electivos sincronizados en 3° y 4° medio</h2>
+  <p class="lede">Las secciones A y B comparten sus electivos, así que deben tenerlos a la misma hora. Se reservan 18 bloques por nivel y tres electivos se turnan de a dos bloques.</p>
+  <div class="el-wrap">
+    <figure><figcaption>3° medio A y B</figcaption><div id="el3"></div></figure>
+    <figure><figcaption>4° medio A y B</figcaption><div id="el4"></div></figure>
+    <div class="el-side">
+      <div class="fcard">
+        <div class="fc-label">Electivo que va en el bloque número <span class="m">k</span> de la lista</div>
+        <div class="fc-main m">j = ⌊k / 2⌋ mod 3 + 1</div>
+        <div class="fc-live" id="elLive"></div>
+      </div>
+      <p><b>Orden de la lista.</b> 3° medio: martes a viernes, bloques 1 a 4, y después lunes 7 y 8. 4° medio: martes a viernes, bloques 5 a 8, y después lunes 9 y 10.</p>
+      <div class="el-count" id="elCount"></div>
+      <div><button class="btn" id="elReplay">↺ Repetir animación</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 6 · LUNES TARDE Y ORIENTACIÓN ======================= -->
+<section class="slide" id="s6" data-sec="Fase 1 · Bloques fijos">
+  <div class="kicker">Fase 1 de 3 · Bloques fijos</div>
+  <h2>Lunes tarde de 3° medio y Orientación en básica</h2>
+  <div class="s6">
+    <div>
+      <h3>Lunes tarde en 3° medio</h3>
+      <p>Los bloques 9 y 10 del lunes se fijan con una asignatura distinta en cada sección.</p>
+      <div class="pair-row">
+        <div id="lt"></div>
+        <ul class="leg">
+          <li><span><span class="chip" data-a="CIU">Ed. Ciudadana</span></span><span>3° medio A · Prof. Historia 3</span></li>
+          <li><span><span class="chip" data-a="FIL">Filosofía</span></span><span>3° medio B · Prof. Filosofía</span></li>
+          <li><span><span class="chip" data-a="E3">Electivo 3</span></span><span>fijado en la diapositiva anterior</span></li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <h3>Orientación de 1° a 4° básico</h3>
+      <p>Un bloque por semana, siempre el bloque 7 (13:00–13:40), con el profesor jefe del curso. El día rota según la posición <span class="m">i</span> del curso en la lista.</p>
+      <div class="pair-row">
+        <div id="ori"></div>
+        <div class="ori-side">
+          <div class="m">día = Ω[ i mod 4 ]</div>
+          <div class="tiny">Ω = (miércoles, jueves, viernes, martes)</div>
+          <div class="fc-live" id="oriLive"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="foot-note">Estos bloques se registran antes que todo lo demás. Desde aquí en adelante ningún algoritmo los mueve.</p>
+</section>
+
+<!-- ======================= 7 · SESIONES ======================= -->
+<section class="slide" id="s7" data-sec="Fase 2 · Construcción voraz">
+  <div class="kicker">Fase 2 de 3 · Construcción voraz</div>
+  <h2>De la malla a una lista de sesiones</h2>
+  <p class="lede">Para cada asignatura se restan las horas que ya fijó la fase 1. Lo que falta se corta en sesiones dobles de 90 minutos; si sobra una hora, queda una sesión simple de 45.</p>
+  <div class="s7">
+    <div>
+      <figure><figcaption>Malla de 1° básico B (36 horas)</figcaption><div id="malla"></div></figure>
+    </div>
+    <div class="frag" data-f="2">
+      <div class="queue" id="queue"></div>
+      <div class="rule-card" style="margin-top:16px">Primero va lo más difícil de ubicar: Educación Física depende del gimnasio, que tiene cupo para 3 cursos, y las troncales son las asignaturas con más horas. Se ubican todas las dobles y después las simples.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 8 · HUECOS ======================= -->
+<section class="slide" id="s8" data-sec="Fase 2 · Construcción voraz">
+  <div class="kicker">Fase 2 de 3 · Construcción voraz</div>
+  <h2>Dónde caben: pares dobles y bloques sueltos</h2>
+  <div class="s8">
+    <figure><figcaption>1° básico B · huecos libres</figcaption><div id="gapGrid"></div></figure>
+    <div>
+      <div class="counters">
+        <div class="ctr c2"><b id="f2n">0</b><span><span class="key f2"></span><span class="m">F</span><sub>2</sub> pares dobles libres</span></div>
+        <div class="ctr c1"><b id="f1n">0</b><span><span class="key f1"></span><span class="m">F</span><sub>1</sub> bloques sueltos</span></div>
+      </div>
+      <p>El algoritmo recorre cada día mirando los pares (1-2), (3-4), (5-6), (7-8) y (9-10). Si los dos bloques están libres, el par entra a <span class="m">F</span><sub>2</sub>. Si solo uno está libre, o el curso no tiene el segundo bloque, ese bloque entra a <span class="m">F</span><sub>1</sub>.</p>
+      <p>Los pares calzan con los recreos, que caen después de los bloques 2, 4, 6 y 8. Por eso un bloque doble nunca queda cortado por un recreo.</p>
+      <p class="tiny">En 1° básico B el bloque 8 solo existe el lunes, y el jueves 7 ya lo ocupa Orientación (fase 1). Resultado: 16 pares para las 16 sesiones dobles y 3 bloques sueltos para las 3 simples.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 9 · PENALIZACIÓN ======================= -->
+<section class="slide" id="s9" data-sec="Fase 2 · Construcción voraz">
+  <div class="kicker">Fase 2 de 3 · Construcción voraz</div>
+  <h2>Cómo elige el hueco: la penalización</h2>
+  <div class="formula">
+    <div class="eq-name">Penalización =</div>
+    <div class="term"><div class="m">500 · [ N<sub>c</sub>(d, a) &gt; 0 ]</div><span>500 puntos si el curso ya tiene esa asignatura ese día.</span><div class="w">lo más grave</div></div>
+    <div class="op">+</div>
+    <div class="term"><div class="m">Σ<sub>s</sub> | T(s, p) |</div><span>1 punto por cada curso que ya tiene a ese docente en el bloque.</span><div class="w">choque de docente</div></div>
+    <div class="op">+</div>
+    <div class="term"><div class="m">Σ<sub>s</sub> 15 · [ gimnasio lleno ]</div><span>15 puntos por bloque si es Ed. Física y ya hay 3 cursos en recintos deportivos.</span><div class="w">cupo deportivo</div></div>
+  </div>
+  <div class="frag" data-f="1">
+    <div class="ex-head">Ejemplo: ubicar <span class="chip" data-a="ING">Inglés · doble · Prof. Inglés 1</span> en 1° básico B</div>
+    <div class="cands4">
+      <div class="cand out"><h3>Lunes 1–2</h3><p>El curso ya tiene Inglés el lunes. Se descarta en el primer filtro.</p><div class="calc">500 + 0 + 0</div><div class="tot">500</div></div>
+      <div class="cand"><h3>Martes 3–4</h3><p>1° básico A tiene Inglés con el mismo docente en los dos bloques.</p><div class="calc">0 + (1 + 1) + 0</div><div class="tot">2</div></div>
+      <div class="cand"><h3>Viernes 5–6</h3><p>El docente está ocupado con otro curso en el bloque 6.</p><div class="calc">0 + (0 + 1) + 0</div><div class="tot">1</div></div>
+      <div class="cand win"><h3>Jueves 1–2</h3><p>Día sin Inglés y docente libre en ambos bloques.</p><div class="calc">0 + (0 + 0) + 0</div><div class="tot">0 <span class="win-tag">✓ elegido</span></div></div>
+    </div>
+  </div>
+  <p class="s9-rule frag" data-f="2">Gana el menor puntaje. Los candidatos se revisan en orden aleatorio y el primero con 0 se toma de inmediato. El azar usa una semilla fija (<span class="m">ω</span> = 3), así cada ejecución da el mismo horario.</p>
+</section>
+
+<!-- ======================= 10 · SIMULACIÓN VORAZ ======================= -->
+<section class="slide" id="s10" data-sec="Fase 2 · Construcción voraz">
+  <div class="kicker">Fase 2 de 3 · Construcción voraz</div>
+  <h2>Construyendo 1° básico B, sesión por sesión</h2>
+  <div class="sim">
+    <div>
+      <figure><figcaption>1° básico B</figcaption><div id="gB"></div></figure>
+      <p class="sim-note">Simulación en el navegador con el mismo procedimiento del pseudocódigo. Los empates se sortean con otro generador aleatorio, así que el resultado exacto puede diferir del programa en Python.</p>
+    </div>
+    <div class="sim-r">
+      <div class="now">
+        <div class="now-top"><span class="chip" id="gChip"></span><span id="gInfo"></span><span class="now-k" id="gK"></span></div>
+        <div class="note" id="gNote"></div>
+      </div>
+      <div>
+        <h4 id="gCh">Candidatos, de menor a mayor penalización</h4>
+        <ul class="clist" id="gC"></ul>
+      </div>
+      <div>
+        <figure><figcaption>1° básico A (ya construido)</figcaption><div id="gA"></div></figure>
+        <p class="tiny" id="gRef" style="margin-top:8px"></p>
+      </div>
+      <div class="ctrl">
+        <button class="btn pri" id="gPlay">❚❚ Pausa</button>
+        <button class="btn" id="gStep">Paso ›</button>
+        <button class="btn" id="gReset">↺ Reiniciar</button>
+        <span class="stat" id="gStat"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 11 · CONFLICTOS ======================= -->
+<section class="slide" id="s11" data-sec="Fase 3 · Reparación">
+  <div class="kicker">Fase 3 de 3 · Reparación</div>
+  <h2>Qué cuenta como conflicto</h2>
+  <p class="lede">La construcción voraz decide cada curso por separado, así que deja algunos problemas. La fase 3 los mide con tres números y trabaja hasta dejarlos en cero.</p>
+  <div class="cf">
+    <div class="cfc">
+      <div class="sym">t</div>
+      <h3>Choque de docente</h3>
+      <div class="ill">
+        <div class="col"><span>1° básico A</span><div class="cell clash" data-a="ING">ING</div></div>
+        <div class="tlink">Prof. Inglés 1<br>martes 3</div>
+        <div class="col"><span>1° básico B</span><div class="cell clash" data-a="ING">ING</div></div>
+      </div>
+      <p>Por cada bloque y docente se suman los cursos de más.</p>
+      <div class="calc">|T(s, p)| − 1 = 2 − 1 = 1</div>
+    </div>
+    <div class="cfc frag" data-f="1">
+      <div class="sym">g</div>
+      <h3>Sobrecupo deportivo</h3>
+      <div class="ill">
+        <div class="gym">
+          <div class="gym-box"><div class="cell" data-a="EFI">5°A</div><div class="cell" data-a="EFI">6°B</div><div class="cell" data-a="EFI">7°A</div></div>
+          <div class="gym-l">recintos deportivos · cupo 3</div>
+        </div>
+        <div class="cell clash over" data-a="EFI">8°B</div>
+      </div>
+      <p>Cada curso sobre el cupo de 3 suma 5 puntos.</p>
+      <div class="calc">5 · (4 − 3) = 5</div>
+    </div>
+    <div class="cfc frag" data-f="2">
+      <div class="sym">f</div>
+      <h3>Asignatura fragmentada</h3>
+      <div class="ill">
+        <div class="fcol"><span>martes ✕</span><div class="cell clash" data-a="MAT">MAT</div><div class="cell" data-a="LEN">LEN</div><div class="cell" data-a="LEN">LEN</div><div class="cell clash" data-a="MAT">MAT</div><div class="cell" data-a="ING">ING</div></div>
+        <div class="fcol"><span>martes ✓</span><div class="cell ok" data-a="MAT">MAT</div><div class="cell ok" data-a="MAT">MAT</div><div class="cell" data-a="LEN">LEN</div><div class="cell" data-a="LEN">LEN</div><div class="cell" data-a="ING">ING</div></div>
+      </div>
+      <p>Suma 1 por cada día en que una asignatura tiene más de dos bloques, o dos bloques que no van seguidos.</p>
+      <div class="calc">(martes, Matemática) → 1</div>
+    </div>
+  </div>
+  <p class="cf-sum frag" data-f="3"><span class="m">Conflictos() = (t, g, f)</span>. El horario es factible cuando los tres valen 0.</p>
+</section>
+
+<!-- ======================= 12 · CICLO ======================= -->
+<section class="slide" id="s12" data-sec="Fase 3 · Reparación" data-steps="6">
+  <div class="kicker">Fase 3 de 3 · Reparación</div>
+  <h2>El ciclo de reparación: min-conflicts con lista tabú</h2>
+  <div class="s12">
+    <div class="ring" id="ring">
+      <svg viewBox="0 0 580 470" aria-hidden="true">
+        <circle cx="290" cy="235" r="180" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="4 6"/>
+        <g id="ringArrows" fill="none" stroke="var(--slate-2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
+        <circle id="ringDot" r="9" fill="var(--crimson)" stroke="var(--paper)" stroke-width="3" cx="290" cy="55"/>
+      </svg>
+      <div class="rn" data-n="1"><div class="n">1</div><b>Medir conflictos</b><span>calcular (t, g, f)</span></div>
+      <div class="rn" data-n="2"><div class="n">2</div><b>Elegir un curso</b><span>al azar entre los que chocan</span></div>
+      <div class="rn" data-n="3"><div class="n">3</div><b>Elegir un bloque s₁</b><span>uno que esté en conflicto</span></div>
+      <div class="rn" data-n="4"><div class="n">4</div><b>Mejor intercambio</b><span>dentro del curso, con su Δ</span></div>
+      <div class="rn" data-n="5"><div class="n">5</div><b>¿Aceptar?</b><span>si Δ ≤ 0, o un 5 % si empeora</span></div>
+      <div class="rn" data-n="6"><div class="n">6</div><b>Marcar tabú</b><span>no deshacerlo en 15 vueltas</span></div>
+      <div class="ring-c">se repite hasta<b>0 conflictos</b>o hasta <span class="m">K</span> = 10 000 iteraciones</div>
+    </div>
+    <div class="rdet">
+      <div class="rd" data-n="1"><div class="n">Paso 1</div><h3>Medir los conflictos</h3><p>Se calcula <span class="m">(t, g, f)</span>: choques de docentes, sobrecupo deportivo y asignaturas fragmentadas. Si los tres son 0, el horario es factible y la búsqueda termina.</p><div class="fnn">Conflictos()</div></div>
+      <div class="rd" data-n="2"><div class="n">Paso 2</div><h3>Elegir un curso</h3><p>Se arma una lista con los cursos de cada choque, repetidos tantas veces como choques tengan, y se saca uno al azar. El curso con más problemas sale más seguido.</p><p>Si ya no hay choques, se elige entre los cursos con asignaturas fragmentadas.</p></div>
+      <div class="rd" data-n="3"><div class="n">Paso 3</div><h3>Elegir un bloque <span class="m">s</span>₁</h3><p>Dentro del curso se toma al azar un bloque en choque. Si no hay, uno fragmentado. Si tampoco hay, cualquiera.</p><p>Los bloques fijos de la fase 1 nunca se eligen.</p></div>
+      <div class="rd" data-n="4"><div class="n">Paso 4</div><h3>Buscar el mejor intercambio</h3><p>Se prueba cambiar <span class="m">s</span>₁ por otros bloques del mismo curso y se calcula <span class="m">Δ</span>, cuánto cambiaría el costo. Apenas aparece un <span class="m">Δ</span> negativo, se toma ese.</p><div class="fnn">MejorMovimiento · DeltaIntercambio</div></div>
+      <div class="rd" data-n="5"><div class="n">Paso 5</div><h3>Decidir</h3><p>Si <span class="m">Δ</span> ≤ 0, el intercambio se aplica. Si empeora el horario, se aplica igual con probabilidad <span class="m">ε</span> = 5 %. Más adelante se ve por qué conviene.</p></div>
+      <div class="rd" data-n="6"><div class="n">Paso 6</div><h3>Marcar como tabú</h3><p>El intercambio recién aplicado queda prohibido durante <span class="m">τ</span> = 15 iteraciones, para que la búsqueda no lo deshaga en la vuelta siguiente.</p></div>
+      <div class="rd" data-n="7"><div class="n">La idea clave</div><h3>Siempre se intercambia dentro de un mismo curso</h3><p>El curso conserva exactamente las mismas lecciones; solo cambian de bloque. Por eso las horas de la malla siguen correctas durante toda la búsqueda y lo único que cambia son los choques.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 13 · TIPOS DE INTERCAMBIO ======================= -->
+<section class="slide" id="s13" data-sec="Fase 3 · Reparación">
+  <div class="kicker">Fase 3 de 3 · Reparación</div>
+  <h2>Dos tipos de intercambio</h2>
+  <div class="s13">
+    <div class="box">
+      <h3>Intercambio doble</h3>
+      <p>Si el bloque en conflicto es parte de un doble (su compañero contiguo tiene la misma asignatura), se mueve el par completo y se cambia por otro doble del curso. Ambos siguen siendo bloques de 90 minutos.</p>
+      <div id="sw2"></div>
+      <div class="sw-tag" id="sw2t">Matemática martes 3–4 ↔ Artes jueves 1–2</div>
+    </div>
+    <div class="box">
+      <h3>Intercambio simple</h3>
+      <p>Cambia un bloque por otro. Se usa cuando no hay doble o cuando el doble no mejora el costo.</p>
+      <div id="sw1"></div>
+      <div class="sw-tag" id="sw1t">Historia martes 3 ↔ Ciencias jueves 3</div>
+    </div>
+  </div>
+  <div class="box" style="margin-top:16px">
+    <ul class="rules" style="grid-template-columns:1fr 1fr;display:grid;gap:7px 26px">
+      <li class="no">No separa un doble de Matemática o Lenguaje hacia otro día.</li>
+      <li class="no">No deja una asignatura repetida en un día (<span class="mono">CompatibleDía</span>).</li>
+      <li class="no">No repite un intercambio que está en la lista tabú.</li>
+      <li class="yes">Se queda con el primer intercambio que mejora (<span class="m">Δ</span> &lt; 0).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ======================= 14 · UN INTERCAMBIO CON NÚMEROS ======================= -->
+<section class="slide" id="s14" data-sec="Fase 3 · Reparación">
+  <div class="kicker">Fase 3 de 3 · Reparación</div>
+  <h2>Un intercambio, con números</h2>
+  <div class="s14">
+    <div>
+      <div class="grids">
+        <figure><figcaption>1° básico A</figcaption><div id="x14a"></div></figure>
+        <figure id="f14b"><figcaption>1° básico B</figcaption><div id="x14b"></div></figure>
+      </div>
+      <div class="tbadge" id="t14">Choques de docente <span class="m">t</span> = <b id="t14v">2</b></div>
+      <div><span class="tabu-tag frag" data-f="4">Tabú: Θ(1°B, mar 3, jue 1) = k + 15</span></div>
+    </div>
+    <div class="steps14">
+      <div class="st"><b class="h">El problema</b>Prof. Inglés 1 está en ambos cursos el martes 3 y 4.</div>
+      <div class="st frag" data-f="1"><b class="h">1 · Curso y bloque</b>Sale 1° básico B y el bloque <span class="m">s</span>₁ = (martes, 3). Su compañero (martes, 4) también es Inglés: se prueba un intercambio doble.</div>
+      <div class="st frag" data-f="2"><b class="h">2 · Candidato</b>El doble de Artes del jueves 1–2. ✓ No es tabú. ✓ El jueves no tiene Inglés ni el martes Artes.</div>
+      <div class="st frag" data-f="3"><b class="h">3 · Δ del intercambio</b>
+        <div class="dl">
+          <span class="m">t<sup>−</sup></span><span class="v">2</span><span class="x">choques que se eliminan (martes 3 y 4)</span>
+          <span class="m">t<sup>+</sup></span><span class="v">0</span><span class="x">choques nuevos tras el cambio</span>
+          <span class="m">g<sup>±</sup></span><span class="v">0</span><span class="x">nadie usa el gimnasio</span>
+        </div>
+        <div class="dres">Δ = 10·(0 − 2) + 50·(0 − 0) = −20</div>
+      </div>
+      <div class="st frag" data-f="4"><b class="h">4 · Se aplica</b>Δ &lt; 0: el horario mejora y el par queda tabú por 15 iteraciones.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 15 · TABÚ Y ε ======================= -->
+<section class="slide" id="s15" data-sec="Fase 3 · Reparación">
+  <div class="kicker">Fase 3 de 3 · Reparación</div>
+  <h2>Cómo no quedarse atascado</h2>
+  <div class="s15">
+    <svg id="land" viewBox="0 0 660 372" role="img" aria-label="Curva de conflictos con un mínimo local y un mínimo en cero">
+      <defs>
+        <linearGradient id="lgf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--slate-2)" stop-opacity=".28"/><stop offset="1" stop-color="var(--slate-2)" stop-opacity="0"/></linearGradient>
+      </defs>
+      <line x1="40" y1="20" x2="40" y2="318" stroke="var(--slate-2)" stroke-width="1.5"/>
+      <line x1="40" y1="318" x2="640" y2="318" stroke="var(--slate-2)" stroke-width="1.5"/>
+      <line x1="40" y1="300" x2="640" y2="300" stroke="var(--line)" stroke-dasharray="3 5"/>
+      <text class="lbl" x="30" y="304" text-anchor="end">0</text>
+      <text class="lbl" transform="translate(22 160) rotate(-90)" text-anchor="middle">conflictos</text>
+      <text class="lbl" x="250" y="342" text-anchor="middle">horarios vecinos (a un intercambio de distancia)</text>
+      <path id="landFill" fill="url(#lgf)"/>
+      <path id="landPath" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
+      <g id="lmLabel" class="fade"><text class="lbl-b" x="210" y="236" text-anchor="middle">mínimo local</text><text class="lbl" x="210" y="252" text-anchor="middle">ningún intercambio mejora,</text><text class="lbl" x="210" y="267" text-anchor="middle">pero quedan conflictos</text></g>
+      <g id="epLabel" class="fade"><text class="lbl-b" x="300" y="86" text-anchor="middle" style="fill:var(--amber)">ε: acepta empeorar</text></g>
+      <g id="lock" class="fade" transform="translate(196 156)">
+        <rect x="0" y="9" width="28" height="22" rx="4" fill="var(--amber)"/>
+        <path d="M6 10 V5 a8 8 0 0 1 16 0 V10" fill="none" stroke="var(--amber)" stroke-width="3.5"/>
+        <text class="lbl-b" x="14" y="-8" text-anchor="middle" style="fill:var(--amber)">tabú</text>
+      </g>
+      <g id="gmLabel" class="fade"><text class="lbl-b" x="450" y="314" text-anchor="middle" style="fill:var(--green)">0 conflictos</text></g>
+      <circle id="ball" r="10" fill="var(--crimson)" stroke="var(--paper)" stroke-width="2.5" cx="40" cy="40"/>
+    </svg>
+    <div class="side">
+      <div class="box"><h3>El riesgo: un mínimo local</h3><p>Un horario donde ningún intercambio reduce los conflictos, aunque todavía quedan algunos. Si solo se aceptaran mejoras, la búsqueda se quedaría ahí.</p></div>
+      <div class="box frag" data-f="1"><h3><span class="m">ε</span> = 0,05 · Aceptar empeorar a veces</h3><p>Cuando el mejor intercambio empeora, igual se aplica con probabilidad 5 %. Eso permite salir del valle.</p></div>
+      <div class="box frag" data-f="2"><h3><span class="m">τ</span> = 15 · Lista tabú</h3><p>Cada intercambio aplicado queda prohibido por 15 iteraciones. Sin esto, la vuelta siguiente lo desharía y la búsqueda caería otra vez en el mismo valle.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 16 · DEMO ======================= -->
+<section class="slide" id="s16" data-sec="Fase 3 · Reparación">
+  <div class="kicker">Fase 3 en vivo</div>
+  <h2>Reparando un horario desde cero</h2>
+  <div class="s16">
+    <div>
+      <div class="toyg" id="toyg"></div>
+      <p class="tiny" style="margin-top:10px;max-width:520px">Versión reducida: 4 cursos, 6 bloques por día, solo choques de docentes e intercambios simples. Las lecciones parten repartidas al azar. Docentes compartidos: MAT₁, HIS₁ en 7°A y 7°B · MAT₂, HIS₂ en 8°A y 8°B · LEN₁ en 7°A y 8°A · LEN₂ en 7°B y 8°B · ING, CNA, EFI y ART en los cuatro.</p>
+    </div>
+    <div class="toyr">
+      <div class="kpis">
+        <div class="kpi t" id="kT"><b id="kTv">0</b><span>choques de docente (t)</span></div>
+        <div class="kpi"><b id="kKv">0</b><span>iteraciones (k)</span></div>
+        <div class="kpi"><b id="kAv">0</b><span>intercambios aplicados</span></div>
+      </div>
+      <div class="chartbox"><h4>Choques por iteración</h4><svg id="toyChart" viewBox="0 0 560 150" preserveAspectRatio="none"></svg></div>
+      <ul class="log" id="toyLog"></ul>
+      <div class="done-msg" id="toyDone"></div>
+      <div class="ctrl">
+        <button class="btn pri" id="toyPlay">❚❚ Pausa</button>
+        <button class="btn" id="toyStep">Paso ›</button>
+        <button class="btn" id="toyNew">↺ Nuevo horario al azar</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 17 · RESUMEN ======================= -->
+<section class="slide dark" id="s17" data-sec="Resumen">
+  <div class="kicker">Resumen</div>
+  <h2>Tres fases, un horario factible</h2>
+  <div class="sum">
+    <article class="rise" style="--d:.1s"><div class="n">Fase 1</div><h3>Fijar</h3><div class="fn">BloquesFijos</div><p>Reserva los electivos sincronizados de 3° y 4° medio, el lunes tarde de 3° medio y la Orientación de 1° a 4° básico. Nadie los mueve después.</p></article>
+    <article class="rise" style="--d:.25s"><div class="n">Fase 2</div><h3>Construir</h3><div class="fn">ConstrucciónVoraz</div><p>Corta la malla en sesiones de 90 y 45 minutos, ordena primero lo difícil y ubica cada sesión en el hueco de menor penalización.</p></article>
+    <article class="rise" style="--d:.4s"><div class="n">Fase 3</div><h3>Reparar</h3><div class="fn">MinConflictosTabú</div><p>Intercambia lecciones dentro de cada curso, acepta empeorar un 5 % de las veces y usa una lista tabú hasta llegar a 0 conflictos.</p></article>
+  </div>
+  <div class="params rise" style="--d:.55s">
+    <div><span class="m">ω = 3</span><span>semilla aleatoria: mismo resultado en cada ejecución</span></div>
+    <div><span class="m">K = 10 000</span><span>iteraciones máximas de la búsqueda</span></div>
+    <div><span class="m">τ = 15</span><span>iteraciones que dura un movimiento tabú</span></div>
+    <div><span class="m">ε = 0,05</span><span>probabilidad de aceptar un movimiento que empeora</span></div>
+    <div><span class="m">κ = 3</span><span>cursos a la vez en recintos deportivos</span></div>
+  </div>
+  <p class="closing rise" style="--d:.7s">El resultado cubre exactamente la malla de los 24 cursos, y es factible cuando la búsqueda llega a 0 choques de docentes, 0 sobrecupo deportivo y 0 asignaturas fragmentadas.</p>
+</section>
+
+<div id="nav"><span id="navSec"></span><div class="r"><span id="dots"></span><button id="prev" aria-label="Diapositiva anterior">‹</button><span id="navNum"></span><button id="next" aria-label="Diapositiva siguiente">›</button></div></div>
+<div id="bar"><i></i></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+/* ====================================================================
+   Utilidades
+   ==================================================================== */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+let timers=[], epoch=0;
+const later=(ms,fn)=>{const id=setTimeout(fn,ms);timers.push(id);return id;};
+const clearTimers=()=>{timers.forEach(clearTimeout);timers=[];};
+function el(tag,cls,html){const e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e;}
+function mkRng(seed){let a=seed>>>0;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function shuffle(arr,r){for(let i=arr.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+
+const DAYS=['Lun','Mar','Mié','Jue','Vie'];
+const DAYL=['lunes','martes','miércoles','jueves','viernes'];
+const NAME={LEN:'Lenguaje',MAT:'Matemática',ING:'Inglés',CNA:'Ciencias',HIS:'Historia',EFI:'Ed. Física',ART:'Artes',MUS:'Música',REL:'Religión',ORI:'Orientación',E1:'Electivo 1',E2:'Electivo 2',E3:'Electivo 3',CIU:'Ed. Ciudadana',FIL:'Filosofía'};
+const PROF={P1:'Prof. 1 Básica',P2:'Prof. 2 Básica',PI:'Prof. Inglés 1',PEF:'Prof. Ed. Física 2',PR:'Prof. Religión Básica'};
+const TRONC=new Set(['LEN','MAT','CNA']);
+const PAIRS=[[1,2],[3,4],[5,6],[7,8],[9,10]];
+const BT={1:['08:00','08:45'],2:['08:45','09:30'],3:['09:40','10:25'],4:['10:25','11:10'],5:['11:25','12:10'],6:['12:10','12:50'],7:['13:00','13:40'],8:['13:40','14:20'],9:['14:50','15:30'],10:['15:30','16:10']};
+const KEY=(d,b)=>d+'-'+b;
+const lastBlock=d=>d===0?8:7;           // jornada de 1° a 4° básico
+const range=(a,b)=>{const r=[];for(let i=a;i<=b;i++)r.push(i);return r;};
+
+/* Cuadrícula: columnas = días (u otras etiquetas), filas = bloques. Devuelve cells[col][fila]. */
+function buildGrid(g,{cols=DAYS,rows,cw,ch,lw=22,off=()=>false,rowLabel=r=>r,gap=3}){
+  g.innerHTML='';g.classList.add('g');
+  g.style.gridTemplateColumns=`${lw}px repeat(${cols.length},${cw}px)`;
+  g.style.gridTemplateRows=`16px repeat(${rows.length},${ch}px)`;
+  g.style.gap=gap+'px';
+  g.append(el('div','gh'));
+  cols.forEach(c=>g.append(el('div','gh',c)));
+  const cells=cols.map(()=>({}));
+  rows.forEach(r=>{
+    g.append(el('div','gr',String(rowLabel(r))));
+    cols.forEach((c,ci)=>{const x=el('div','cell'+(off(ci,r)?' off':''));x.dataset.a='';cells[ci][r]=x;g.append(x);});
+  });
+  return cells;
+}
+function paint(c,a,o={}){
+  if(!c)return;
+  c.dataset.a=a||'';
+  c.classList.toggle('fx',!!o.fx);
+  c.innerHTML=a?(o.html!=null?o.html:(o.long?NAME[a]:a)):'';
+}
+/* Animación de intercambio entre dos celdas de la misma cuadrícula */
+function swapAnim(c1,c2,dur,done){
+  const dx=c2.offsetLeft-c1.offsetLeft, dy=c2.offsetTop-c1.offsetTop;
+  [c1,c2].forEach(c=>{c.style.transition=`transform ${dur}ms cubic-bezier(.5,0,.3,1)`;c.style.zIndex=4;void c.offsetWidth;});
+  c1.style.transform=`translate(${dx}px,${dy}px)`;c2.style.transform=`translate(${-dx}px,${-dy}px)`;
+  later(dur+30,()=>{[c1,c2].forEach(c=>{c.style.transition='none';c.style.transform='';c.style.zIndex='';void c.offsetWidth;c.style.transition='';});done&&done();});
+}
+
+/* ====================================================================
+   Algoritmo 3 · ConstrucciónVoraz (versión para 1° básico A y B)
+   ==================================================================== */
+const MALLA={
+  A:[['LEN',8,'P1','Aula'],['MAT',6,'P2','Aula'],['ING',6,'PI','Aula'],['CNA',3,'P1','Aula'],['HIS',3,'P1','Aula'],['EFI',3,'PEF','Gim'],['ART',2,'P2','Aula'],['MUS',2,'P1','Aula'],['REL',2,'PR','Aula'],['ORI',1,'P1','Aula']],
+  B:[['LEN',8,'P1','Aula'],['MAT',6,'P2','Aula'],['ING',6,'PI','Aula'],['CNA',3,'P2','Aula'],['HIS',3,'P2','Aula'],['EFI',3,'PEF','Gim'],['ART',2,'P2','Aula'],['MUS',2,'P2','Aula'],['REL',2,'PR','Aula'],['ORI',1,'P2','Aula']]
+};
+const FIJOS={A:[[2,7,'ORI','P1','Aula']],B:[[3,7,'ORI','P2','Aula']]};   // Orientación: 1°A miércoles, 1°B jueves
+
+function greedy(seed){
+  const r=mkRng(seed),X={A:{},B:{}},T={},G={},N={},steps=[];
+  const tsz=(d,b,p)=>(T[KEY(d,b)+'|'+p]?T[KEY(d,b)+'|'+p].size:0);
+  const gsz=(d,b)=>(G[KEY(d,b)]?G[KEY(d,b)].size:0);
+  const n=(c,d,a)=>N[c+d+a]||0;
+  function asg(c,d,b,a,p,e,fx){
+    X[c][KEY(d,b)]={a,p,e,fx:!!fx};
+    (T[KEY(d,b)+'|'+p]=T[KEY(d,b)+'|'+p]||new Set()).add(c);
+    N[c+d+a]=n(c,d,a)+1;
+    if(e==='Gim')(G[KEY(d,b)]=G[KEY(d,b)]||new Set()).add(c);
+  }
+  for(const c of ['A','B'])for(const f of FIJOS[c])asg(c,f[0],f[1],f[2],f[3],f[4],true);
+  for(const c of ['A','B']){
+    const placed={};Object.values(X[c]).forEach(v=>placed[v.a]=(placed[v.a]||0)+1);
+    const Q=[];
+    MALLA[c].forEach(([a,h,p,e])=>{let rem=h-(placed[a]||0);while(rem>=2){Q.push({a,p,e,l:2});rem-=2;}if(rem===1)Q.push({a,p,e,l:1});});
+    const key=s=>s.e==='Gim'?0:TRONC.has(s.a)?1:2;
+    const Qs=Q.map((s,i)=>Object.assign({},s,{i})).sort((x,y)=>key(x)-key(y)||x.i-y.i);
+    const F2=[],F1=[];
+    for(let d=0;d<5;d++)for(const [b1,b2] of PAIRS){
+      const ok=b=>b<=lastBlock(d)&&!X[c][KEY(d,b)];
+      if(ok(b1)&&ok(b2))F2.push([d,b1]);else if(ok(b1))F1.push([d,b1]);else if(ok(b2))F1.push([d,b2]);
+    }
+    const pick=(V,pen)=>{shuffle(V,r);const cands=V.map(([d,b])=>({d,b,pen:pen(d,b)}));let best=null;for(const x of cands){if(!best||x.pen<best.pen)best=x;}return {cands,best};};
+    const avoidOf=a=>[0,1,2,3,4].filter(d=>n(c,d,a)>0);
+    for(const s of Qs.filter(s=>s.l===2)){
+      const avoid=avoidOf(s.a);
+      let V=F2.filter(([d])=>n(c,d,s.a)===0),fb=false;if(!V.length){V=F2.slice();fb=true;}
+      if(V.length){
+        const {cands,best}=pick(V,(d,b)=>500*(n(c,d,s.a)>0)+tsz(d,b,s.p)+tsz(d,b+1,s.p)+(s.e==='Gim'?15*(gsz(d,b)>=3)+15*(gsz(d,b+1)>=3):0));
+        F2.splice(F2.findIndex(([d,b])=>d===best.d&&b===best.b),1);
+        asg(c,best.d,best.b,s.a,s.p,s.e);asg(c,best.d,best.b+1,s.a,s.p,s.e);
+        if(c==='B')steps.push(Object.assign({},s,{cands,best,avoid,fb,cells:[[best.d,best.b],[best.d,best.b+1]]}));
+      }else{
+        const s1=F1.pop(),s2=F1.pop();
+        asg(c,s1[0],s1[1],s.a,s.p,s.e);asg(c,s2[0],s2[1],s.a,s.p,s.e);
+        if(c==='B')steps.push(Object.assign({},s,{cands:[],best:null,avoid,fb:true,cells:[s1,s2]}));
+      }
+    }
+    for(const s of Qs.filter(s=>s.l===1)){
+      if(!F1.length&&F2.length){const [d,b]=F2.pop();F1.push([d,b],[d,b+1]);}
+      const avoid=avoidOf(s.a);
+      let V=F1.filter(([d])=>n(c,d,s.a)===0),fb=false;if(!V.length){V=F1.slice();fb=true;}
+      const {cands,best}=pick(V,(d,b)=>500*(n(c,d,s.a)>0)+tsz(d,b,s.p)+(s.e==='Gim'?15*(gsz(d,b)>=3):0));
+      F1.splice(F1.findIndex(([d,b])=>d===best.d&&b===best.b),1);
+      asg(c,best.d,best.b,s.a,s.p,s.e);
+      if(c==='B')steps.push(Object.assign({},s,{cands,best,avoid,fb,cells:[[best.d,best.b]]}));
+    }
+  }
+  return {X,steps};
+}
+const GR=greedy(3);
+
+/* ====================================================================
+   Motor de diapositivas
+   ==================================================================== */
+const stage=$('#stage');
+const slides=$$('.slide');
+const H={};
+let cur=0, step=0;
+
+function fit(){const s=Math.min(window.innerWidth/1280,window.innerHeight/720);stage.style.transform=`translate(-50%,-50%) scale(${s})`;}
+window.addEventListener('resize',fit);fit();
+
+function maxStep(sl){let m=+(sl.dataset.steps||0);$$('[data-f]',sl).forEach(e=>m=Math.max(m,+e.dataset.f));return m;}
+function applyStep(sl,n,prev){
+  $$('[data-f]',sl).forEach(e=>e.classList.toggle('on',+e.dataset.f<=n));
+  for(let i=1;i<=9;i++)sl.classList.toggle('at'+i,n>=i);
+  if(H[sl.id]&&H[sl.id].step)H[sl.id].step(n,prev);
+  updateNav();
+}
+function updateNav(){
+  const sl=slides[cur],m=maxStep(sl);
+  $('#navNum').textContent=`${cur+1} / ${slides.length}`;
+  $('#navSec').textContent=sl.dataset.sec||'';
+  $('#bar i').style.width=((cur+1)/slides.length*100)+'%';
+  const dots=$('#dots');dots.innerHTML='';
+  if(m>0)for(let i=0;i<=m;i++){const d=el('i',i<=step?'on':'');dots.append(d);}
+  stage.classList.toggle('on-dark',sl.classList.contains('dark'));
+  try{history.replaceState(null,'','#'+(cur+1));}catch(e){}
+}
+function go(n,toEnd,atStep){
+  if(n<0||n>=slides.length)return;
+  const old=slides[cur];
+  if(H[old.id]&&H[old.id].leave)H[old.id].leave();
+  clearTimers();epoch++;
+  old.classList.remove('is-active');
+  cur=n;const sl=slides[cur];
+  sl.classList.add('is-active');
+  step=atStep!=null?Math.min(atStep,maxStep(sl)):(toEnd?maxStep(sl):0);
+  if(H[sl.id]&&H[sl.id].enter)H[sl.id].enter(step);
+  applyStep(sl,step,-1);
+}
+function next(){const sl=slides[cur];if(step<maxStep(sl)){const p=step;step++;applyStep(sl,step,p);}else go(cur+1);}
+function prev(){if(step>0){const p=step;step--;applyStep(slides[cur],step,p);}else go(cur-1,true);}
+
+document.addEventListener('keydown',e=>{
+  const onBtn=e.target&&e.target.tagName==='BUTTON';
+  if(['ArrowRight','ArrowDown','PageDown'].includes(e.key)||(!onBtn&&(e.key===' '||e.key==='Enter'))){e.preventDefault();next();}
+  else if(['ArrowLeft','ArrowUp','PageUp','Backspace'].includes(e.key)){e.preventDefault();prev();}
+  else if(e.key==='Home')go(0);
+  else if(e.key==='End')go(slides.length-1);
+  else if(e.key==='f'||e.key==='F'){
+    try{if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});else document.exitFullscreen();}catch(err){}
+  }
+});
+$('#next').addEventListener('click',e=>{e.currentTarget.blur();next();});
+$('#prev').addEventListener('click',e=>{e.currentTarget.blur();prev();});
+let tx=null;
+document.addEventListener('touchstart',e=>{tx=e.target.closest('button')?null:e.touches[0].clientX;},{passive:true});
+document.addEventListener('touchend',e=>{if(tx==null)return;const dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>50)(dx<0?next:prev)();tx=null;});
+
+/* ====================================================================
+   1 · Portada: el horario de 1° básico B se arma solo
+   ==================================================================== */
+H.s1={enter(){
+  const cells=buildGrid($('#heroGrid'),{rows:range(1,8),cw:66,ch:31,off:(d,b)=>b>lastBlock(d)});
+  const seq=[[{d:3,b:7,a:'ORI',fx:true}]];
+  GR.steps.forEach(s=>seq.push(s.cells.map(([d,b])=>({d,b,a:s.a}))));
+  seq.forEach((grp,i)=>later(800+i*130,()=>grp.forEach(x=>{const c=cells[x.d][x.b];paint(c,x.a,{fx:x.fx});c.classList.add('pop');})));
+}};
+
+/* ====================================================================
+   2 · Línea de tiempo de un día
+   ==================================================================== */
+(function(){
+  const tl=$('#tl'),W=1136,mins=t=>{const [h,m]=t.split(':').map(Number);return h*60+m;},t0=mins('08:00'),t1=mins('16:10'),px=W/(t1-t0);
+  for(let b=1;b<=10;b++){
+    const [s,e]=BT[b];const x=el('div','tb'+(b>8?' late':''),`<b>${b}</b><span>${s}–${e}</span>`);
+    x.style.left=((mins(s)-t0)*px)+'px';x.style.width=((mins(e)-mins(s))*px-3)+'px';x.style.setProperty('--d',(0.15+b*0.07)+'s');
+    tl.append(x);
+  }
+  const note=el('div','tl-note','Bloques 9 y 10: solo el lunes, en 3° y 4° medio');note.style.left=((mins('14:50')-t0)*px)+'px';tl.append(note);
+  const lunch=el('div','tl-lunch','almuerzo');lunch.style.left=((mins('14:20')-t0)*px)+'px';lunch.style.width=(30*px)+'px';tl.append(lunch);
+})();
+
+/* ====================================================================
+   3 · Notación sobre un extracto de horario
+   ==================================================================== */
+const S3D=[['LEN','LEN','MAT','MAT'],['ING','ING','MAT','MAT'],['LEN','LEN','CNA','CNA'],['MAT','MAT','ING','ING'],['EFI','EFI','LEN','LEN']];
+const s3cells=buildGrid($('#s3grid'),{rows:[1,2,3,4],cw:88,ch:40});
+S3D.forEach((col,d)=>col.forEach((a,i)=>paint(s3cells[d][i+1],a,{long:true})));
+H.s3={step(n){
+  const all=[];s3cells.forEach((col,d)=>[1,2,3,4].forEach(b=>all.push([d,b,col[b]])));
+  all.forEach(([d,b,c])=>c.classList.remove('hl','hl-a','hl-r','dim'));
+  const s=s3cells[1][3];
+  const call=$('#s3call');
+  if(n===0){s.classList.add('hl');call.innerHTML='<span class="m">s</span> = (martes, 3): el martes de 09:40 a 10:25.';}
+  if(n===1){s.classList.add('hl');call.innerHTML='<span class="m">X</span><sub>1°B</sub>(martes, 3) = (Matemática, Prof. 2 Básica, Aula)';}
+  if(n===2){all.forEach(([d,b,c])=>{if(S3D[d][b-1]==='MAT')c.classList.add('hl-a');else c.classList.add('dim');});call.innerHTML='En la malla: (Matemática, 6, Prof. 2 Básica, Aula). Los 6 bloques marcados son esas 6 horas, en tres dobles.';}
+  if(n===3){all.forEach(([d,b,c])=>{if(d===1&&S3D[d][b-1]==='MAT')c.classList.add('hl-r');else c.classList.add('dim');});call.innerHTML='<span class="m">N</span><sub>1°B</sub>(martes, Matemática) = 2 · <span class="m">T</span>((martes, 3), Prof. 2 Básica) = {1° básico B}: un solo curso, sin choque.';}
+}};
+
+/* ====================================================================
+   4 · Miniaturas de las tres fases
+   ==================================================================== */
+const S3L=[],S4L=[];
+for(let d=1;d<5;d++)for(let b=1;b<=4;b++)S3L.push([d,b]);S3L.push([0,7],[0,8]);
+for(let d=1;d<5;d++)for(let b=5;b<=8;b++)S4L.push([d,b]);S4L.push([0,9],[0,10]);
+const ej=k=>Math.floor(k/2)%3+1;
+
+function clashSetB(units){            // celdas de 1°B que chocan con 1°A
+  const A=GR.X.A,bad=new Set();
+  units.forEach(u=>u.cells.forEach(k=>{if(A[k]&&A[k].p===u.p)bad.add(k);}));
+  return bad;
+}
+function repairedUnits(){             // reparación ilustrativa con intercambios de unidades del mismo tamaño
+  const units=GR.steps.map(s=>({a:s.a,p:s.p,cells:s.cells.map(([d,b])=>KEY(d,b)),moved:false}));
+  const tA=k=>GR.X.A[k]&&GR.X.A[k].p;
+  units.forEach(u=>{
+    if(!u.cells.some(k=>tA(k)===u.p))return;
+    const v=units.find(v=>v!==u&&v.cells.length===u.cells.length&&v.a!==u.a&&v.cells.every((k,i)=>tA(k)!==u.p&&tA(u.cells[i])!==v.p));
+    if(v){const tmp=u.cells;u.cells=v.cells;v.cells=tmp;u.moved=v.moved=true;}
+  });
+  return units;
+}
+(function(){
+  const o={rows:range(1,8),cw:30,ch:13,lw:0,gap:2};
+  const g1=buildGrid($('#th1'),Object.assign({},o,{off:(d,b)=>false}));
+  S3L.forEach(([d,b],k)=>{if(b<=8)paint(g1[d][b],'E'+ej(k),{fx:true});});
+  const units2=GR.steps.map(s=>({a:s.a,p:s.p,cells:s.cells.map(([d,b])=>KEY(d,b))}));
+  [['#th2',units2,true],['#th3',repairedUnits(),false]].forEach(([id,units,showClash])=>{
+    const g=buildGrid($(id),Object.assign({},o,{off:(d,b)=>b>lastBlock(d)}));
+    paint(g[3][7],'ORI',{fx:true});
+    const bad=clashSetB(units);
+    units.forEach(u=>u.cells.forEach(k=>{const [d,b]=k.split('-').map(Number);const c=g[d][b];paint(c,u.a);c.classList.toggle('clash',showClash&&bad.has(k));c.classList.toggle('ok',!showClash&&!!u.moved);}));
+  });
+  $$('#s4 .gh,#s4 .gr').forEach(x=>x.remove());
+  ['#th1','#th2','#th3'].forEach(id=>{const g=$(id);g.style.gridTemplateRows='repeat(8,13px)';g.style.gridTemplateColumns='repeat(5,30px)';});
+})();
+
+/* ====================================================================
+   5 · Electivos sincronizados
+   ==================================================================== */
+let el3c,el4c;
+function elLive(k){
+  const q=Math.floor(k/2),j=q%3+1;
+  $('#elLive').innerHTML=`<div><span class="m">k</span> = ${k}</div><div>⌊${k} / 2⌋ = ${q}</div><div>${q} mod 3 = ${q%3}</div>`+
+    `<div class="res"><span class="m">j</span> = ${q%3} + 1 = <b>${j}</b> → <span class="chip" data-a="E${j}">Electivo ${j}</span></div>`+
+    `<div class="where">3° medio: ${DAYL[S3L[k][0]]}, bloque ${S3L[k][1]} · 4° medio: ${DAYL[S4L[k][0]]}, bloque ${S4L[k][1]}</div>`;
+}
+function elCount(cnt){$('#elCount').innerHTML=[1,2,3].map(j=>`<span class="chip" data-a="E${j}">Electivo ${j}: ${cnt[j]} h</span>`).join('');}
+function elPlay(){
+  const o={rows:range(1,10),cw:50,ch:20,off:(d,b)=>d>0&&b>8};
+  el3c=buildGrid($('#el3'),o);el4c=buildGrid($('#el4'),o);
+  const cnt={1:0,2:0,3:0};elCount(cnt);
+  $('#elLive').innerHTML='<div class="where">Se recorre la lista con k = 0, 1, …, 17.</div>';
+  for(let k=0;k<18;k++)later(700+k*360,()=>{
+    const j=ej(k);
+    [[el3c,S3L],[el4c,S4L]].forEach(([g,L])=>{const c=g[L[k][0]][L[k][1]];paint(c,'E'+j,{fx:true});c.classList.add('pop');});
+    cnt[j]++;elCount(cnt);elLive(k);
+  });
+}
+H.s5={enter(){elPlay();}};
+$('#elReplay').addEventListener('click',()=>{clearTimers();elPlay();});
+
+/* ====================================================================
+   6 · Lunes tarde y Orientación rotativa
+   ==================================================================== */
+const OMEGA=[2,3,4,1];
+const CB=['1° A','1° B','2° A','2° B','3° A','3° B','4° A','4° B'];
+H.s6={enter(){
+  const lt=buildGrid($('#lt'),{cols:['3°M A','3°M B'],rows:[7,8,9,10],cw:118,ch:36,lw:84,rowLabel:b=>`${b} · ${BT[b][0]}`});
+  [0,1].forEach(i=>[7,8].forEach(b=>paint(lt[i][b],'E3',{fx:true,long:true})));
+  [9,10].forEach((b,k)=>later(600+k*250,()=>{paint(lt[0][b],'CIU',{fx:true,long:true});paint(lt[1][b],'FIL',{fx:true,long:true});lt[0][b].classList.add('pop');lt[1][b].classList.add('pop');}));
+  const og=buildGrid($('#ori'),{rows:range(0,7),cw:46,ch:23,lw:36,rowLabel:i=>CB[i]});
+  $('#oriLive').innerHTML='';
+  for(let i=0;i<8;i++)later(1300+i*480,()=>{
+    const d=OMEGA[i%4],c=og[d][i];paint(c,'ORI',{fx:true});c.classList.add('pop');
+    $('#oriLive').innerHTML=`<div><span class="m">i</span> = ${i} (${CB[i]} básico)</div><div>${i} mod 4 = ${i%4}</div><div class="res">Ω[${i%4}] = <b>${DAYL[d]}</b></div>`;
+  });
+}};
+
+/* ====================================================================
+   7 · Malla → sesiones, y la cola ordenada
+   ==================================================================== */
+(function(){
+  const box=$('#malla');
+  MALLA.B.forEach(([a,h])=>{
+    let html='';
+    if(a==='ORI'){html=`<span class="ses locked" data-a="ORI"><i class="sq"></i></span><em>ya fijada en la fase 1</em>`;}
+    else{let rem=h;while(rem>=2){html+=`<span class="ses" data-a="${a}"><i class="sq"></i><i class="sq"></i><b>90′</b></span>`;rem-=2;}if(rem===1)html+=`<span class="ses" data-a="${a}"><i class="sq"></i><b>45′</b></span>`;}
+    box.append(el('div','mrow',`<span class="chip" data-a="${a}">${NAME[a]}</span><span class="hrs">${h} h</span><div class="sess">${html}</div>`));
+  });
+  const groups=[
+    ['1 · Usa gimnasio',['EFI']],
+    ['2 · Troncales',['LEN','LEN','LEN','LEN','MAT','MAT','MAT','CNA']],
+    ['3 · Resto',['ING','ING','ING','HIS','ART','MUS','REL']],
+  ];
+  let i=0;const q=$('#queue');
+  q.append(el('h4',null,'Cola de sesiones dobles, en orden'));
+  groups.forEach(([t,list])=>{q.append(el('div','qg',`<h4>${t}</h4><div class="qchips">${list.map(a=>`<span class="q" data-a="${a}" style="--i:${i++}">${a}<i>90′</i></span>`).join('')}</div>`));});
+  q.append(el('div','qg',`<h4>Después, simples</h4><div class="qchips">${['EFI','CNA','HIS'].map(a=>`<span class="q" data-a="${a}" style="--i:${i++}">${a}<i>45′</i></span>`).join('')}</div>`));
+  /* la división en sesiones ocurre en el paso 1; la cola aparece en el paso 2 */
+  const marker=el('span','frag');marker.dataset.f='1';marker.style.display='none';$('#s7').append(marker);
+})();
+
+/* ====================================================================
+   8 · Huecos F2 y F1
+   ==================================================================== */
+H.s8={enter(){
+  const g=$('#gapGrid');
+  const cells=buildGrid(g,{rows:range(1,8),cw:84,ch:34,off:(d,b)=>b>lastBlock(d)});
+  paint(cells[3][7],'ORI',{fx:true,long:true});
+  let f2=0,f1=0;$('#f2n').textContent='0';$('#f1n').textContent='0';
+  const seq=[];
+  for(let d=0;d<5;d++)for(const [b1,b2] of PAIRS.slice(0,4)){
+    const ok=b=>b<=lastBlock(d)&&!(d===3&&b===7);
+    if(ok(b1)&&ok(b2))seq.push(['f2',d,b1]);else if(ok(b1))seq.push(['f1',d,b1]);else if(ok(b2))seq.push(['f1',d,b2]);
+  }
+  seq.forEach(([t,d,b],i)=>later(500+i*150,()=>{
+    const c=cells[d][b],br=el('div','br '+t);
+    br.style.left=(c.offsetLeft-4)+'px';br.style.top=(c.offsetTop-4)+'px';br.style.width=(c.offsetWidth+8)+'px';
+    br.style.height=(t==='f2'?(cells[d][b+1].offsetTop+cells[d][b+1].offsetHeight-c.offsetTop+8):(c.offsetHeight+8))+'px';
+    g.append(br);
+    if(t==='f2')$('#f2n').textContent=++f2;else $('#f1n').textContent=++f1;
+  }));
+}};
+
+/* ====================================================================
+   10 · Simulación de la construcción voraz de 1° básico B
+   ==================================================================== */
+const GS={i:0,ph:0,play:true,B:null,A:null};
+const dayName=d=>DAYS[d];
+const slotTxt=(c,l)=>l===2?`${dayName(c.d)} ${c.b}–${c.b+1}`:`${dayName(c.d)} ${c.b}`;
+const penCls=p=>p===0?'pen0':p<500?'penL':'penH';
+const penCol=p=>p===0?'var(--green)':p<500?'var(--amber)':'var(--crimson)';
+function gBuild(){
+  GS.B=buildGrid($('#gB'),{rows:range(1,8),cw:88,ch:37,off:(d,b)=>b>lastBlock(d)});
+  GS.A=buildGrid($('#gA'),{rows:range(1,8),cw:44,ch:15,gap:2,off:(d,b)=>b>lastBlock(d)});
+  Object.entries(GR.X.A).forEach(([k,v])=>{const [d,b]=k.split('-').map(Number);paint(GS.A[d][b],v.a,{fx:v.fx});});
+}
+function gRender(){
+  const S=GR.steps,B=GS.B,A=GS.A,A_X=GR.X.A;
+  for(let d=0;d<5;d++)for(let b=1;b<=8;b++){const c=B[d][b];c.classList.remove('cand','pen0','penL','penH','clash','pop');delete c.dataset.pen;if(!c.classList.contains('off'))paint(c,'');}
+  paint(B[3][7],'ORI',{fx:true,long:true});
+  const done=GS.i+(GS.ph===1?1:0);
+  let clashes=0;
+  S.slice(0,done).forEach((s,idx)=>s.cells.forEach(([d,b])=>{
+    const c=B[d][b];paint(c,s.a,{long:true});
+    const a=A_X[KEY(d,b)];if(a&&a.p===s.p){c.classList.add('clash');clashes++;}
+    if(idx===done-1&&GS.ph===1)c.classList.add('pop');
+  }));
+  /* 1° básico A: dónde está ocupado el docente de la sesión actual */
+  const curS=S[Math.min(GS.i,S.length-1)];
+  const showBusy=GS.i<S.length;
+  let busy=0;
+  for(let d=0;d<5;d++)for(let b=1;b<=8;b++){const c=A[d][b];if(c.classList.contains('off'))continue;const v=A_X[KEY(d,b)];const isB=showBusy&&v&&v.p===curS.p;c.classList.toggle('busy',isB);c.classList.toggle('dim',showBusy&&!isB);if(isB)busy++;}
+  $('#gStat').innerHTML=`Choques con 1° básico A: <b>${clashes}</b>`;
+  const list=$('#gC');list.innerHTML='';
+  if(GS.i>=S.length){
+    $('#gChip').removeAttribute('data-a');$('#gChip').textContent='Listo';
+    $('#gInfo').textContent='16 sesiones dobles y 3 simples ubicadas';
+    $('#gK').textContent=`${S.length} / ${S.length}`;
+    $('#gNote').innerHTML=clashes?`Quedan <b>${clashes}</b> bloques con choque de docente. El voraz no vuelve atrás: esos choques los resuelve la fase 3.`:'No quedaron choques con 1° básico A.';
+    $('#gRef').textContent='';
+    $('#gCh').textContent='Resumen de la construcción';
+    const bad=S.filter(s=>s.best&&s.best.pen>0);
+    list.append(el('li','',`<span>Sesiones ubicadas con 0 puntos</span><b style="background:var(--green)">${S.length-bad.length}</b>`));
+    bad.forEach(s=>list.append(el('li','',`<span>${NAME[s.a]} · ${slotTxt(s.best,s.l)}</span><b style="background:${penCol(s.best.pen)}">${s.best.pen}</b>`)));
+    return;
+  }
+  const s=curS;
+  $('#gCh').textContent='Candidatos, de menor a mayor penalización';
+  $('#gChip').dataset.a=s.a;$('#gChip').textContent=NAME[s.a];
+  $('#gInfo').textContent=`${s.l===2?'doble · 90′':'simple · 45′'} · ${PROF[s.p]}${s.e==='Gim'?' · Gimnasio':''}`;
+  $('#gK').textContent=`sesión ${GS.i+1} / ${S.length}`;
+  $('#gRef').innerHTML=busy?`Marcados: los ${busy} bloques donde ${PROF[s.p]} ya está con 1° básico A.`:`${PROF[s.p]} no tiene clases en 1° básico A.`;
+  let note='';
+  if(s.fb)note=`Todos los días libres ya tienen ${NAME[s.a]}: se permite repetir, con 500 puntos.`;
+  else if(s.avoid.length)note=`Se evitan ${s.avoid.map(dayName).join(', ')}: ya tienen ${NAME[s.a]}.`;
+  else note=`Ningún día tiene ${NAME[s.a]} todavía: todos los huecos ${s.l===2?'dobles':'sueltos'} son candidatos.`;
+  if(GS.ph===1&&s.best&&s.best.pen>0)note+=` Ningún candidato llegó a 0: se acepta un choque que deberá reparar la fase 3.`;
+  $('#gNote').textContent=note;
+  if(GS.ph===0){
+    s.cands.forEach(x=>{const c1=B[x.d][x.b];[c1].concat(s.l===2?[B[x.d][x.b+1]]:[]).forEach(c=>c.classList.add('cand',penCls(x.pen)));c1.dataset.pen=x.pen;});
+  }
+  const sorted=s.cands.slice().sort((x,y)=>x.pen-y.pen||((x===s.best)?-1:(y===s.best)?1:0));
+  sorted.slice(0,6).forEach(x=>{
+    const li=el('li',GS.ph===1&&x===s.best?'ch':'',`<span>${slotTxt(x,s.l)}</span>${GS.ph===1&&x===s.best?'<em>elegido</em>':''}<b style="background:${penCol(x.pen)}">${x.pen}</b>`);
+    list.append(li);
+  });
+  if(sorted.length>6)list.append(el('li','more',`y ${sorted.length-6} candidatos más`));
+}
+function gTick(){
+  const S=GR.steps;if(GS.i>=S.length)return false;
+  if(GS.ph===0)GS.ph=1;else{GS.i++;GS.ph=0;}
+  gRender();return GS.i<S.length;
+}
+function gLoop(){if(!GS.play)return;const more=gTick();if(more)later(GS.ph===0?1100:650,gLoop);else gSetPlay(false);}
+function gSetPlay(v){GS.play=v;$('#gPlay').innerHTML=v?'❚❚ Pausa':'▶ Reproducir';}
+H.s10={enter(){gBuild();GS.i=0;GS.ph=0;gRender();gSetPlay(true);later(1200,gLoop);},leave(){GS.play=false;}};
+$('#gPlay').addEventListener('click',()=>{if(GS.play){gSetPlay(false);clearTimers();}else{if(GS.i>=GR.steps.length){GS.i=0;GS.ph=0;gRender();}gSetPlay(true);gLoop();}});
+$('#gStep').addEventListener('click',()=>{gSetPlay(false);clearTimers();gTick();});
+$('#gReset').addEventListener('click',()=>{clearTimers();GS.i=0;GS.ph=0;gRender();gSetPlay(true);later(700,gLoop);});
+
+/* ====================================================================
+   12 · Ciclo min-conflicts
+   ==================================================================== */
+const RING={ang:0,target:0,loop:false,last:0,node:1};
+(function(){
+  const cx=290,cy=235,R=180,arr=$('#ringArrows');
+  $$('.rn').forEach(n=>{const k=+n.dataset.n,th=(k-1)*60*Math.PI/180;n.style.left=(cx+R*Math.sin(th))+'px';n.style.top=(cy-R*Math.cos(th))+'px';});
+  [30,90,150,210,270,330].forEach(a=>{const th=a*Math.PI/180,x=cx+R*Math.sin(th),y=cy-R*Math.cos(th);
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d','M-5,-6 L3,0 L-5,6');p.setAttribute('transform',`translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${a})`);arr.append(p);});
+})();
+function ringSetDot(a){const th=a*Math.PI/180;$('#ringDot').setAttribute('cx',290+180*Math.sin(th));$('#ringDot').setAttribute('cy',235-180*Math.cos(th));}
+function ringFrame(ep){
+  return function f(now){
+    if(ep!==epoch)return;
+    const dt=Math.min(50,now-(RING.last||now));RING.last=now;
+    if(RING.loop){RING.ang=(RING.ang+dt*0.03)%360;const k=Math.round(RING.ang/60)%6+1;const near=Math.abs(((RING.ang+30)%60)-30)<18;$$('.rn').forEach(n=>n.classList.toggle('act',near&&+n.dataset.n===k));}
+    else{RING.ang+=(RING.target-RING.ang)*Math.min(1,dt*0.008);}
+    ringSetDot(RING.ang);requestAnimationFrame(f);
+  };
+}
+H.s12={
+  enter(){RING.last=0;RING.ang=0;requestAnimationFrame(ringFrame(epoch));},
+  step(n){
+    RING.loop=n>=6;
+    if(!RING.loop){if(RING.ang>n*60+1)RING.ang=n*60;RING.target=n*60;}
+    $$('.rn').forEach(e=>{const k=+e.dataset.n;e.classList.toggle('vis',n>=6||k<=n+1);e.classList.toggle('act',!RING.loop&&k===n+1);});
+    $$('.rd').forEach(e=>e.classList.toggle('show',+e.dataset.n===Math.min(n+1,7)));
+  }
+};
+
+/* ====================================================================
+   13 · Intercambio doble y simple (en bucle)
+   ==================================================================== */
+function swLoop(id,data,pairs,ep){
+  const g=buildGrid($(id),{cols:['Mar','Jue'],rows:[1,2,3,4],cw:116,ch:30});
+  let state=data.map(c=>c.slice());
+  const render=()=>state.forEach((col,d)=>col.forEach((a,i)=>paint(g[d][i+1],a,{long:true})));
+  render();
+  const cyc=()=>{
+    if(ep!==epoch)return;
+    const marked=[];pairs.forEach(([[d1,b1],[d2,b2]])=>{marked.push(g[d1][b1],g[d2][b2]);});
+    marked.forEach(c=>c.classList.add('hl'));
+    later(700,()=>{
+      let left=pairs.length;
+      pairs.forEach(([[d1,b1],[d2,b2]])=>swapAnim(g[d1][b1],g[d2][b2],650,()=>{
+        const t=state[d1][b1-1];state[d1][b1-1]=state[d2][b2-1];state[d2][b2-1]=t;
+        if(--left===0){render();marked.forEach(c=>c.classList.remove('hl'));later(1700,cyc);}
+      }));
+    });
+  };
+  later(900,cyc);
+}
+H.s13={enter(){
+  swLoop('#sw2',[['LEN','LEN','MAT','MAT'],['ART','ART','CNA','CNA']],[[[0,3],[1,1]],[[0,4],[1,2]]],epoch);
+  swLoop('#sw1',[['LEN','LEN','HIS','REL'],['MAT','MAT','CNA','ING']],[[[0,3],[1,3]]],epoch);
+}};
+
+/* ====================================================================
+   14 · Un intercambio con números
+   ==================================================================== */
+const X14={A:[[['LEN','P1'],['LEN','P1'],['ING','PI'],['ING','PI']],[['REL','PR'],['REL','PR'],['MAT','P2'],['MAT','P2']]],
+           B:[[['MAT','P2'],['MAT','P2'],['ING','PI'],['ING','PI']],[['ART','P2'],['ART','P2'],['LEN','P1'],['LEN','P1']]]};
+let g14a,g14b;
+(function(){
+  const o={cols:['Martes','Jueves'],rows:[1,2,3,4],cw:132,ch:46,lw:22};
+  g14a=buildGrid($('#x14a'),o);g14b=buildGrid($('#x14b'),o);
+})();
+function r14(swapped){
+  const B=swapped?[[X14.B[0][0],X14.B[0][1],X14.B[1][0],X14.B[1][1]],[X14.B[0][2],X14.B[0][3],X14.B[1][2],X14.B[1][3]]]:X14.B;
+  [[g14a,X14.A],[g14b,B]].forEach(([g,X])=>X.forEach((col,d)=>col.forEach(([a,p],i)=>{const c=g[d][i+1];paint(c,a,{html:`${NAME[a]}<small>${PROF[p]}</small>`});c.classList.add('long');c.classList.remove('clash','hl','hl-a','dim','ok');})));
+  let t=0;
+  for(let d=0;d<2;d++)for(let i=0;i<4;i++){if(X14.A[d][i][1]===B[d][i][1]){g14a[d][i+1].classList.add('clash');g14b[d][i+1].classList.add('clash');t++;}}
+  $('#t14v').textContent=t;$('#t14').classList.toggle('zero',t===0);
+}
+H.s14={step(n,prev){
+  if(n>=4&&prev===3){
+    r14(false);
+    g14b[0][3].classList.add('hl');g14b[0][4].classList.add('hl');g14b[1][1].classList.add('hl-a');g14b[1][2].classList.add('hl-a');
+    let left=2;
+    [[3,1],[4,2]].forEach(([b1,b2])=>swapAnim(g14b[0][b1],g14b[1][b2],750,()=>{if(--left===0){r14(true);[g14b[0][3],g14b[0][4],g14b[1][1],g14b[1][2]].forEach(c=>c.classList.add('ok'));}}));
+    return;
+  }
+  r14(n>=4);
+  if(n>=4){[g14b[0][3],g14b[0][4],g14b[1][1],g14b[1][2]].forEach(c=>c.classList.add('ok'));return;}
+  if(n>=1){g14b[0][3].classList.add('hl');g14b[0][4].classList.add('hl');}
+  if(n>=2){g14b[1][1].classList.add('hl-a');g14b[1][2].classList.add('hl-a');}
+}};
+
+/* ====================================================================
+   15 · Paisaje de conflictos: mínimo local, ε y tabú
+   ==================================================================== */
+const LD='M40,52 C110,54 150,200 210,200 S280,118 320,118 S400,300 450,300 S580,170 630,150';
+$('#landPath').setAttribute('d',LD);
+$('#landFill').setAttribute('d',LD+' L630,318 L40,318 Z');
+const LP=$('#landPath');
+let LLEN=0;
+function lAt(x){let lo=0,hi=LLEN;for(let i=0;i<30;i++){const m=(lo+hi)/2;if(LP.getPointAtLength(m).x<x)lo=m;else hi=m;}return lo;}
+function setBall(L){const p=LP.getPointAtLength(L);$('#ball').setAttribute('cx',p.x);$('#ball').setAttribute('cy',p.y-11);}
+const ease=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
+function ballTo(a,b,dur,done){
+  const ep=epoch,t0=performance.now();
+  const f=now=>{if(ep!==epoch)return;const u=Math.min(1,(now-t0)/dur);setBall(a+(b-a)*ease(u));if(u<1)requestAnimationFrame(f);else if(done)done();};
+  requestAnimationFrame(f);
+}
+const LPOS={};
+function lInit(){if(LLEN)return;LLEN=LP.getTotalLength();LPOS.loc=lAt(210);LPOS.climb=lAt(282);LPOS.glob=lAt(450);}
+function lLabels(n){$('#lmLabel').classList.toggle('on',n>=0);$('#epLabel').classList.toggle('on',n>=1);$('#lock').classList.toggle('on',n>=2);$('#gmLabel').classList.toggle('on',n>=2);}
+H.s15={
+  enter(n){lInit();if(n===0){$('#lmLabel').classList.remove('on');setBall(0);later(400,()=>ballTo(0,LPOS.loc,1900,()=>$('#lmLabel').classList.add('on')));}},
+  step(n,prev){
+    lInit();
+    if(prev===-1){if(n>0){lLabels(n);setBall(n===1?LPOS.climb:LPOS.glob);}$('#epLabel').classList.toggle('on',n>=1);$('#lock').classList.toggle('on',n>=2);$('#gmLabel').classList.toggle('on',n>=2);return;}
+    if(n===1&&prev===0){$('#epLabel').classList.add('on');ballTo(LPOS.loc,LPOS.climb,1500);return;}
+    if(n===2&&prev===1){$('#lock').classList.add('on');later(500,()=>ballTo(LPOS.climb,LPOS.glob,1700,()=>$('#gmLabel').classList.add('on')));return;}
+    lLabels(n);setBall(n===0?LPOS.loc:n===1?LPOS.climb:LPOS.glob);
+  }
+};
+
+/* ====================================================================
+   16 · Demo de min-conflicts (versión reducida)
+   ==================================================================== */
+const TOYC=['7° A','7° B','8° A','8° B'];
+const TOYM={
+  '7° A':[['MAT',6,'Mat1'],['LEN',6,'Len1'],['ING',4,'Ing'],['CNA',4,'Cie'],['EFI',4,'EF'],['ART',2,'Art'],['HIS',4,'His1']],
+  '7° B':[['MAT',6,'Mat1'],['LEN',6,'Len2'],['ING',4,'Ing'],['CNA',4,'Cie'],['EFI',4,'EF'],['ART',2,'Art'],['HIS',4,'His1']],
+  '8° A':[['MAT',6,'Mat2'],['LEN',6,'Len1'],['ING',4,'Ing'],['CNA',4,'Cie'],['EFI',4,'EF'],['ART',2,'Art'],['HIS',4,'His2']],
+  '8° B':[['MAT',6,'Mat2'],['LEN',6,'Len2'],['ING',4,'Ing'],['CNA',4,'Cie'],['EFI',4,'EF'],['ART',2,'Art'],['HIS',4,'His2']],
+};
+const TLAB={Mat1:'MAT₁',Mat2:'MAT₂',Len1:'LEN₁',Len2:'LEN₂',His1:'HIS₁',His2:'HIS₂'};
+const TOY={X:null,r:null,tabu:{},k:0,acc:0,hist:[],log:[],seed:1,play:false,busy:false,cells:{},figs:{}};
+const NS=30, slotName=s=>`${DAYS[Math.floor(s/6)]} ${s%6+1}`;
+function toyBuild(){
+  const box=$('#toyg');box.innerHTML='';
+  TOYC.forEach(c=>{
+    const f=el('figure',null,`<figcaption>${c}</figcaption>`);const g=el('div');f.append(g);box.append(f);
+    const cells=buildGrid(g,{rows:range(1,6),cw:42,ch:25});
+    TOY.cells[c]=[];for(let s=0;s<NS;s++)TOY.cells[c][s]=cells[Math.floor(s/6)][s%6+1];
+    TOY.figs[c]=f;
+  });
+}
+function toyInit(seed){
+  TOY.seed=seed;TOY.r=mkRng(seed*7919+13);TOY.X={};
+  TOYC.forEach(c=>{const L=[];TOYM[c].forEach(([a,h,p])=>{for(let i=0;i<h;i++)L.push({a,p});});TOY.X[c]=shuffle(L,TOY.r);});
+  TOY.tabu={};TOY.k=0;TOY.acc=0;TOY.log=[];TOY.busy=false;
+  TOY.hist=[toyEval().t];
+  toyRender();
+}
+function toyEval(){
+  let t=0;const bad=new Set(),R=[];
+  for(let s=0;s<NS;s++){const m={};TOYC.forEach(c=>{const p=TOY.X[c][s].p;(m[p]=m[p]||[]).push(c);});Object.values(m).forEach(v=>{if(v.length>1){t+=v.length-1;v.forEach(c=>{bad.add(c+'|'+s);R.push(c);});}});}
+  return {t,bad,R};
+}
+const occ=(s,p,ex)=>TOYC.filter(c=>c!==ex&&TOY.X[c][s].p===p).length;
+function toyMove(){
+  const {t,R}=toyEval();if(t===0)return null;
+  const r=TOY.r,c=R[Math.floor(r()*R.length)];
+  const Z=[];for(let s=0;s<NS;s++)if(occ(s,TOY.X[c][s].p,c)>0)Z.push(s);
+  const s1=Z[Math.floor(r()*Z.length)];
+  const order=shuffle(range(0,NS-1),r);
+  let best=null,bd=Infinity;
+  for(const s2 of order){
+    if(s2===s1)continue;const l1=TOY.X[c][s1],l2=TOY.X[c][s2];
+    if(l1.p===l2.p)continue;
+    if((TOY.tabu[c+'|'+s1+'|'+s2]||0)>TOY.k)continue;
+    const tm=(occ(s1,l1.p,c)>0)+(occ(s2,l2.p,c)>0),tp=(occ(s2,l1.p,c)>0)+(occ(s1,l2.p,c)>0),D=10*(tp-tm);
+    if(D<bd){bd=D;best=s2;}
+    if(bd<0)break;
+  }
+  const acc=best!==null&&(bd<=0||r()<0.05);
+  return {c,s1,s2:best,d:bd,acc,worse:acc&&bd>0};
+}
+function toyRender(){
+  const {t,bad}=toyEval();
+  TOYC.forEach(c=>TOY.X[c].forEach((l,s)=>{const cell=TOY.cells[c][s];paint(cell,l.a,{html:TLAB[l.p]||l.a});cell.classList.toggle('clash',bad.has(c+'|'+s));}));
+  $('#kTv').textContent=t;$('#kKv').textContent=TOY.k;$('#kAv').textContent=TOY.acc;
+  $('#kT').classList.toggle('zero',t===0);
+  $('#toyDone').textContent=t===0?`Sin choques después de ${TOY.k} iteraciones.`:'';
+  $('#toyLog').innerHTML=TOY.log.slice(0,4).map(x=>`<li>${x}</li>`).join('')||'<li class="muted">Cada fila será un intercambio: curso, bloques y Δ.</li>';
+  toyChart();
+}
+function toyChart(){
+  const h=TOY.hist,svg=$('#toyChart'),X0=30,X1=550,Y0=128,Y1=12;
+  const n=Math.max(16,h.length-1),ym=Math.max(4,...h);
+  const px=i=>X0+i/n*(X1-X0),py=v=>Y0-v/ym*(Y0-Y1);
+  const pts=h.map((v,i)=>`${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  const mid=Math.round(ym/2);
+  let s='';
+  [0,mid,ym].forEach(v=>{s+=`<line x1="${X0}" x2="${X1}" y1="${py(v)}" y2="${py(v)}" stroke="var(--line)" stroke-width="1"/><text x="${X0-6}" y="${py(v)+3.5}" text-anchor="end">${v}</text>`;});
+  s+=`<text x="${X0}" y="146">0</text><text x="${X1}" y="146" text-anchor="end">${n}</text>`;
+  if(h.length>1)s+=`<polygon points="${X0},${Y0} ${pts} ${px(h.length-1)},${Y0}" fill="var(--crimson)" fill-opacity=".1"/>`;
+  s+=`<polyline points="${pts}" fill="none" stroke="var(--crimson)" stroke-width="2.2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  const last=h[h.length-1];
+  s+=`<circle cx="${px(h.length-1)}" cy="${py(last)}" r="4" fill="${last===0?'var(--green)':'var(--crimson)'}"/>`;
+  svg.innerHTML=s;
+}
+function toyIter(cb){
+  if(TOY.busy)return;
+  const m=toyMove();
+  if(!m){toyRender();toySetPlay(false);return;}
+  TOY.busy=true;TOY.k++;
+  const ep=epoch,f=TOY.figs[m.c],c1=TOY.cells[m.c][m.s1],c2=m.s2!=null?TOY.cells[m.c][m.s2]:null;
+  f.classList.add('cur');c1.classList.add('s1');if(c2)c2.classList.add('s2');
+  const dTxt=m.s2==null?'sin movimiento válido':`Δ = ${m.d>0?'+':m.d<0?'−':''}${Math.abs(m.d)}`;
+  const res=m.s2==null?'<span class="rej">se omite</span>':m.worse?'<span class="wrs">se aplica (5 %)</span>':m.acc?'<span class="acc">se aplica</span>':'<span class="rej">se descarta</span>';
+  TOY.log.unshift(`<span>${m.c}</span><span>${slotName(m.s1)}${m.s2!=null?' ↔ '+slotName(m.s2):''}</span><span>${dTxt}</span>${res}`);
+  $('#toyLog').innerHTML=TOY.log.slice(0,4).map(x=>`<li>${x}</li>`).join('');
+  const finish=()=>{
+    if(ep!==epoch)return;
+    f.classList.remove('cur');c1.classList.remove('s1');if(c2)c2.classList.remove('s2');
+    TOY.hist.push(toyEval().t);toyRender();TOY.busy=false;cb&&cb();
+  };
+  later(650,()=>{
+    if(m.acc){
+      swapAnim(c1,c2,420,()=>{const X=TOY.X[m.c],tmp=X[m.s1];X[m.s1]=X[m.s2];X[m.s2]=tmp;TOY.acc++;TOY.tabu[m.c+'|'+m.s1+'|'+m.s2]=TOY.k+15;TOY.tabu[m.c+'|'+m.s2+'|'+m.s1]=TOY.k+15;finish();});
+    }else later(250,finish);
+  });
+}
+function toyLoop(){if(!TOY.play)return;if(toyEval().t===0){toySetPlay(false);return;}toyIter(()=>{if(TOY.play)later(380,toyLoop);});}
+function toySetPlay(v){TOY.play=v;$('#toyPlay').innerHTML=v?'❚❚ Pausa':'▶ Reproducir';}
+toyBuild();
+H.s16={enter(){toyBuild();toyInit(TOY.seed);toySetPlay(true);later(1300,toyLoop);},leave(){TOY.play=false;TOY.busy=false;}};
+$('#toyPlay').addEventListener('click',()=>{if(TOY.play){toySetPlay(false);}else{if(toyEval().t===0)toyInit(TOY.seed+1);toySetPlay(true);if(!TOY.busy)toyLoop();}});
+$('#toyStep').addEventListener('click',()=>{toySetPlay(false);if(!TOY.busy&&toyEval().t>0)toyIter();});
+$('#toyNew').addEventListener('click',()=>{clearTimers();TOY.busy=false;$$('.toyg .cell').forEach(c=>{c.style.transform='';c.style.transition='';c.classList.remove('s1','s2');});$$('.toyg figure').forEach(f=>f.classList.remove('cur'));toyInit(TOY.seed+1);toySetPlay(true);later(700,toyLoop);});
+
+/* ====================================================================
+   Inicio
+   ==================================================================== */
+const m=/^#(\d+)(?:\.(\d+))?$/.exec(location.hash||'');
+const start=m?Math.min(slides.length-1,Math.max(0,+m[1]-1)):0;
+slides[0].classList.add('is-active');cur=0;
+if(start===0){if(H.s1.enter)H.s1.enter(0);applyStep(slides[0],0,-1);}
+else go(start,false,m&&m[2]!=null?+m[2]:null);
+})();
+</script>
+</body>
+</html>

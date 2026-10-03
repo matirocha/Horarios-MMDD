@@ -1,0 +1,352 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-noshorthands]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[margin=2.2cm]{geometry}
+
+\renewcommand{\familydefault}{\sfdefault}
+
+% --- Estilo en español ---
+\floatname{algorithm}{Algoritmo}
+\renewcommand{\algorithmicrequire}{\textbf{Entrada:}}
+\renewcommand{\algorithmicensure}{\textbf{Salida:}}
+\algrenewcommand{\algorithmiccomment}[1]{\hfill{\small // #1}}
+\newcommand{\alto}{\rule[-1.3ex]{0pt}{3.6ex}} % espacio extra en líneas con sumatorias
+
+\title{Pseudocódigo del generador de horarios\\[2pt]
+       \large Colegio Madres Dominicas (MMDD), Concepción}
+\author{Taller de Gestión de Operaciones --- Grupo 5}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+Este documento describe en pseudocódigo el motor de asignación implementado en
+la clase \texttt{MotorHorarios} de \texttt{notebooks/generador\_horarios.py}.
+El método construye el horario semanal de los 24 cursos en tres fases:
+(i) fija los bloques que no se pueden mover (electivos sincronizados de 3° y
+4° medio, lunes tarde de 3° medio y Orientación en básica);
+(ii) completa cada curso con una heurística constructiva voraz que prioriza
+bloques dobles de 90 minutos y días distintos para cada asignatura; y
+(iii) repara los conflictos restantes con una búsqueda local
+\emph{min-conflicts} con lista tabú, que intercambia lecciones dentro de un
+mismo curso.
+
+\section*{Notación}
+\begin{itemize}
+    \item $\mathcal{C}$: los 24 cursos (1° básico a 4° medio, secciones A y B);
+          $\mathcal{C}_B$: lista ordenada de los 8 cursos de 1° a 4° básico;
+          $\mathcal{C}_{3M}$, $\mathcal{C}_{4M}$: secciones A y B de 3° y 4° medio.
+    \item $\mathcal{D}$: días de lunes a viernes. Un bloque es un par $s = (d, b)$
+          con día $d$ y número de bloque $b \in \{1,\dots,10\}$;
+          $B_{c,d}$: bloques permitidos al curso $c$ el día $d$ según su jornada.
+    \item $M_c$: malla curricular del curso $c$, formada por tuplas $(a, h, p, e)$:
+          asignatura, horas semanales, docente y espacio (Aula, Gimnasio o Sala Electivos).
+    \item $X_c(s) = \ell = (a_c(s), p_c(s), e_c(s))$: lección asignada al curso $c$
+          en el bloque $s$; $\operatorname{dom}(X_c)$: bloques ocupados del curso $c$;
+          $L_c$: bloques fijos del curso $c$, que nunca se intercambian.
+    \item $T(s, p)$: cursos que tienen al docente $p$ en el bloque $s$;
+          $G(s)$: cursos que usan recintos deportivos en el bloque $s$, con capacidad $\kappa = 3$;
+          $N_c(d, a)$: número de bloques de la asignatura $a$ del curso $c$ el día $d$.
+    \item $\mathcal{F}_c$: pares $(d, a)$ en que la asignatura $a$ del curso $c$ queda
+          fragmentada el día $d$, es decir, en más de dos bloques o en dos bloques no consecutivos.
+    \item $\mathcal{A}^{\triangle}$: asignaturas troncales para ordenar sesiones
+          (Matemática, Lenguaje y Ciencias); $\mathcal{A}^{\star}$: asignaturas cuyos
+          bloques dobles no se separan en un intercambio simple (Matemática y Lenguaje).
+    \item $[\,P\,]$: vale $1$ si la proposición $P$ es verdadera y $0$ en caso contrario.
+    \item Valores usados por el programa: $\omega = 3$, $K = 10\,000$, $\tau = 15$, $\varepsilon = 0{,}05$.
+\end{itemize}
+
+% =====================================================================
+\begin{algorithm}[H]
+\caption{$\textsc{GenerarHorario}(\mathcal{C}, \mathcal{D}, B, M, J, \omega, K, \tau, \varepsilon)$}
+\label{alg:generar}
+\begin{algorithmic}[1]
+\Require $\mathcal{C}$: cursos; $\mathcal{D}$: días hábiles;
+         $B_{c,d}$: bloques permitidos del curso $c$ el día $d$;
+         $M_c$: malla curricular del curso $c$;
+         $J_c$: profesor jefe del curso $c$;
+         $\omega$: semilla aleatoria;
+         $K$: número máximo de iteraciones de la búsqueda local;
+         $\tau$: permanencia tabú;
+         $\varepsilon$: probabilidad de aceptar un movimiento que empeora.
+\Ensure Horario $H$ que asigna a cada curso y bloque una lección $(a, p, e)$, cubre
+        exactamente las horas de $M_c$ y minimiza los choques de docentes, el sobrecupo
+        de recintos deportivos y la fragmentación diaria de asignaturas; es factible
+        si la búsqueda llega a cero conflictos antes de $K$ iteraciones.
+\State inicializar el generador aleatorio con la semilla $\omega$
+\State $L \gets \Call{BloquesFijos}{\mathcal{C}, J}$ \Comment{Algoritmo~\ref{alg:fijos}}
+\State $X_c \gets \emptyset,\ \forall\, c \in \mathcal{C}$;\ \ $T(\cdot) \gets \emptyset$;\ \ $G(\cdot) \gets \emptyset$;\ \ $N(\cdot) \gets 0$
+\ForAll{$c \in \mathcal{C}$, $(s, \ell) \in L_c$}
+    \State \Call{Asignar}{$c, s, \ell$} \Comment{registra los bloques fijos}
+\EndFor
+\ForAll{$c \in \mathcal{C}$}
+    \State \Call{ConstrucciónVoraz}{$c$} \Comment{Algoritmo~\ref{alg:voraz}}
+\EndFor
+\State \Call{MinConflictosTabú}{$K, \tau, \varepsilon$} \Comment{Algoritmo~\ref{alg:minconf}}
+\State $H \gets$ horario construido a partir de $X$
+\State \Return $H$
+\end{algorithmic}
+\end{algorithm}
+
+% =====================================================================
+\begin{algorithm}[H]
+\caption{$\textsc{BloquesFijos}(\mathcal{C}, J)$}
+\label{alg:fijos}
+\begin{algorithmic}[1]
+\Require $\mathcal{C}$: cursos; $J_c$: profesor jefe del curso $c$.
+\Ensure Bloques fijos $L_c$ de cada curso, como función parcial de bloques $s = (d, b)$ a lecciones $(a, p, e)$.
+\State $L_c \gets \emptyset,\ \forall\, c \in \mathcal{C}$
+\State $S_3 \gets$ bloques $1$--$4$ de martes a viernes, luego (lunes, $7$) y (lunes, $8$) \Comment{$S_3 = (s_0, \dots, s_{17})$}
+\State $S_4 \gets$ bloques $5$--$8$ de martes a viernes, luego (lunes, $9$) y (lunes, $10$) \Comment{$S_4 = (s_0, \dots, s_{17})$}
+\ForAll{$(\mathcal{C}', S) \in \{(\mathcal{C}_{3M}, S_3), (\mathcal{C}_{4M}, S_4)\}$} \Comment{electivos sincronizados A y B}
+    \ForAll{$c \in \mathcal{C}'$}
+        \For{$k \gets 0$ \textbf{to} $17$}
+            \State $j \gets \lfloor k/2 \rfloor \bmod 3 + 1$ \Comment{rota los electivos $1, 2, 3$ en pares de bloques}
+            \State $L_c(s_k) \gets (\text{Electivo } j,\ p^{\mathrm{el}}_{c,j},\ \text{Sala Electivos})$ \Comment{$p^{\mathrm{el}}_{c,j}$: docente del electivo}
+        \EndFor
+    \EndFor
+\EndFor
+\ForAll{$b \in \{9, 10\}$} \Comment{lunes tarde de 3° medio}
+    \State $L_{\text{3°M A}}((\text{lunes}, b)) \gets (\text{Educación Ciudadana},\ \text{Prof.~Historia 3},\ \text{Aula})$
+    \State $L_{\text{3°M B}}((\text{lunes}, b)) \gets (\text{Filosofía},\ \text{Prof.~Filosofía},\ \text{Aula})$
+\EndFor
+\State $\Omega \gets (\text{miércoles}, \text{jueves}, \text{viernes}, \text{martes})$ \Comment{días rotativos de Orientación}
+\For{$i \gets 0$ \textbf{to} $7$}
+    \State $c \gets \mathcal{C}_B[i]$ \Comment{1° a 4° básico}
+    \State $L_c((\Omega[i \bmod 4], 7)) \gets (\text{Orientación},\ J_c,\ \text{Aula})$ \Comment{a cargo del profesor jefe}
+\EndFor
+\State \Return $L$
+\end{algorithmic}
+\end{algorithm}
+
+% =====================================================================
+\begin{algorithm}[H]
+\caption{$\textsc{ConstrucciónVoraz}(c)$}
+\label{alg:voraz}
+\begin{algorithmic}[1]
+\Require $c$: curso con sus bloques fijos ya registrados en $X_c$; estructuras $T$, $G$ y $N$ actuales.
+\Ensure $X_c$ completo: cada asignatura de $M_c$ ocupa exactamente sus $h$ horas semanales.
+\State $Q \gets ()$ \Comment{sesiones $(a, p, e, \lambda)$ de duración $\lambda \in \{1, 2\}$}
+\ForAll{$(a, h, p, e) \in M_c$}
+    \State $r \gets h - |\{s \in \operatorname{dom}(X_c) : a_c(s) = a\}|$ \Comment{horas no cubiertas por bloques fijos}
+    \While{$r \ge 2$}
+        \State agregar $(a, p, e, 2)$ a $Q$;\ \ $r \gets r - 2$
+    \EndWhile
+    \If{$r = 1$}
+        \State agregar $(a, p, e, 1)$ a $Q$
+    \EndIf
+\EndFor
+\State ordenar $Q$: primero $e = \text{Gimnasio}$, luego $a \in \mathcal{A}^{\triangle}$, luego el resto
+\State $F_2 \gets \emptyset$;\ \ $F_1 \gets \emptyset$ \Comment{pares dobles libres y bloques simples libres}
+\ForAll{$d \in \mathcal{D}$, $(b, b') \in \{(1,2), (3,4), (5,6), (7,8), (9,10)\}$}
+    \If{$\Call{Libre}{c, d, b} \wedge \Call{Libre}{c, d, b'}$}
+        \State $F_2 \gets F_2 \cup \{((d, b), (d, b'))\}$
+    \ElsIf{$\Call{Libre}{c, d, b}$}
+        \State $F_1 \gets F_1 \cup \{(d, b)\}$
+    \ElsIf{$\Call{Libre}{c, d, b'}$}
+        \State $F_1 \gets F_1 \cup \{(d, b')\}$
+    \EndIf
+\EndFor
+\ForAll{$(a, p, e, 2) \in Q$} \Comment{sesiones dobles de 90 minutos}
+    \State $V \gets \{(s, s') \in F_2 : N_c(d(s), a) = 0\}$ \Comment{prefiere días sin la asignatura}
+    \If{$V = \emptyset$}
+        \State $V \gets F_2$
+    \EndIf
+    \If{$V \neq \emptyset$}
+        \State $(s, s') \gets \arg\min_{(s, s') \in V} \Call{Penalización}{c, a, p, e, \{s, s'\}}$ \Comment{en orden aleatorio}
+        \State $F_2 \gets F_2 \setminus \{(s, s')\}$
+    \Else
+        \State extraer dos bloques $s$, $s'$ de $F_1$ \Comment{no quedan pares dobles}
+    \EndIf
+    \State \Call{Asignar}{$c, s, (a, p, e)$};\ \ \Call{Asignar}{$c, s', (a, p, e)$}
+\EndFor
+\ForAll{$(a, p, e, 1) \in Q$} \Comment{sesiones simples de 45 minutos}
+    \If{$F_1 = \emptyset \wedge F_2 \neq \emptyset$}
+        \State extraer un par $(s, s')$ de $F_2$;\ \ $F_1 \gets F_1 \cup \{s, s'\}$ \Comment{divide un par doble}
+    \EndIf
+    \State $V \gets \{s \in F_1 : N_c(d(s), a) = 0\}$
+    \If{$V = \emptyset$}
+        \State $V \gets F_1$
+    \EndIf
+    \State $s \gets \arg\min_{s \in V} \Call{Penalización}{c, a, p, e, \{s\}}$ \Comment{en orden aleatorio}
+    \State $F_1 \gets F_1 \setminus \{s\}$;\ \ \Call{Asignar}{$c, s, (a, p, e)$}
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+% =====================================================================
+\begin{algorithm}[H]
+\caption{$\textsc{MinConflictosTabú}(K, \tau, \varepsilon)$}
+\label{alg:minconf}
+\begin{algorithmic}[1]
+\Require $K$: iteraciones máximas; $\tau$: permanencia tabú; $\varepsilon$: probabilidad de
+         aceptar un movimiento que empeora; horario inicial $X$ con sus estructuras $T$, $G$ y $N$.
+\Ensure $X$ sin conflictos, o el mejor estado alcanzado tras $K$ iteraciones.
+\State $\Theta(\cdot) \gets 0$ \Comment{lista tabú: iteración hasta la que un movimiento está prohibido}
+\State $(t, g, f) \gets \textproc{Conflictos}()$ \Comment{Algoritmo~\ref{alg:eval}}
+\For{$k \gets 0$ \textbf{to} $K - 1$}
+    \If{$t = 0 \wedge g = 0 \wedge f = 0$}
+        \State \textbf{break} \Comment{horario factible}
+    \EndIf
+    \State \alto$R \gets \biguplus_{(s, p) :\, |T(s, p)| > 1} T(s, p) \ \uplus \biguplus_{s :\, |G(s)| > \kappa} G(s)$ \Comment{multiconjunto de cursos en choque}
+    \If{$R = \emptyset$}
+        \State $R \gets \{c \in \mathcal{C} : \mathcal{F}_c \neq \emptyset\}$ \Comment{cursos con asignaturas fragmentadas}
+    \EndIf
+    \If{$R = \emptyset$}
+        \State \textbf{break}
+    \EndIf
+    \State $c \gets$ elemento aleatorio de $R$
+    \State $W \gets \operatorname{dom}(X_c) \setminus \operatorname{dom}(L_c)$ \Comment{bloques intercambiables}
+    \State $Z \gets \{s \in W : |T(s, p_c(s))| > 1 \vee (e_c(s) = \text{Gimnasio} \wedge |G(s)| > \kappa)\}$
+    \If{$Z = \emptyset$}
+        \State $Z \gets \{(d, b) \in W : (d, a_c(d, b)) \in \mathcal{F}_c\}$
+    \EndIf
+    \If{$Z = \emptyset$}
+        \State $Z \gets W$
+    \EndIf
+    \State $s_1 \gets$ elemento aleatorio de $Z$
+    \State $(S_1, S_2, \Delta^*) \gets \Call{MejorMovimiento}{c, s_1, W, k}$ \Comment{Algoritmo~\ref{alg:movimiento}}
+    \If{$S_1 \neq \text{nulo} \wedge (\Delta^* \le 0 \vee \text{rand}() < \varepsilon)$} \Comment{acepta empeorar con prob.~$\varepsilon$}
+        \For{$i \gets 1$ \textbf{to} $|S_1|$}
+            \State \Call{Intercambiar}{$c, S_1[i], S_2[i]$}
+        \EndFor
+        \State $\Theta(c, S_1[1], S_2[1]) \gets k + \tau$;\ \ $\Theta(c, S_2[1], S_1[1]) \gets k + \tau$
+        \State $(t, g, f) \gets \textproc{Conflictos}()$
+    \EndIf
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+% =====================================================================
+\begin{algorithm}[H]
+\caption{$\textsc{MejorMovimiento}(c, s_1, W, k)$}
+\label{alg:movimiento}
+\begin{algorithmic}[1]
+\Require $c$: curso elegido; $s_1 = (d_1, b_1)$: bloque en conflicto; $W$: bloques
+         intercambiables de $c$; $k$: iteración actual.
+\Ensure Listas de bloques $S_1$ y $S_2$ que se intercambian posición a posición
+        (de largo $2$ en un intercambio doble o $1$ en uno simple) y su variación $\Delta^*$ de costo.
+\State $(a_1, p_1, e_1) \gets X_c(s_1)$;\ \ $\sigma_1 \gets \Call{Compañero}{c, s_1, W}$
+\State $(S_1, S_2) \gets (\text{nulo}, \text{nulo})$;\ \ $\Delta^* \gets \infty$
+\If{$\sigma_1 \neq \text{nulo}$} \Comment{intercambio doble: conserva el bloque de 90 min}
+    \State $u_1 \gets \min(s_1, \sigma_1)$;\ \ $v_1 \gets \max(s_1, \sigma_1)$
+    \State $U \gets \{(u_2, v_2) : u_2 = (d_2, b_2) \in W,\ v_2 = (d_2, b_2 + 1) \in W,\ u_2 \neq u_1,\ X_c(u_2) = X_c(v_2),\ a_c(u_2) \neq a_1\}$
+    \ForAll{$(u_2, v_2) \in U$}
+        \If{$\Theta(c, u_1, u_2) \le k \wedge \Call{CompatibleDía}{c, s_1, u_2}$}
+            \State $\Delta \gets \Call{DeltaIntercambio}{c, (u_1, v_1), (u_2, v_2)}$
+            \If{$\Delta < \Delta^*$}
+                \State $\Delta^* \gets \Delta$;\ \ $(S_1, S_2) \gets ((u_1, v_1), (u_2, v_2))$
+            \EndIf
+            \If{$\Delta^* < 0$}
+                \State \textbf{break} \Comment{primera mejora}
+            \EndIf
+        \EndIf
+    \EndFor
+\EndIf
+\If{$S_1 = \text{nulo} \vee \Delta^* > 0$} \Comment{intercambio simple}
+    \ForAll{$s_2 = (d_2, b_2) \in W \setminus \{s_1\}$ \textbf{con} $X_c(s_2) \neq X_c(s_1)$}
+        \State $a_2 \gets a_c(s_2)$;\ \ $\sigma_2 \gets \Call{Compañero}{c, s_2, W}$
+        \State $\rho \gets d_1 \neq d_2 \wedge \big((a_1 \in \mathcal{A}^{\star} \wedge \sigma_1 \neq \text{nulo}) \vee (a_2 \in \mathcal{A}^{\star} \wedge \sigma_2 \neq \text{nulo})\big)$ \Comment{rompe un doble}
+        \If{$\Theta(c, s_1, s_2) \le k \wedge \Call{CompatibleDía}{c, s_1, s_2} \wedge \neg \rho$}
+            \State $\Delta \gets \Call{DeltaIntercambio}{c, (s_1), (s_2)}$
+            \If{$\Delta < \Delta^*$}
+                \State $\Delta^* \gets \Delta$;\ \ $(S_1, S_2) \gets ((s_1), (s_2))$
+            \EndIf
+            \If{$\Delta^* < 0$}
+                \State \textbf{break} \Comment{primera mejora}
+            \EndIf
+        \EndIf
+    \EndFor
+\EndIf
+\State \Return $(S_1, S_2, \Delta^*)$
+\end{algorithmic}
+\end{algorithm}
+
+% =====================================================================
+\begin{algorithm}[H]
+\caption{Funciones de evaluación}
+\label{alg:eval}
+\begin{algorithmic}[1]
+\Require Estado actual del horario: $X$, $T$, $G$ y $N$.
+\Ensure Penalización de una ubicación candidata, variación de costo de un intercambio y conteo de conflictos.
+\Function{Penalización}{$c, a, p, e, S$} \Comment{$S$: bloques candidatos de un mismo día $d$}
+    \State $\pi \gets 500 \cdot [\,N_c(d, a) > 0\,]$ \Comment{evita repetir la asignatura en el día}
+    \ForAll{$s \in S$}
+        \State $\pi \gets \pi + |T(s, p)| + 15 \cdot [\,e = \text{Gimnasio} \wedge |G(s)| \ge \kappa\,]$
+    \EndFor
+    \State \Return $\pi$
+\EndFunction
+\Statex
+\Function{DeltaIntercambio}{$c, S_1, S_2$} \Comment{$S_1$ y $S_2$ tienen el mismo largo}
+    \State $(a_1, p_1, e_1) \gets X_c(S_1[1])$;\ \ $(a_2, p_2, e_2) \gets X_c(S_2[1])$
+    \State \alto$t^{-} \gets \sum_{s \in S_1} [\,|T(s, p_1)| > 1\,] + \sum_{s \in S_2} [\,|T(s, p_2)| > 1\,]$ \Comment{choques actuales}
+    \State \alto$t^{+} \gets \sum_{s \in S_2} [\,T(s, p_1) \setminus \{c\} \neq \emptyset\,] + \sum_{s \in S_1} [\,T(s, p_2) \setminus \{c\} \neq \emptyset\,]$ \Comment{choques nuevos}
+    \State \alto$g^{-} \gets [\,e_1 = \text{Gim.}\,] \sum_{s \in S_1} [\,|G(s)| > \kappa\,] + [\,e_2 = \text{Gim.}\,] \sum_{s \in S_2} [\,|G(s)| > \kappa\,]$
+    \State \alto$g^{+} \gets [\,e_1 = \text{Gim.}\,] \sum_{s \in S_2} [\,|G(s) \setminus \{c\}| \ge \kappa\,] + [\,e_2 = \text{Gim.}\,] \sum_{s \in S_1} [\,|G(s) \setminus \{c\}| \ge \kappa\,]$
+    \State \Return $10\,(t^{+} - t^{-}) + 50\,(g^{+} - g^{-})$
+\EndFunction
+\Statex
+\Function{Conflictos()}{}
+    \State \alto$t \gets \sum_{(s, p)} \max\{0, |T(s, p)| - 1\}$ \Comment{choques de docentes}
+    \State \alto$g \gets 5 \sum_{s} \max\{0, |G(s)| - \kappa\}$ \Comment{sobrecupo de recintos deportivos}
+    \State \alto$f \gets \sum_{c \in \mathcal{C}} |\mathcal{F}_c|$ \Comment{asignaturas fragmentadas en el día}
+    \State \Return $(t, g, f)$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+% =====================================================================
+\begin{algorithm}[H]
+\caption{Operaciones auxiliares sobre el horario}
+\label{alg:aux}
+\begin{algorithmic}[1]
+\Require Estado actual del horario: $X$, $T$, $G$ y $N$.
+\Ensure Estado actualizado de forma consistente tras cada asignación, retiro o intercambio.
+\Function{Libre}{$c, d, b$}
+    \State \Return $b \in B_{c,d} \wedge (d, b) \notin \operatorname{dom}(X_c)$
+\EndFunction
+\Statex
+\Procedure{Asignar}{$c, s, \ell$} \Comment{$s = (d, b)$, $\ell = (a, p, e)$}
+    \State $X_c(s) \gets \ell$;\ \ $T(s, p) \gets T(s, p) \cup \{c\}$;\ \ $N_c(d, a) \gets N_c(d, a) + 1$
+    \If{$e = \text{Gimnasio}$}
+        \State $G(s) \gets G(s) \cup \{c\}$
+    \EndIf
+\EndProcedure
+\Statex
+\Procedure{Retirar}{$c, s$} \Comment{$s = (d, b)$}
+    \State $(a, p, e) \gets X_c(s)$;\ \ quitar $s$ de $\operatorname{dom}(X_c)$
+    \State $T(s, p) \gets T(s, p) \setminus \{c\}$;\ \ $N_c(d, a) \gets N_c(d, a) - 1$
+    \If{$e = \text{Gimnasio}$}
+        \State $G(s) \gets G(s) \setminus \{c\}$
+    \EndIf
+\EndProcedure
+\Statex
+\Procedure{Intercambiar}{$c, s, s'$}
+    \State $\ell \gets X_c(s)$;\ \ $\ell' \gets X_c(s')$
+    \State \Call{Retirar}{$c, s$};\ \ \Call{Retirar}{$c, s'$}
+    \State \Call{Asignar}{$c, s, \ell'$};\ \ \Call{Asignar}{$c, s', \ell$}
+\EndProcedure
+\Statex
+\Function{Compañero}{$c, s, W$} \Comment{bloque contiguo con la misma asignatura}
+    \State $(d, b) \gets s$
+    \ForAll{$s' \in ((d, b + 1), (d, b - 1))$} \Comment{en ese orden}
+        \If{$s' \in W \wedge a_c(s') = a_c(s)$}
+            \State \Return $s'$
+        \EndIf
+    \EndFor
+    \State \Return nulo
+\EndFunction
+\Statex
+\Function{CompatibleDía}{$c, s, s'$} \Comment{el intercambio no repite asignaturas en el día}
+    \State $(d, b) \gets s$;\ \ $(d', b') \gets s'$
+    \State \Return $d = d' \vee \big(N_c(d', a_c(s)) = 0 \wedge N_c(d, a_c(s')) = 0\big)$
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}

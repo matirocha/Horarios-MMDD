@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Horarios MMDD 2026</title>
+  <meta name="description" content="Visualizador de los horarios generados para el Colegio Madres Dominicas, año escolar 2026.">
+  <link rel="icon" href="assets/escudo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+  <link rel="stylesheet" href="css/estilos.css">
+  <script>
+    // Aplica el tema guardado antes de pintar, para evitar un parpadeo
+    try { const t = localStorage.getItem('mmdd-tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="saltar" href="#contenido">Ir al horario</a>
+
+  <header class="barra">
+    <div class="marca">
+      <img class="escudo" src="assets/escudo.png" alt="Escudo del Colegio Madres Dominicas" width="34" height="44"
+           onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'escudo-texto',textContent:'MD'}))">
+      <div class="marca-texto">
+        <span class="marca-nombre">Horarios <span id="marca-anio">2026</span></span>
+        <span class="marca-colegio">Colegio Madres Dominicas · Concepción</span>
+      </div>
+    </div>
+
+    <div class="buscador" role="search">
+      <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+      <input id="buscar" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Buscar curso, docente o sala" aria-label="Buscar curso, docente o sala"
+             aria-controls="resultados" aria-expanded="false">
+      <kbd class="atajo" aria-hidden="true">/</kbd>
+      <ul id="resultados" class="resultados" role="listbox" hidden></ul>
+    </div>
+
+    <button id="tema" class="boton-icono" type="button" aria-label="Cambiar entre tema claro y oscuro">
+      <svg class="icono icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12H5M19 12h2.5M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></svg>
+      <svg class="icono icono-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+    </button>
+  </header>
+
+  <nav class="pestanas" aria-label="Vistas">
+    <div class="pestanas-pista" role="tablist">
+      <button class="pestana" role="tab" type="button" data-vista="cursos" id="tab-cursos" aria-controls="vista-cursos">Cursos</button>
+      <button class="pestana" role="tab" type="button" data-vista="docentes" id="tab-docentes" aria-controls="vista-docentes">Docentes</button>
+      <button class="pestana" role="tab" type="button" data-vista="salas" id="tab-salas" aria-controls="vista-salas">Salas<span class="solo-escritorio"> y gimnasios</span></button>
+      <button class="pestana" role="tab" type="button" data-vista="bloque" id="tab-bloque" aria-controls="vista-bloque">Por bloque</button>
+      <button class="pestana" role="tab" type="button" data-vista="auditoria" id="tab-auditoria" aria-controls="vista-auditoria">Auditoría</button>
+      <span class="pestanas-indicador" aria-hidden="true"></span>
+    </div>
+  </nav>
+
+  <main id="contenido" tabindex="-1">
+    <!-- ============================== CURSOS ============================== -->
+    <section class="vista" id="vista-cursos" role="tabpanel" aria-labelledby="tab-cursos" hidden>
+      <div class="curso-simple">
+        <div class="curso-barra">
+          <div class="curso-elegir">
+            <label class="eyebrow" for="curso-select">Horario de</label>
+            <span class="curso-select-marco">
+              <select id="curso-select"></select>
+              <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </span>
+          </div>
+          <div class="cabecera-acciones">
+            <button type="button" class="boton-icono" data-paso="-1" aria-label="Curso anterior" title="Curso anterior (←)">
+              <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+            </button>
+            <button type="button" class="boton-icono" data-paso="1" aria-label="Curso siguiente" title="Curso siguiente (→)">
+              <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+            </button>
+            <button type="button" class="boton-icono" data-imprimir aria-label="Imprimir horario" title="Imprimir">
+              <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v7H7z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel" id="panel-curso"></div>
+      </div>
+    </section>
+
+    <!-- ============================== DOCENTES ============================== -->
+    <section class="vista" id="vista-docentes" role="tabpanel" aria-labelledby="tab-docentes" hidden>
+      <div class="disposicion">
+        <aside class="selector" aria-label="Elegir docente">
+          <button class="selector-toggle" type="button" aria-expanded="false">
+            <span>Cambiar docente</span>
+            <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="selector-cuerpo">
+            <label class="filtro">
+              <span class="visualmente-oculto">Filtrar docentes</span>
+              <input id="filtro-docentes" type="search" placeholder="Filtrar por nombre o área" autocomplete="off">
+            </label>
+            <div id="selector-docentes"></div>
+          </div>
+        </aside>
+        <div class="panel" id="panel-docente"></div>
+      </div>
+    </section>
+
+    <!-- ============================== SALAS ============================== -->
+    <section class="vista" id="vista-salas" role="tabpanel" aria-labelledby="tab-salas" hidden>
+      <div class="disposicion">
+        <aside class="selector" aria-label="Elegir sala o recinto">
+          <button class="selector-toggle" type="button" aria-expanded="false">
+            <span>Cambiar sala</span>
+            <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="selector-cuerpo" id="selector-salas"></div>
+        </aside>
+        <div class="panel" id="panel-sala"></div>
+      </div>
+    </section>
+
+    <!-- ============================== POR BLOQUE ============================== -->
+    <section class="vista" id="vista-bloque" role="tabpanel" aria-labelledby="tab-bloque" hidden>
+      <div class="momento" id="panel-bloque"></div>
+    </section>
+
+    <!-- ============================== AUDITORÍA ============================== -->
+    <section class="vista" id="vista-auditoria" role="tabpanel" aria-labelledby="tab-auditoria" hidden>
+      <div class="auditoria" id="panel-auditoria"></div>
+    </section>
+  </main>
+
+  <aside class="detalle" id="detalle" aria-label="Detalle de la clase" aria-hidden="true" inert>
+    <div class="detalle-cabecera">
+      <span class="eyebrow" id="detalle-eyebrow"></span>
+      <button class="boton-icono" type="button" id="detalle-cerrar" aria-label="Cerrar detalle">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="detalle-cuerpo" id="detalle-cuerpo"></div>
+  </aside>
+
+  <div class="tooltip" id="tooltip" role="status" hidden></div>
+
+  <footer class="pie">
+    <span id="pie-datos"></span>
+    <span>Taller de Gestión de Operaciones · Ingeniería Civil Industrial, Universidad de Concepción</span>
+  </footer>
+
+  <!-- Animaciones: GSAP (si no carga, la página funciona igual, sin animaciones) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <!-- Datos generados por exportar_datos.py a partir de notebooks/generador_horarios.py -->
+  <script src="datos/horarios.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
