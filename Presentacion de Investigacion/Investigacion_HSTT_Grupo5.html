@@ -1,0 +1,1171 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Métodos de solución para el problema de horarios escolares (High School Timetabling) · Grupo 5 · Taller de Gestión de Operaciones, UdeC">
+<title>Horarios escolares · Grupo 5</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#161b29; --navy-2:#1f2434; --navy-3:#2c3245;
+  --red:#a42539; --red-dk:#7a1528; --slate:#4b5168;
+  --bg:#edeef2; --card:#fff; --line:#dcdee5; --muted:#6b7086; --ink:#161b29;
+  --pink:#f6d8dd; --empty:#f4f5f8;
+  --ease:cubic-bezier(.2,.75,.2,1);
+  --font:"Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif;
+  --mono:"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+html,body{height:100%;background:#0b0e16;overflow:hidden;font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased}
+body.idle{cursor:none}
+
+/* ---------- Escenario y escalado ---------- */
+#viewport{position:fixed;inset:0;overflow:hidden}
+#sizer{position:absolute;inset:0}
+#deck{position:absolute;left:50%;top:50%;width:1280px;height:720px;transform:translate(-50%,-50%) scale(var(--s,1));counter-reset:slide}
+.slide{position:absolute;inset:0;background:var(--bg);padding:48px 53px 68px;display:flex;flex-direction:column;overflow:hidden;counter-increment:slide;
+  opacity:0;visibility:hidden;transform:translateX(44px);
+  transition:opacity .5s ease,transform .65s var(--ease),visibility 0s linear .65s}
+.slide.past{transform:translateX(-44px)}
+.slide.active{opacity:1;visibility:visible;transform:none;transition:opacity .5s ease,transform .65s var(--ease),visibility 0s}
+.slide.dark{background:var(--navy);color:#fff}
+
+/* ---------- Animaciones de entrada ---------- */
+@keyframes a-up{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes a-left{from{opacity:0;transform:translateX(-48px)}to{opacity:1;transform:none}}
+@keyframes a-right{from{opacity:0;transform:translateX(48px)}to{opacity:1;transform:none}}
+@keyframes a-fade{from{opacity:0}to{opacity:1}}
+@keyframes a-pop{0%{opacity:0;transform:scale(.55)}65%{opacity:1;transform:scale(1.08)}100%{opacity:1;transform:none}}
+@keyframes a-wipe{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes a-growx{from{transform:scaleX(0)}to{transform:none}}
+@keyframes a-bar{from{height:0}}
+@keyframes a-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes a-type{from{width:0}}
+@keyframes a-caret{0%,100%{border-color:transparent}50%{border-color:#fff}}
+@keyframes a-destroy{0%{opacity:1;transform:none}35%{opacity:1;transform:translateY(-3px) scale(1.06)}100%{opacity:0;transform:translateY(-18px) scale(.55)}}
+@keyframes a-flash{0%{background:#fff;color:var(--ink)}100%{background:var(--pink);color:var(--red-dk)}}
+@keyframes a-nudge{0%,100%{transform:none}50%{transform:translateX(5px)}}
+
+.slide.active [data-anim]{animation-duration:.75s;animation-timing-function:var(--ease);animation-fill-mode:both;animation-delay:calc(var(--d,0) * 110ms + 180ms)}
+.slide.active [data-anim=up]{animation-name:a-up}
+.slide.active [data-anim=left]{animation-name:a-left}
+.slide.active [data-anim=right]{animation-name:a-right}
+.slide.active [data-anim=fade]{animation-name:a-fade}
+.slide.active [data-anim=pop]{animation-name:a-pop;animation-duration:.6s}
+.slide.active [data-anim=wipe]{animation-name:a-wipe;animation-duration:.9s}
+.slide.active [data-anim=growx]{animation-name:a-growx;animation-duration:.9s}
+[data-anim=growx]{transform-origin:left center}
+
+/* ---------- Elementos comunes ---------- */
+.eyebrow{display:flex;align-items:center;gap:24px;height:22px;font-size:14.5px;font-weight:700;color:var(--red);white-space:nowrap}
+.eyebrow::after{content:"";flex:1;height:1px;background:#d6d8e0;transform-origin:left center}
+.dark .eyebrow{color:#fff}
+.dark .eyebrow::after{background:var(--navy-3)}
+.slide.active .eyebrow{animation:a-fade .6s ease both .05s}
+.slide.active .eyebrow::after{animation:a-growx 1.2s var(--ease) both .15s}
+h2{font-size:38px;font-weight:700;letter-spacing:-.4px;line-height:46px;margin-top:18px}
+.content{flex:1;display:flex;flex-direction:column;gap:19px;margin-top:40px;min-height:0}
+.main{flex:1;min-height:0}
+footer{position:absolute;left:53px;right:53px;bottom:24px;display:flex;justify-content:space-between;align-items:flex-end;gap:30px;font-size:12.5px;color:var(--muted)}
+footer::after{content:counter(slide);font-size:12.5px}
+.dark footer{color:#6e7389}
+.card{background:var(--card);border:1px solid var(--line)}
+.mu{color:var(--muted)}
+.lead{font-size:19px;line-height:1.3}
+.kicker{font-size:17.5px;font-weight:700;color:var(--red)}
+.tag{display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:108px;padding:5px 14px;background:var(--red);color:#fff;font-size:13px;font-weight:700;white-space:nowrap}
+.tag.slate{background:var(--slate)}
+.tag.dk{background:var(--red-dk)}
+.banner{flex:none;min-height:71px;display:flex;align-items:center;gap:22px;padding:10px 29px;background:var(--navy);color:#fff;font-size:18.5px;line-height:1.3}
+.banner .tag{min-width:108px}
+.banner.short{min-height:51px}
+.banner.split{gap:0}
+.banner.split>div{flex:1;display:flex;align-items:center;gap:18px}
+.banner.split>div+div{padding-left:24px}
+.ic{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic.red{color:var(--red)}
+
+/* tablas como grilla */
+.tbl{display:flex;flex-direction:column}
+.tr{display:grid}
+.tr>span{display:flex;align-items:center;padding:0 12px;border-right:1px solid var(--line)}
+.tr>span:last-child{border-right:0}
+.th{background:var(--navy);color:#fff;font-weight:700;font-size:15.5px}
+.th>span{border-right-color:#2c3245}
+.tr:not(.th){background:#fff;border:1px solid var(--line);border-top:0}
+.c{justify-content:center;text-align:center}
+.rt{justify-content:flex-end;text-align:right}
+.b{font-weight:700}
+
+/* gráficos de barras */
+.chart-title{font-size:17px;text-align:center;margin-bottom:14px}
+.plot{position:relative;margin-left:46px;background:#fff;border-left:1px solid #9a9eb0;border-bottom:1px solid #9a9eb0}
+.ytick{position:absolute;left:0;right:0;bottom:calc(var(--v) * 1%);border-top:1px solid #e7e8ed}
+.ytick span{position:absolute;right:calc(100% + 10px);top:0;transform:translateY(-50%);font-size:13px;color:var(--muted)}
+.bars{position:absolute;inset:0;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;align-items:end;justify-items:center}
+.bar{position:relative;width:62%;height:calc(var(--v) * 1%);background:var(--red)}
+.bar.dk{background:var(--red-dk)}
+.bar b{position:absolute;left:-20px;right:-20px;bottom:calc(100% + 5px);text-align:center;font-size:22px;font-weight:700;color:var(--ink)}
+.slide.active .bar{animation:a-bar 1.3s var(--ease) both;animation-delay:calc(var(--d,0) * 110ms + 180ms)}
+.xlabels{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;margin-left:46px;margin-top:9px;text-align:center;font-size:15px;color:var(--muted)}
+
+/* ---------- 1 · Portada ---------- */
+.s1{padding:0}
+.s1-left{position:absolute;left:77px;top:92px;width:690px}
+.s1-uni{font-size:15.5px;line-height:1.3;color:#c3c6d2}
+.s1 h1{font-size:43px;line-height:1.32;font-weight:700;letter-spacing:-.4px;margin-top:44px}
+.s1-rule{width:120px;height:3px;background:var(--red);margin-top:30px}
+.s1-sub{font-size:20.5px;line-height:1.25;color:#d5d8e1;margin-top:30px;width:610px}
+.s1-meta{display:grid;grid-template-columns:225px 225px 1fr;margin-top:66px}
+.s1-meta h4{font-size:15px;font-weight:700}
+.s1-meta p{font-size:15.5px;line-height:1.5;color:#b5b9c8;margin-top:12px}
+.hero{position:absolute;top:0;right:0;bottom:0;width:493px;display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(7,1fr);gap:7px}
+.tile{background:var(--navy-2);transition:background-color .9s ease}
+.tile.r{background:var(--red)}
+.tile.s{background:var(--slate)}
+
+/* ---------- 2 · Estructura ---------- */
+.agenda{display:flex;flex-direction:column;gap:14px}
+.ag{height:78px;display:grid;grid-template-columns:82px 360px 1fr;align-items:center;padding:0 29px}
+.ag-n{font-size:29px;font-weight:700;color:var(--red)}
+.ag-t{font-size:21px;font-weight:700}
+.ag-d{font-size:17.5px;line-height:1.25;color:var(--muted)}
+
+/* ---------- 3 · El problema ---------- */
+.s3{display:grid;grid-template-columns:571px 1fr;gap:41px}
+.s3-card{padding:16px 29px}
+.s3-card h3,.why>h3{font-size:20px;font-weight:700}
+.s3-card>p{font-size:17.5px;line-height:1.3;margin-top:8px}
+.tt{display:grid;grid-template-columns:52px repeat(5,82px);grid-auto-rows:42px;gap:7px 6px;margin-top:34px;font-size:13.5px;font-weight:700;color:var(--muted)}
+.tt>b{display:flex;align-items:center;justify-content:center}
+.tt>b.row{justify-content:flex-start;padding-left:2px}
+.tt>b.day{align-items:flex-end;padding-bottom:2px;height:auto}
+.tt i{display:flex;align-items:center;justify-content:center;background:var(--slate);color:#fff;font:700 14px var(--mono)}
+.tt i.m{background:var(--red)}
+.tt i.e{background:var(--empty);border:1px dashed #cdd0d9}
+.why{padding-top:2px}
+.why-item{display:grid;grid-template-columns:48px 1fr;margin-top:28px;font-size:30px}
+.why-item .ic{color:var(--red);margin-top:-2px}
+.why-item h4{font-size:18.5px;font-weight:700}
+.why-item p{font-size:16.5px;line-height:1.3;color:var(--muted);margin-top:8px}
+
+/* ---------- 4 · Complejidad ---------- */
+.s4{display:grid;grid-template-columns:360px 1fr 1fr;gap:18px}
+.s4-dark{background:var(--navy);color:#fff;padding:24px 26px;font-size:34px}
+.s4-dark h3{font-size:24px;font-weight:700;margin-top:12px}
+.s4-dark p{font-size:17.5px;line-height:1.25;color:#d4d7e0;margin-top:24px}
+.s4-rule{display:block;width:86px;height:2px;background:var(--red);margin:36px 0 16px}
+.s4-dark strong{display:block;font-size:16.5px;line-height:1.3}
+.s4-card{padding:24px 26px;font-size:34px}
+.s4-card h3{font-size:20px;font-weight:700;margin-top:14px}
+.s4-card .sub{font-size:15.5px;line-height:1.3;color:var(--muted);margin-top:8px}
+.s4-card ul{list-style:none;margin-top:30px}
+.s4-card li{position:relative;padding-left:30px;font-size:16.5px;line-height:1.3;margin-top:10px}
+.s4-card li::before{content:"";position:absolute;left:4px;top:8px;width:5px;height:5px;border-radius:50%;background:var(--ink)}
+
+/* ---------- 5 · Objetivo ---------- */
+.s5{display:flex;flex-direction:column;gap:20px}
+.s5-top{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:55px;height:250px}
+.s5-panel{color:#fff;padding:30px 34px}
+.s5-panel.slate{background:var(--slate)}
+.s5-panel.red{background:var(--red)}
+.s5-h{display:flex;align-items:center;gap:16px;font-size:38px}
+.s5-h h3{font-size:25px;font-weight:700}
+.s5-panel p{font-size:19.5px;line-height:1.3;margin-top:34px}
+.vs{position:absolute;left:calc(50% - 29px);top:calc(50% - 29px);width:58px;height:58px;border-radius:50%;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:16px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.12)}
+.s5-q{display:flex;align-items:center;gap:22px;padding:0 34px;height:110px;font-size:38px}
+.s5-q p{font-size:19.5px;line-height:1.3}
+.s5-q b{color:var(--red)}
+
+/* ---------- 6 y 7 · Enfoques ---------- */
+.cards4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.mcard{border-top:3px solid var(--slate);padding:20px 22px;font-size:31px}
+.redtop .mcard{border-top-color:var(--red)}
+.redtop .mcard.pop{border-top-color:var(--red-dk)}
+.mcard h3{font-size:19.5px;font-weight:700;line-height:1.2;margin-top:12px;min-height:47px}
+.mcard code{display:block;font:700 13.5px var(--mono);color:var(--red);margin-top:6px}
+.mcard p{font-size:15.5px;line-height:1.3;color:var(--muted);margin-top:14px}
+.s6 .kicker{margin-top:14px;margin-bottom:-6px}
+.s7-top{display:grid;grid-template-columns:1fr 416px;gap:42px;align-items:start}
+.note{background:var(--pink);padding:13px 15px;font-size:15.5px;line-height:1.3;margin-top:-6px}
+.note b{color:var(--red-dk)}
+.s7-heads{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:-6px;margin-top:2px}
+.s7-heads h4:first-child{grid-column:span 3}
+
+/* ---------- 8 · Comparación ---------- */
+.cmp{display:grid;grid-template-columns:437px 1fr 437px;grid-template-rows:59px repeat(6,50px);gap:7px 12px;align-content:start}
+.cmp-h{display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:700}
+.cmp-h.l{background:var(--slate)}
+.cmp-h.r{background:var(--red)}
+.cmp-h.m{color:var(--muted);font-size:14px}
+.cmp-c{display:flex;align-items:center;gap:10px;padding:0 16px 0 44px;background:#f3f4f7;border:1px solid #e3e5ea;color:var(--muted);font-size:17px}
+.cmp-c.win{background:#fff;color:var(--ink);font-weight:700;padding-left:14px}
+.cmp-c.win.l{border-color:#5b6178}
+.cmp-c.win.r{border-color:#d78d9a}
+.chk{width:20px;height:20px;fill:none;stroke:#8f2a3c;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.chk path{stroke-dasharray:1;stroke-dashoffset:0}
+.slide.active .chk path{animation:a-draw .45s ease both;animation-delay:calc(var(--d,0) * 110ms + 620ms)}
+.cmp-m{background:var(--navy);color:#fff;font-size:15.5px;font-weight:700;display:flex;align-items:center;justify-content:center}
+
+/* ---------- 9 · ITC 2011 ---------- */
+.t9 .tr{grid-template-columns:105px 192px 1fr 192px 192px}
+.t9 .th{height:48px}
+.t9 .tr:not(.th){height:69px;font-size:18px}
+.t9 .rank{color:var(--muted);font-weight:700}
+
+/* ---------- 10 · Kristiansen ---------- */
+.s10{display:grid;grid-template-columns:441px 1fr;gap:18px}
+.s10-l{padding:16px 24px}
+.s10-big{font-size:64px;font-weight:700;color:var(--slate);margin-top:30px;letter-spacing:-1px}
+.s10-l p{font-size:17.5px;line-height:1.3;margin-top:26px}
+.s10-r{padding:16px 24px 20px;display:flex;flex-direction:column}
+.s10-head{display:flex;align-items:center;gap:14px;font-size:15.5px}
+.s10-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+.s10-grid>div{background:var(--bg);display:grid;grid-template-columns:105px 1fr;align-items:center;padding:0 24px;font-size:18px}
+.s10-grid b{font-size:46px;color:var(--red);letter-spacing:-1px}
+
+/* ---------- 11 · Híbridos ---------- */
+.s11{display:grid;grid-template-columns:360px 1fr;gap:24px}
+.s11-panel{background:var(--red-dk);color:#fff;padding:32px 29px}
+.s11-big{font-size:50px;font-weight:700;letter-spacing:-1px}
+.s11-panel p{font-size:18px;line-height:1.3;margin-top:16px}
+.s11-rule{display:block;width:86px;height:2px;background:#fff;margin-top:42px}
+.s11-panel p.small{font-size:15px;margin-top:18px}
+.t11 .tr{grid-template-columns:210px 283px 1fr}
+.t11 .th{height:44px}
+.t11 .tr:not(.th){flex:1;font-size:17.5px;line-height:1.3}
+.t11 .tr>span{padding:0 12px}
+
+/* ---------- 12 · Lectio / MIP ---------- */
+.s12{display:grid;grid-template-columns:528px 1fr;gap:33px}
+.s12-l{display:flex;flex-direction:column}
+.stats{display:flex;flex-direction:column;gap:12px;margin-top:auto}
+.stat{height:76px;display:grid;grid-template-columns:108px 1fr;align-items:center;padding:0 20px;font-size:17.5px}
+.stat b{font-size:31px;color:var(--red)}
+.s12-r{padding:18px 20px;margin-top:-10px}
+.s12-r h3{font-size:26px;font-weight:700;margin-top:10px}
+.s12-r>p{font-size:17px;line-height:1.3;margin-top:8px}
+.code{background:var(--navy);color:#fff;padding:13px 19px 12px;margin-top:22px}
+.code-l{display:block;font-size:13.5px;font-weight:700;color:#e5e7ee}
+.type{font:700 21px var(--mono);white-space:nowrap;overflow:hidden;width:calc(var(--n) * 1ch + 4px);border-right:3px solid transparent;margin-top:10px;line-height:1.35}
+.slide.active .type{animation:a-type 1.5s steps(30,end) both .95s,a-caret .6s step-end 5 .95s}
+.code-ex{font:15.5px var(--mono);color:#b8bccb;margin-top:10px}
+.code-c{font-size:13.5px;color:#a3a7b8;margin-top:4px}
+.s12-vars{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;margin-top:22px}
+.s12-vars b{font-size:32px;color:var(--red);white-space:nowrap}
+.s12-vars>span{font-size:14.5px;line-height:1.25}
+
+/* ---------- 13 · Dos etapas ---------- */
+.s13{gap:15px}
+.intro-row{display:flex;align-items:center;gap:18px}
+.intro-row .tag{min-width:240px}
+.intro-row p{font-size:18.5px;line-height:1.25}
+.s13-stages,.s13-gp{display:grid;grid-template-columns:1fr 55px 1fr}
+.s13-stages{height:256px}
+.stage{display:flex;flex-direction:column}
+.stage-h{height:46px;display:flex;align-items:center;gap:52px;padding:0 20px;color:#fff;flex:none}
+.stage-h.slate{background:var(--slate)}
+.stage-h.dk{background:var(--red-dk)}
+.stage-h span{font-size:15px;font-weight:700}
+.stage-h b{font-size:20px}
+.stage-b{flex:1;display:flex;flex-direction:column;padding:16px 20px 20px}
+.eq{display:flex;align-items:center;height:48px;padding:0 14px;background:var(--bg);font:700 18px var(--mono)}
+.stage-b p{font-size:16.5px;line-height:1.3;color:var(--muted);margin-top:14px}
+.stage-b .vars{margin-top:auto;font-size:21px;color:var(--red)}
+.s13-arrow{align-self:center;justify-self:center;width:58px;height:58px;border-radius:50%;background:#fff;border:1px solid var(--line);display:grid;place-items:center;font-size:24px;z-index:1;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.slide.active .s13-arrow .ic{animation:a-nudge 1.4s ease-in-out infinite 1.6s}
+.s13-gp{height:92px}
+.gp{display:flex;align-items:center;gap:18px;padding:0 22px;font-size:16.5px;line-height:1.3}
+.gp .tag{min-width:76px}
+
+/* ---------- 14 · ALNS ---------- */
+.s14{gap:14px}
+.s14-steps{display:grid;grid-template-columns:1fr 34px 1fr 34px 1fr;height:264px;align-items:center}
+.step{height:100%;padding:13px 18px 16px;display:flex;flex-direction:column}
+.step-h{display:flex;align-items:center;gap:12px}
+.num{width:34px;height:34px;border-radius:50%;background:var(--red);color:#fff;display:grid;place-items:center;font-size:16px;font-weight:700;font-style:normal;flex:none}
+.step-h h3{font-size:20px;font-weight:700}
+.step p{font-size:16px;color:var(--muted);margin-top:auto}
+.mg{display:grid;grid-template-columns:repeat(5,52px);grid-auto-rows:30px;gap:5px;justify-content:center;margin-top:14px}
+.mg i{position:relative;background:var(--slate)}
+.mg i.e{background:var(--empty);border:1px solid #dfe1e7}
+.mg i.x{background:var(--pink);border:1.5px dashed #b4505f}
+.mg i.x::after{content:"";position:absolute;inset:-1.5px;background:var(--slate);opacity:0}
+.slide.active .mg i.x::after{animation:a-destroy .75s var(--ease) both;animation-delay:var(--dd)}
+.mg i.r{background:var(--red)}
+.s14-arr{width:26px;height:12px;justify-self:center;fill:none;stroke:var(--red);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.s14-row{display:grid;grid-template-columns:1fr 1fr;gap:28px;height:94px}
+.step2{display:grid;grid-template-columns:34px 112px 1fr;align-items:center;gap:12px;padding:0 18px}
+.step2 h3{font-size:20px;font-weight:700}
+.step2 p{font-size:15.5px;line-height:1.25;color:var(--muted)}
+
+/* ---------- 15 · Resultados ---------- */
+.s15{display:grid;grid-template-columns:500px 1fr;gap:40px}
+.s15-l{display:flex;flex-direction:column;gap:12px}
+.s15-k{font-size:18.5px;font-weight:700}
+.res{flex:1;display:grid;grid-template-columns:70px 1fr;align-items:center;padding:0 26px;font-size:40px}
+.res .lbl{display:block;font-size:15.5px;font-weight:700;color:var(--muted)}
+.res b{display:block;font-size:40px;color:var(--red);margin-top:8px;letter-spacing:-.5px}
+.res .sub{display:block;font-size:18px;margin-top:6px}
+.s15-chart{padding-top:6px}
+.s15-chart .plot{height:282px}
+
+/* ---------- 16 · Según tamaño ---------- */
+.s16{display:grid;grid-template-columns:1fr 446px;gap:43px}
+.s16-chart .plot{height:206px}
+.s16-chart .bar{width:66%}
+.xtitle{text-align:center;margin-left:46px;margin-top:10px;font-size:15px;color:var(--muted)}
+.s16-note{font-size:15px;line-height:1.3;color:var(--muted);margin-top:26px}
+.s16-note b{color:var(--ink)}
+.s16-r h3{font-size:19px;font-weight:700}
+.s16-r .small{font-size:14.5px;margin-top:6px}
+.t16{margin-top:20px}
+.t16 .tr{grid-template-columns:1.1fr 1fr 1fr 1fr}
+.t16 .th{height:46px}
+.t16 .tr:not(.th){height:63px;font-size:18px}
+.t16 .best{background:var(--pink);color:var(--red-dk);font-weight:700}
+.slide.active .t16 .best{animation:a-flash .6s ease both;animation-delay:calc(var(--d,0) * 110ms + 180ms)}
+.s16-r .after{font-size:15px;line-height:1.3;margin-top:20px}
+
+/* ---------- 17 · Discusión ---------- */
+.s17{gap:12px}
+.dec{height:81px;display:grid;grid-template-columns:380px 64px 164px 1fr;align-items:center;gap:0 12px;padding:0 24px}
+.dec h3{font-size:19.5px;font-weight:700;line-height:1.25}
+.dec .arr{width:40px;height:12px;justify-self:center;fill:none;stroke:var(--muted);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.dec .tag{min-width:164px}
+.dec p{font-size:15.5px;line-height:1.3;color:var(--muted);padding-left:14px}
+.synth{margin-top:18px;flex:1;background:var(--navy);color:#fff;padding:20px 24px}
+.synth-cols{display:grid;grid-template-columns:1fr 1fr;gap:64px;margin-top:14px;font-size:18.5px;line-height:1.3}
+.synth-cols p:first-child{color:#e4e6ec}
+.synth-cols p.b{font-weight:700}
+
+/* ---------- 18 · Conclusiones ---------- */
+.concl{height:291px;flex:none}
+.cc{background:var(--navy-2);border:1px solid var(--navy-3);padding:22px 22px}
+.cc-top{display:flex;justify-content:space-between;align-items:center}
+.cc-ic{width:50px;height:50px;background:var(--red);display:grid;place-items:center;font-size:22px}
+.cc-n{font-size:30px;font-weight:700;color:#3b4157}
+.cc h3{font-size:19.5px;font-weight:700;margin-top:30px}
+.cc p{font-size:15.5px;line-height:1.3;color:#c3c6d2;margin-top:12px}
+.final{margin-top:4px;height:96px;background:var(--red);display:flex;align-items:center;padding:0 38px;font-size:23.5px;font-weight:700}
+.thanks{font-size:18px;color:#a3a7b8;margin-top:12px}
+
+/* ---------- 19 · Referencias ---------- */
+.refs{columns:2;column-gap:42px;font-size:15.5px;line-height:1.32}
+.refs p{break-inside:avoid;margin-bottom:12px}
+
+/* ---------- 20 · Anexo A ---------- */
+.annex{display:flex;flex-direction:column;gap:14px}
+.ax{height:74px;display:grid;grid-template-columns:248px 1fr;align-items:center;padding:0 29px}
+.ax h3{font-size:19px;font-weight:700}
+.ax p{font-size:17px;line-height:1.3}
+.ax.obj h3{color:var(--red)}
+
+/* ---------- 21 · Anexo B ---------- */
+.s21{display:grid;grid-template-columns:566px 1fr;gap:41px}
+.s21 h3{font-size:19px;font-weight:700;margin-bottom:14px}
+.ops{display:flex;flex-direction:column;gap:11px}
+.op{height:67px;display:flex;align-items:center;gap:19px;padding:0 19px;font-size:18px}
+.op .tag{min-width:106px}
+.s21 h3.mt{margin-top:28px}
+.s21 ul{list-style:none}
+.s21 li{position:relative;padding-left:36px;font-size:17.5px;line-height:1.3;margin-bottom:10px}
+.s21 li::before{content:"";position:absolute;left:3px;top:8px;width:5px;height:5px;border-radius:50%;background:var(--ink)}
+
+/* ---------- Controles ---------- */
+#progress{position:fixed;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.06);z-index:10}
+#progress i{display:block;height:100%;width:calc(var(--p,0) * 100%);background:var(--red);transition:width .55s var(--ease)}
+#ui{position:fixed;right:18px;bottom:16px;display:flex;align-items:center;gap:2px;padding:5px;background:rgba(15,18,28,.84);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);border-radius:999px;color:#e8e9ee;font:600 13px var(--font);z-index:10;transition:opacity .4s,transform .4s}
+body.idle #ui{opacity:0;transform:translateY(8px);pointer-events:none}
+#ui button{all:unset;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;cursor:pointer;color:#e8e9ee;font-size:18px}
+#ui button:hover{background:rgba(255,255,255,.13)}
+#ui button:focus-visible{outline:2px solid var(--red)}
+#ui .sep{width:1px;height:18px;background:rgba(255,255,255,.15);margin:0 4px}
+#count{min-width:62px;text-align:center;font-variant-numeric:tabular-nums}
+#hint{position:fixed;left:50%;top:18px;transform:translateX(-50%);padding:9px 16px;border-radius:999px;background:rgba(15,18,28,.88);border:1px solid rgba(255,255,255,.1);color:#d9dbe3;font:500 13px var(--font);white-space:nowrap;z-index:11;transition:opacity .6s}
+#hint kbd{font:600 12px var(--font);padding:1px 6px;border-radius:4px;background:rgba(255,255,255,.12);margin:0 2px}
+#hint.hide{opacity:0;pointer-events:none}
+
+/* ---------- Vista general (tecla O) ---------- */
+body.overview #viewport{overflow-y:auto;overflow-x:hidden}
+body.overview #sizer{position:relative;inset:auto;width:100%}
+body.overview #deck{left:var(--ox,40px);top:40px;transform:scale(var(--s));transform-origin:0 0;display:grid;gap:70px}
+body.overview .slide{position:relative;inset:auto;width:1280px;height:720px;opacity:1;visibility:visible;transform:none;transition:none;cursor:pointer;outline:0 solid transparent}
+body.overview .slide:hover{outline:16px solid rgba(255,255,255,.35)}
+body.overview .slide.current{outline:16px solid var(--red)}
+body.overview .slide *,body.overview .slide *::before,body.overview .slide *::after,body.overview .slide{animation:none!important}
+body.overview #ui .nav{display:none}
+
+@media (prefers-reduced-motion:reduce){
+  .slide,.slide *,.slide *::before,.slide *::after{animation:none!important;transition:none!important}
+}
+@media print{
+  @page{size:1280px 720px;margin:0}
+  html,body{overflow:visible;height:auto;background:#fff}
+  #viewport,#sizer{position:static;overflow:visible}
+  #deck{position:static;transform:none!important;width:1280px;height:auto}
+  .slide{position:relative;width:1280px;height:720px;opacity:1;visibility:visible;transform:none;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .slide *,.slide *::before,.slide *::after{animation:none!important;transition:none!important}
+  #ui,#progress,#hint{display:none}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-funnel" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></symbol>
+  <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+  <symbol id="i-award" viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></symbol>
+  <symbol id="i-merge" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></symbol>
+  <symbol id="i-arrow-r" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-max" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
+</svg>
+
+<div id="viewport"><div id="sizer"><div id="deck">
+
+<!-- 1 · Portada -->
+<section class="slide dark s1">
+  <div class="s1-left">
+    <p class="s1-uni" data-anim="fade">Universidad de Concepción · Departamento de Ingeniería Industrial<br>Taller de Gestión de Operaciones — Ingeniería Civil Industrial</p>
+    <h1 data-anim="up" style="--d:1">Métodos de solución para el problema de horarios escolares</h1>
+    <div class="s1-rule" data-anim="growx" style="--d:3"></div>
+    <p class="s1-sub" data-anim="up" style="--d:4">High School Timetabling: análisis comparativo entre enfoques exactos y metaheurísticos</p>
+    <div class="s1-meta">
+      <div data-anim="up" style="--d:5.5"><h4>Integrantes</h4><p>Carlos Pacheco<br>Ignacio Valenzuela<br>Matías Rocha</p></div>
+      <div data-anim="up" style="--d:6.2"><h4>Profesor</h4><p>Dr. Eduardo Salazar Hornig</p></div>
+      <div data-anim="up" style="--d:6.9"><h4>Entrega</h4><p>Informe de Investigación<br>Semestre 2026-2</p></div>
+    </div>
+  </div>
+  <div class="hero" id="hero" aria-hidden="true"></div>
+</section>
+
+<!-- 2 · Estructura -->
+<section class="slide">
+  <div class="eyebrow">Estructura</div>
+  <h2 data-anim="up">Recorrido de la presentación</h2>
+  <div class="content"><div class="main agenda">
+    <div class="card ag" data-anim="left" style="--d:1.5"><span class="ag-n">01</span><span class="ag-t">Introducción</span><span class="ag-d">El problema de los horarios escolares: en qué consiste, por qué importa y por qué es difícil</span></div>
+    <div class="card ag" data-anim="left" style="--d:2.2"><span class="ag-n">02</span><span class="ag-t">Dos enfoques</span><span class="ag-d">Métodos exactos y metaheurísticas: qué son, cuáles se usan y cómo se comparan</span></div>
+    <div class="card ag" data-anim="left" style="--d:2.9"><span class="ag-n">03</span><span class="ag-t">Evidencia de la literatura</span><span class="ag-d">Tres hallazgos de estudios publicados</span></div>
+    <div class="card ag" data-anim="left" style="--d:3.6"><span class="ag-n">04</span><span class="ag-t">Caso de estudio</span><span class="ag-d">Liceos de Dinamarca: tres métodos frente a 100 colegios reales</span></div>
+    <div class="card ag" data-anim="left" style="--d:4.3"><span class="ag-n">05</span><span class="ag-t">Discusión y conclusiones</span><span class="ag-d">Cuándo conviene cada enfoque</span></div>
+  </div></div>
+  <footer><span></span></footer>
+</section>
+
+<!-- 3 · El problema -->
+<section class="slide">
+  <div class="eyebrow">El problema</div>
+  <h2 data-anim="up">Asignar cada clase a un bloque y a una sala, sin choques</h2>
+  <div class="content">
+    <div class="main s3">
+      <div class="card s3-card" data-anim="left" style="--d:1">
+        <h3>En qué consiste</h3>
+        <p>Cada clase debe recibir un bloque horario y una sala, sin que un profesor, un curso o una sala queden en dos lugares a la vez.</p>
+        <div class="tt">
+          <b></b><b class="day">Lun</b><b class="day">Mar</b><b class="day">Mié</b><b class="day">Jue</b><b class="day">Vie</b>
+          <b class="row">B1</b><i class="m">MAT</i><i>LEN</i><i class="e"></i><i>HIS</i><i class="m">MAT</i>
+          <b class="row">B2</b><i class="m">MAT</i><i class="e"></i><i>FIS</i><i>HIS</i><i>ING</i>
+          <b class="row">B3</b><i>LEN</i><i>ING</i><i>FIS</i><i class="e"></i><i>QUI</i>
+          <b class="row">B4</b><i class="e"></i><i>QUI</i><i class="m">MAT</i><i>LEN</i><i class="e"></i>
+        </div>
+      </div>
+      <div class="why">
+        <h3 data-anim="fade" style="--d:2">Por qué importa</h3>
+        <div class="why-item" data-anim="right" style="--d:3"><svg class="ic"><use href="#i-house"/></svg><div><h4>Lo enfrentan todos los colegios</h4><p>Se elabora al menos una vez al año, y a veces varias.</p></div></div>
+        <div class="why-item" data-anim="right" style="--d:4"><svg class="ic"><use href="#i-wrench"/></svg><div><h4>Suele hacerse a mano</h4><p>Con frecuencia lo construye una sola persona, por prueba y error.</p></div></div>
+        <div class="why-item" data-anim="right" style="--d:5"><svg class="ic"><use href="#i-activity"/></svg><div><h4>Un mal horario se paga todo el año</h4><p>Ventanas y jornadas desbalanceadas generan fatiga en alumnos y profesores y deterioran el ambiente de aprendizaje.</p></div></div>
+      </div>
+    </div>
+    <div class="banner" data-anim="wipe" style="--d:9"><span class="tag">Idea central</span><p>Es un problema de asignación de recursos escasos: profesores, salas y tiempo.</p></div>
+  </div>
+  <footer><span>Fuentes: Sørensen y Stidsen (2013); Pillay (2014)</span></footer>
+</section>
+
+<!-- 4 · Complejidad -->
+<section class="slide">
+  <div class="eyebrow">El problema · factores de complejidad</div>
+  <h2 data-anim="up">Por qué es difícil: combinaciones y reglas que compiten</h2>
+  <div class="content">
+    <div class="main s4">
+      <div class="s4-dark" data-anim="up" style="--d:1">
+        <svg class="ic"><use href="#i-grid"/></svg>
+        <h3>Explosión combinatoria</h3>
+        <p>Cada clase puede ir en muchos bloques y salas. Con cada clase que se agrega, las combinaciones posibles se multiplican.</p>
+        <i class="s4-rule" data-anim="growx" style="--d:3"></i>
+        <strong>Un colegio real programa cientos de sesiones de clase.</strong>
+      </div>
+      <div class="card s4-card" data-anim="up" style="--d:2">
+        <svg class="ic red"><use href="#i-lock"/></svg>
+        <h3>Restricciones duras</h3>
+        <p class="sub">Obligatorias: si se rompen, el horario no sirve.</p>
+        <ul>
+          <li data-anim="fade" style="--d:4">Un profesor no puede dictar dos clases a la vez</li>
+          <li data-anim="fade" style="--d:4.6">Un curso no puede tener dos clases simultáneas</li>
+          <li data-anim="fade" style="--d:5.2">Una sala no puede usarse dos veces en un bloque</li>
+        </ul>
+      </div>
+      <div class="card s4-card" data-anim="up" style="--d:3">
+        <svg class="ic red"><use href="#i-sliders"/></svg>
+        <h3>Restricciones blandas</h3>
+        <p class="sub">Deseables: cada incumplimiento suma penalización.</p>
+        <ul>
+          <li data-anim="fade" style="--d:5">Evitar ventanas de alumnos y profesores</li>
+          <li data-anim="fade" style="--d:5.6">Repartir cada asignatura durante la semana</li>
+          <li data-anim="fade" style="--d:6.2">Respetar preferencias y días libres</li>
+        </ul>
+      </div>
+    </div>
+    <div class="banner" data-anim="wipe" style="--d:7.5"><span class="tag">NP-hard</span><p>No se conoce un algoritmo eficiente que garantice el mejor horario en instancias grandes. Las reglas además compiten entre sí.</p></div>
+  </div>
+  <footer><span>Fuentes: Sørensen y Stidsen (2013); Demirović y Musliu (2017)</span></footer>
+</section>
+
+<!-- 5 · Objetivo -->
+<section class="slide">
+  <div class="eyebrow">Objetivo de la investigación</div>
+  <h2 data-anim="up">Comparar dos grandes enfoques y definir cuál conviene</h2>
+  <div class="content">
+    <div class="main s5">
+      <div class="s5-top">
+        <div class="s5-panel slate" data-anim="left" style="--d:1.5"><div class="s5-h"><svg class="ic"><use href="#i-check-circle"/></svg><h3>Métodos exactos</h3></div><p>Buscan el mejor horario posible y demuestran que lo es.</p></div>
+        <div class="s5-panel red" data-anim="right" style="--d:1.5"><div class="s5-h"><svg class="ic"><use href="#i-zap"/></svg><h3>Metaheurísticas</h3></div><p>Buscan un horario muy bueno en poco tiempo, sin garantía de que sea el mejor.</p></div>
+        <div class="vs" data-anim="pop" style="--d:4.5">vs</div>
+      </div>
+      <div class="card s5-q" data-anim="up" style="--d:6"><svg class="ic red"><use href="#i-help"/></svg><p><b>La pregunta:</b> ¿cuál conviene, y bajo qué condiciones de tamaño del colegio, tiempo disponible y calidad exigida?</p></div>
+    </div>
+    <div class="banner" data-anim="wipe" style="--d:8"><span class="tag" style="min-width:186px">Cómo lo respondemos</span><p>Marco teórico de cada enfoque, evidencia de la literatura y un caso real con 100 colegios.</p></div>
+  </div>
+  <footer><span></span></footer>
+</section>
+
+<!-- 6 · Métodos exactos -->
+<section class="slide">
+  <div class="eyebrow">Enfoque 1 · métodos exactos</div>
+  <h2 data-anim="up">Métodos exactos: buscan el óptimo y lo demuestran</h2>
+  <div class="content s6">
+    <p class="lead" data-anim="up" style="--d:1">El problema se traduce a un modelo matemático, con variables, restricciones y una función objetivo. Un programa especializado, el solver, explora las soluciones de forma sistemática hasta encontrar la mejor y certificar que lo es.</p>
+    <h4 class="kicker" data-anim="fade" style="--d:2.5">Los más utilizados en horarios escolares</h4>
+    <div class="main cards4">
+      <div class="card mcard" data-anim="up" style="--d:3"><svg class="ic red"><use href="#i-grid"/></svg><h3>Programación entera</h3><code>IP / MIP</code><p>Variables de sí o no y restricciones lineales. Se resuelve con solvers como Gurobi o CPLEX. Es el más usado.</p></div>
+      <div class="card mcard" data-anim="up" style="--d:3.7"><svg class="ic red"><use href="#i-funnel"/></svg><h3>Programación con restricciones</h3><code>CP</code><p>Declara qué combinaciones están permitidas y descarta valores imposibles. Fuerte para hallar horarios factibles.</p></div>
+      <div class="card mcard" data-anim="up" style="--d:4.4"><svg class="ic red"><use href="#i-check"/></svg><h3>Satisfacibilidad</h3><code>SAT / MaxSAT</code><p>Convierte el horario en fórmulas lógicas de verdadero o falso y busca cumplir el máximo posible.</p></div>
+      <div class="card mcard" data-anim="up" style="--d:5.1"><svg class="ic red"><use href="#i-scissors"/></svg><h3>Descomposición</h3><code>Dos etapas</code><p>Divide el modelo en partes más pequeñas que se resuelven por separado.</p></div>
+    </div>
+    <div class="banner split" data-anim="wipe" style="--d:7">
+      <div><span class="tag slate" style="min-width:76px">A favor</span><p>Garantizan el óptimo e informan qué tan lejos están de él.</p></div>
+      <div><span class="tag" style="min-width:84px">En contra</span><p>El tiempo de cómputo crece de forma explosiva con el tamaño.</p></div>
+    </div>
+  </div>
+  <footer><span>Fuentes: Kristiansen et al. (2015); Sørensen y Dahms (2014); Demirović y Musliu (2017); Pillay (2014)</span></footer>
+</section>
+
+<!-- 7 · Metaheurísticas -->
+<section class="slide">
+  <div class="eyebrow">Enfoque 2 · metaheurísticas</div>
+  <h2 data-anim="up">Metaheurísticas: soluciones muy buenas en poco tiempo</h2>
+  <div class="content">
+    <div class="s7-top">
+      <p class="lead" data-anim="up" style="--d:1">Son estrategias generales de búsqueda. Parten de un horario cualquiera y lo mejoran con miles de cambios pequeños. Renuncian a demostrar el óptimo a cambio de velocidad.</p>
+      <div class="note" data-anim="right" style="--d:2.5"><b>Particularidad:</b> a veces aceptan un cambio que empeora el horario, para no quedar atrapadas en una solución mediocre.</div>
+    </div>
+    <div class="s7-heads"><h4 class="kicker" data-anim="fade" style="--d:3">De trayectoria: mejoran un solo horario</h4><h4 class="kicker" data-anim="fade" style="--d:5.5">Poblacionales</h4></div>
+    <div class="main cards4 redtop">
+      <div class="card mcard" data-anim="up" style="--d:3.5"><svg class="ic red"><use href="#i-thermo"/></svg><h3>Recocido simulado</h3><code>Simulated Annealing</code><p>Acepta empeoramientos con una probabilidad que disminuye a medida que avanza la búsqueda.</p></div>
+      <div class="card mcard" data-anim="up" style="--d:4.2"><svg class="ic red"><use href="#i-ban"/></svg><h3>Búsqueda tabú</h3><code>Tabu Search</code><p>Lleva una memoria de los movimientos recientes y los prohíbe, para no volver atrás.</p></div>
+      <div class="card mcard" data-anim="up" style="--d:4.9"><svg class="ic red"><use href="#i-map"/></svg><h3>Búsqueda en vecindarios</h3><code>VNS · ALNS</code><p>Cambia la forma de modificar el horario cuando se estanca. ALNS es la del caso de estudio.</p></div>
+      <div class="card mcard pop" data-anim="up" style="--d:6"><svg class="ic red"><use href="#i-users"/></svg><h3>Algoritmos genéticos</h3><code>Genetic Algorithms</code><p>Combinan los mejores horarios entre sí, imitando la evolución.</p></div>
+    </div>
+    <div class="banner split" data-anim="wipe" style="--d:8">
+      <div><span class="tag slate" style="min-width:76px">A favor</span><p>Rápidas, escalan a colegios grandes y aceptan reglas nuevas.</p></div>
+      <div><span class="tag" style="min-width:84px">En contra</span><p>No garantizan el óptimo ni saben cuánto les falta.</p></div>
+    </div>
+  </div>
+  <footer><span>Fuentes: Pillay (2014); Tan et al. (2021)</span></footer>
+</section>
+
+<!-- 8 · Comparación -->
+<section class="slide">
+  <div class="eyebrow">Comparación</div>
+  <h2 data-anim="up">Frente a frente: cada enfoque gana en un terreno distinto</h2>
+  <div class="content">
+    <div class="main cmp">
+      <div class="cmp-h l" data-anim="left" style="--d:1">Métodos exactos</div>
+      <div class="cmp-h m" data-anim="fade" style="--d:1">Criterio</div>
+      <div class="cmp-h r" data-anim="right" style="--d:1">Metaheurísticas</div>
+
+      <div class="cmp-c win l" data-anim="left" style="--d:2.4"><svg class="chk" viewBox="0 0 24 24"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>Garantizada, si termina</div>
+      <div class="cmp-m" data-anim="pop" style="--d:2">Optimalidad</div>
+      <div class="cmp-c" data-anim="right" style="--d:2.4">No garantizada</div>
+
+      <div class="cmp-c win l" data-anim="left" style="--d:3.3"><svg class="chk" viewBox="0 0 24 24"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>Entrega una cota: sabe cuánto falta</div>
+      <div class="cmp-m" data-anim="pop" style="--d:2.9">Medida de calidad</div>
+      <div class="cmp-c" data-anim="right" style="--d:3.3">No sabe cuánto falta</div>
+
+      <div class="cmp-c win l" data-anim="left" style="--d:4.2"><svg class="chk" viewBox="0 0 24 24"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>Poca: usa un solver estándar</div>
+      <div class="cmp-m" data-anim="pop" style="--d:3.8">Calibración</div>
+      <div class="cmp-c" data-anim="right" style="--d:4.2">Mucha: parámetros a ajustar</div>
+
+      <div class="cmp-c" data-anim="left" style="--d:5.1">Horas, o no termina</div>
+      <div class="cmp-m" data-anim="pop" style="--d:4.7">Tiempo en colegios grandes</div>
+      <div class="cmp-c win r" data-anim="right" style="--d:5.1"><svg class="chk" viewBox="0 0 24 24"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>Minutos</div>
+
+      <div class="cmp-c" data-anim="left" style="--d:6">Baja</div>
+      <div class="cmp-m" data-anim="pop" style="--d:5.6">Escalabilidad</div>
+      <div class="cmp-c win r" data-anim="right" style="--d:6"><svg class="chk" viewBox="0 0 24 24"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>Alta</div>
+
+      <div class="cmp-c" data-anim="left" style="--d:6.9">Exige reformular el modelo</div>
+      <div class="cmp-m" data-anim="pop" style="--d:6.5">Reglas nuevas</div>
+      <div class="cmp-c win r" data-anim="right" style="--d:6.9"><svg class="chk" viewBox="0 0 24 24"><path pathLength="1" d="M20 6 9 17l-5-5"/></svg>Basta ajustar la penalización</div>
+    </div>
+    <div class="banner short" data-anim="wipe" style="--d:9"><span class="tag">En teoría</span><p>Los exactos ofrecen garantía; las metaheurísticas ofrecen escala. ¿Se cumple en la práctica?</p></div>
+  </div>
+  <footer><span></span></footer>
+</section>
+
+<!-- 9 · Hallazgo 1 -->
+<section class="slide">
+  <div class="eyebrow">Evidencia de la literatura · hallazgo 1</div>
+  <h2 data-anim="up">En competencia, las metaheurísticas coparon la final</h2>
+  <div class="content">
+    <p class="lead" data-anim="up" style="--d:1;font-size:18.5px">Competencia internacional ITC 2011: 35 colegios reales de 10 países, todos los métodos con el mismo tiempo y el mismo computador.</p>
+    <div class="main"><div class="tbl t9">
+      <div class="tr th" data-anim="fade" style="--d:2"><span class="c">Lugar</span><span>Finalista</span><span>Método</span><span>Tipo</span><span class="c">Posición promedio</span></div>
+      <div class="tr" data-anim="left" style="--d:3"><span class="c rank">1°</span><span class="b">GOAL</span><span>Recocido simulado + búsqueda local</span><span class="mu">Metaheurística</span><span class="c b">1,18</span></div>
+      <div class="tr" data-anim="left" style="--d:3.8"><span class="c rank">2°</span><span class="b">HySST</span><span>Hiperheurística</span><span class="mu">Metaheurística</span><span class="c">2,23</span></div>
+      <div class="tr" data-anim="left" style="--d:4.6"><span class="c rank">3°</span><span class="b">Lectio</span><span>ALNS (equipo del caso de estudio)</span><span class="mu">Metaheurística</span><span class="c">2,32</span></div>
+      <div class="tr" data-anim="left" style="--d:5.4"><span class="c rank">4°</span><span class="b">HFT</span><span>Algoritmo evolutivo</span><span class="mu">Metaheurística</span><span class="c">3,64</span></div>
+    </div></div>
+    <div class="banner" data-anim="wipe" style="--d:7.5"><span class="tag">Lectura</span><p>Ningún método exacto llegó a la final, y el ganador se impuso con amplia ventaja.</p></div>
+  </div>
+  <footer><span>Fuentes: Post et al. (2016); Fonseca et al. (2016a). Posición promedio: 1 equivale a ser el mejor en todas las pruebas</span></footer>
+</section>
+
+<!-- 10 · Hallazgo 2 -->
+<section class="slide">
+  <div class="eyebrow">Evidencia de la literatura · hallazgo 2</div>
+  <h2 data-anim="up">Los exactos no ganan la carrera, pero aportan la vara de medir</h2>
+  <div class="content">
+    <p class="lead" data-anim="up" style="--d:1">Kristiansen et al. (2015) construyeron el primer método exacto para cualquier instancia del benchmark internacional y lo probaron de dos formas.</p>
+    <div class="main s10">
+      <div class="card s10-l" data-anim="left" style="--d:2">
+        <span class="tag slate">Con poco tiempo</span>
+        <div class="s10-big" data-anim="pop" style="--d:3.5">4° de 5</div>
+        <p>Con el mismo tiempo de la competencia, el método exacto quedó cuarto entre cinco. Solo destacó en los colegios pequeños.</p>
+      </div>
+      <div class="card s10-r" data-anim="right" style="--d:4.5">
+        <div class="s10-head"><span class="tag">Con 24 horas por colegio</span><span class="mu">Entregó lo que ninguna metaheurística puede dar</span></div>
+        <div class="s10-grid">
+          <div data-anim="pop" style="--d:6"><b data-count="2">2</b><span>óptimos nuevos</span></div>
+          <div data-anim="pop" style="--d:6.6"><b data-count="4">4</b><span>óptimos demostrados</span></div>
+          <div data-anim="pop" style="--d:7.2"><b data-count="11">11</b><span>cotas nuevas</span></div>
+          <div data-anim="pop" style="--d:7.8"><b data-count="9">9</b><span>mejores soluciones</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="banner" data-anim="wipe" style="--d:9.5"><span class="tag">Lectura</span><p>Sin un método exacto no se sabe si un horario es bueno: solo la cota indica cuánto falta para el óptimo.</p></div>
+  </div>
+  <footer><span>Fuente: Kristiansen et al. (2015)</span></footer>
+</section>
+
+<!-- 11 · Hallazgo 3 -->
+<section class="slide">
+  <div class="eyebrow">Evidencia de la literatura · hallazgo 3</div>
+  <h2 data-anim="up">Los mejores resultados salen de combinar ambos enfoques</h2>
+  <div class="content">
+    <div class="main s11">
+      <div class="s11-panel" data-anim="left" style="--d:1">
+        <div class="s11-big"><span data-count="15">15</span> de 17</div>
+        <p>mejores soluciones conocidas fueron superadas al insertar un solver exacto dentro de una metaheurística.</p>
+        <i class="s11-rule" data-anim="growx" style="--d:4"></i>
+        <p class="small" data-anim="fade" style="--d:4.5"><b>Matheurística:</b> la metaheurística elige qué parte del horario rearmar y el solver exacto la resuelve de forma óptima.</p>
+      </div>
+      <div class="tbl t11">
+        <div class="tr th" data-anim="fade" style="--d:2.5"><span>Estudio</span><span>Qué combinan</span><span>Resultado</span></div>
+        <div class="tr" data-anim="right" style="--d:3.5"><span class="b">Fonseca et al. (2016b)</span><span>Búsqueda en vecindarios (VNS) + vecindarios de programación matemática</span><span>Supera ampliamente a la VNS sola. Mejora 15 de 17 mejores soluciones conocidas.</span></div>
+        <div class="tr" data-anim="right" style="--d:4.5"><span class="b">Demirović y Musliu (2017)</span><span>Búsqueda local + reconstrucción con MaxSAT</span><span>4 nuevas mejores soluciones. Solo logra modelar 27 de 39 instancias.</span></div>
+      </div>
+    </div>
+    <div class="banner" data-anim="wipe" style="--d:6.5"><span class="tag">Lectura</span><p>La disyuntiva exacto o metaheurística se está disolviendo: cada enfoque se usa donde es más fuerte.</p></div>
+  </div>
+  <footer><span>Fuentes: Fonseca et al. (2016b); Demirović y Musliu (2017)</span></footer>
+</section>
+
+<!-- 12 · Caso: MIP completo -->
+<section class="slide">
+  <div class="eyebrow">Caso de estudio · Dinamarca · método 1</div>
+  <h2 data-anim="up">Lectio: elegir el algoritmo que usarían 230 liceos</h2>
+  <div class="content">
+    <div class="main s12">
+      <div class="s12-l">
+        <p class="lead" data-anim="up" style="--d:1;font-size:18.5px">Lectio es el sistema de gestión escolar más usado en Dinamarca. Sus autores debían decidir qué algoritmo poner en producción para generar horarios, y compararon tres métodos sobre el mismo problema.</p>
+        <div class="stats">
+          <div class="card stat" data-anim="left" style="--d:2"><b data-count="230">230</b><span>liceos clientes</span></div>
+          <div class="card stat" data-anim="left" style="--d:2.7"><b data-count="100">100</b><span>colegios reales de prueba</span></div>
+          <div class="card stat" data-anim="left" style="--d:3.4"><b data-count="3">3</b><span>métodos comparados</span></div>
+        </div>
+      </div>
+      <div class="card s12-r" data-anim="right" style="--d:2.5">
+        <span class="tag slate">Método 1 · exacto</span>
+        <h3>MIP completo</h3>
+        <p class="mu">Decide clase, sala y bloque en un solo modelo de programación entera, resuelto con Gurobi.</p>
+        <div class="code">
+          <span class="code-l">Variable de decisión</span>
+          <div class="type" style="--n:30">x(clase, sala, bloque) = 1 o 0</div>
+          <div class="code-ex" data-anim="fade" style="--d:13">x(Matemáticas 1°A, Sala 12, Lunes B1) = 1</div>
+          <div class="code-c" data-anim="fade" style="--d:14">La clase se dicta en esa sala y en ese bloque.</div>
+        </div>
+        <div class="s12-vars" data-anim="up" style="--d:15"><b>≈ <span data-count="2.5" data-dec="1">2,5</span> millones</b><span>de variables en un colegio promedio: 892 sesiones de clase × 57 salas × 50 bloques.</span></div>
+      </div>
+    </div>
+    <div class="banner" data-anim="wipe" style="--d:17"><span class="tag">Objetivo</span><p>Minimizar los puntos de penalización del horario: clases sin asignar, ventanas, horas tardías. Menos es mejor.</p></div>
+  </div>
+  <footer><span>Fuente: Sørensen y Stidsen (2013). Número de variables: cálculo propio con los promedios del estudio</span></footer>
+</section>
+
+<!-- 13 · Caso: MIP en dos etapas -->
+<section class="slide">
+  <div class="eyebrow">Caso de estudio · Dinamarca · método 2</div>
+  <h2 data-anim="up">MIP en dos etapas: primero cuándo, después dónde</h2>
+  <div class="content s13">
+    <div class="intro-row" data-anim="up" style="--d:1"><span class="tag slate">Método 2 · exacto por partes</span><p>En vez de decidir todo a la vez, separa el problema en dos modelos más pequeños que se resuelven en secuencia.</p></div>
+    <div class="s13-stages">
+      <div class="card stage" data-anim="left" style="--d:2">
+        <div class="stage-h slate"><span>Etapa 1</span><b>¿Cuándo va cada clase?</b></div>
+        <div class="stage-b"><code class="eq">y(clase, bloque) = 1 o 0</code><p>Asigna los bloques e ignora las salas. Mantiene las reglas de tiempo: choques, ventanas y días libres.</p><b class="vars">≈ <span data-count="45">45</span> mil variables</b></div>
+      </div>
+      <div class="s13-arrow" data-anim="pop" style="--d:4.5"><svg class="ic"><use href="#i-arrow-r"/></svg></div>
+      <div class="card stage" data-anim="right" style="--d:5.5">
+        <div class="stage-h dk"><span>Etapa 2</span><b>¿En qué sala va cada clase?</b></div>
+        <div class="stage-b"><code class="eq">z(clase, sala) = 1 o 0</code><p>Con los bloques ya fijos, asigna las salas. Es un problema pequeño que suele resolverse en segundos.</p><b class="vars">≈ <span data-count="51">51</span> mil variables</b></div>
+      </div>
+    </div>
+    <div class="s13-gp">
+      <div class="card gp" data-anim="up" style="--d:8"><span class="tag slate">Gana</span><p>De 2,5 millones de variables a dos modelos de unas 50 mil.</p></div>
+      <span></span>
+      <div class="card gp" data-anim="up" style="--d:8.8"><span class="tag">Pierde</span><p>La etapa 1 decide sin mirar las salas: ya no garantiza el óptimo global.</p></div>
+    </div>
+    <div class="banner short" data-anim="wipe" style="--d:10.5"><span class="tag" style="min-width:72px">Clave</span><p>Sigue entregando una cota válida, porque la etapa 1 es una versión optimista del problema real.</p></div>
+  </div>
+  <footer><span>Fuentes: Sørensen y Stidsen (2013); Sørensen y Dahms (2014). Números de variables: cálculo propio</span></footer>
+</section>
+
+<!-- 14 · Caso: ALNS -->
+<section class="slide">
+  <div class="eyebrow">Caso de estudio · Dinamarca · método 3</div>
+  <h2 data-anim="up">ALNS: romper una parte del horario y reconstruirla mejor</h2>
+  <div class="content s14">
+    <div class="intro-row" data-anim="up" style="--d:1"><span class="tag" style="min-width:184px">Método 3 · metaheurística</span><p>No resuelve un modelo. Parte de un horario y repite este ciclo miles de veces.</p></div>
+    <div class="s14-steps">
+      <div class="card step" data-anim="up" style="--d:2"><div class="step-h"><i class="num">1</i><h3>Horario actual</h3></div><div class="mg" data-g="SSESS SESSE ESSES SSESE"></div><p>Punto de partida de la iteración.</p></div>
+      <svg class="s14-arr" data-anim="growx" style="--d:3.5" viewBox="0 0 26 12"><path d="M1 6h23"/><path d="m20 2 4 4-4 4"/></svg>
+      <div class="card step" data-anim="up" style="--d:4"><div class="step-h"><i class="num">2</i><h3>Destruir</h3></div><div class="mg" data-g="SSEXS SEXSE EXSES XSESE"></div><p>Saca un grupo de clases del horario.</p></div>
+      <svg class="s14-arr" data-anim="growx" style="--d:11" viewBox="0 0 26 12"><path d="M1 6h23"/><path d="m20 2 4 4-4 4"/></svg>
+      <div class="card step" data-anim="up" style="--d:11.5"><div class="step-h"><i class="num">3</i><h3>Reparar</h3></div><div class="mg" data-g="SSRES SEESR EESRS ESRSE"></div><p>Las reubica donde menos penalizan.</p></div>
+    </div>
+    <div class="s14-row">
+      <div class="card step2" data-anim="up" style="--d:19"><i class="num">4</i><h3>Aceptar</h3><p>Si el horario mejora, se queda. Si empeora, a veces igual se acepta, para escapar de soluciones mediocres.</p></div>
+      <div class="card step2" data-anim="up" style="--d:20"><i class="num">5</i><h3>Aprender</h3><p>Las formas de destruir y reparar que más mejoran el horario se eligen más seguido: esa es la parte adaptativa.</p></div>
+    </div>
+    <div class="banner short" data-anim="wipe" style="--d:22"><span class="tag" style="min-width:76px">Ventaja</span><p>Nunca carga el problema completo y siempre tiene un horario listo para entregar.</p></div>
+  </div>
+  <footer><span>Fuente: Sørensen y Stidsen (2013), sección 3. Esquema ilustrativo de elaboración propia</span></footer>
+</section>
+
+<!-- 15 · Resultados -->
+<section class="slide">
+  <div class="eyebrow">Caso de estudio · resultados</div>
+  <h2 data-anim="up">Con menos recursos, ALNS ganó en 78 de 100 colegios</h2>
+  <div class="content">
+    <div class="main s15">
+      <div class="s15-l">
+        <h4 class="s15-k" data-anim="fade" style="--d:1">La comparación favorecía a los exactos</h4>
+        <div class="card res" data-anim="left" style="--d:1.8"><svg class="ic red"><use href="#i-clock"/></svg><div><span class="lbl">MIP y MIP en dos etapas</span><b>2 horas</b><span class="sub">8 procesadores</span></div></div>
+        <div class="card res" data-anim="left" style="--d:2.8"><svg class="ic red"><use href="#i-zap"/></svg><div><span class="lbl">ALNS</span><b>4 minutos</b><span class="sub">1 procesador</span></div></div>
+      </div>
+      <div class="s15-chart" data-anim="fade" style="--d:2.5">
+        <div class="chart-title">Colegios donde cada método obtuvo el mejor horario (de 100)</div>
+        <div class="plot">
+          <div class="ytick" style="--v:0"><span>0</span></div><div class="ytick" style="--v:20"><span>20</span></div><div class="ytick" style="--v:40"><span>40</span></div>
+          <div class="ytick" style="--v:60"><span>60</span></div><div class="ytick" style="--v:80"><span>80</span></div><div class="ytick" style="--v:100"><span>100</span></div>
+          <div class="bars">
+            <div class="bar" style="--v:0;--d:4"><b data-count="0">0</b></div>
+            <div class="bar dk" style="--v:20;--d:5"><b data-count="20">20</b></div>
+            <div class="bar" style="--v:78;--d:6"><b data-count="78">78</b></div>
+          </div>
+        </div>
+        <div class="xlabels"><span>MIP completo</span><span>MIP en dos etapas</span><span>ALNS</span></div>
+      </div>
+    </div>
+    <div class="banner" data-anim="wipe" style="--d:11"><span class="tag">Lectura</span><p>El MIP completo no ganó en ningún colegio pese a tener 30 veces más tiempo y 8 veces más procesadores.</p></div>
+  </div>
+  <footer><span>Fuente: Sørensen y Stidsen (2013), Tabla 3. En 2 colegios hubo empate</span></footer>
+</section>
+
+<!-- 16 · Resultados según tamaño -->
+<section class="slide">
+  <div class="eyebrow">Caso de estudio · resultados según tamaño</div>
+  <h2 data-anim="up">La ventaja de ALNS crece con el tamaño del colegio</h2>
+  <div class="content">
+    <div class="main s16">
+      <div>
+        <div class="s16-chart" data-anim="fade" style="--d:1">
+          <div class="chart-title">Colegios donde gana ALNS, según su tamaño</div>
+          <div class="plot">
+            <div class="ytick" style="--v:0"><span>0%</span></div><div class="ytick" style="--v:25"><span>25%</span></div><div class="ytick" style="--v:50"><span>50%</span></div>
+            <div class="ytick" style="--v:75"><span>75%</span></div><div class="ytick" style="--v:100"><span>100%</span></div>
+            <div class="bars">
+              <div class="bar" style="--v:68;--d:2.5"><b><span data-count="68">68</span>%</b></div>
+              <div class="bar" style="--v:75;--d:3.3"><b><span data-count="75">75</span>%</b></div>
+              <div class="bar" style="--v:88;--d:4.1"><b><span data-count="88">88</span>%</b></div>
+              <div class="bar" style="--v:90;--d:4.9"><b><span data-count="90">90</span>%</b></div>
+            </div>
+          </div>
+          <div class="xlabels"><span>Menos de 600</span><span>600 a 899</span><span>900 a 1.299</span><span>1.300 o más</span></div>
+          <div class="xtitle">Sesiones de clase por colegio</div>
+        </div>
+        <p class="s16-note" data-anim="fade" style="--d:6"><b>Sesión de clase:</b> cada bloque de una asignatura para un grupo. Un colegio suma cientos.</p>
+      </div>
+      <div class="s16-r">
+        <h3 data-anim="fade" style="--d:2">Un ejemplo de cada tamaño</h3>
+        <p class="mu small" data-anim="fade" style="--d:2.5">Puntos de penalización: menos es mejor</p>
+        <div class="tbl t16">
+          <div class="tr th" data-anim="fade" style="--d:3"><span>Colegio</span><span class="rt">MIP</span><span class="rt">2 etapas</span><span class="rt">ALNS</span></div>
+          <div class="tr" data-anim="right" style="--d:4"><span>Pequeño</span><span class="rt" data-count="2005">2.005</span><span class="rt best" style="--d:12">1.929</span><span class="rt">2.040</span></div>
+          <div class="tr" data-anim="right" style="--d:4.8"><span>Mediano</span><span class="rt" data-count="81970">81.970</span><span class="rt">25.057</span><span class="rt best" style="--d:13">16.268</span></div>
+          <div class="tr" data-anim="right" style="--d:5.6"><span>Grande</span><span class="rt" data-count="140883">140.883</span><span class="rt">32.183</span><span class="rt best" style="--d:14">27.738</span></div>
+        </div>
+        <p class="mu after" data-anim="fade" style="--d:15">En rosado, el mejor resultado de cada colegio. En el pequeño gana el método exacto; en los otros dos, ALNS.</p>
+      </div>
+    </div>
+    <div class="banner" data-anim="wipe" style="--d:16.5"><span class="tag">Lectura</span><p>En colegios pequeños el método exacto aún compite. Al crecer el colegio, deja de ser viable.</p></div>
+  </div>
+  <footer><span>Elaboración propia con datos de Sørensen y Stidsen (2013), Tablas 2 y 3. Colegios: BroendG2012, Aars2010 y VirumG2012</span></footer>
+</section>
+
+<!-- 17 · Discusión -->
+<section class="slide">
+  <div class="eyebrow">Discusión</div>
+  <h2 data-anim="up">Cuándo conviene cada enfoque</h2>
+  <div class="content s17">
+    <div class="card dec" data-anim="left" style="--d:1.5"><h3>Colegio pequeño o mediano, y se exige el óptimo</h3><svg class="arr" data-anim="growx" style="--d:3" viewBox="0 0 40 12"><path d="M1 6h37"/><path d="m34 2 4 4-4 4"/></svg><span class="tag slate" data-anim="pop" style="--d:4">Método exacto</span><p>Kristiansen et al. (2015); MIP en dos etapas del caso danés</p></div>
+    <div class="card dec" data-anim="left" style="--d:3"><h3>Colegio grande, poco tiempo, uso en producción</h3><svg class="arr" data-anim="growx" style="--d:4.5" viewBox="0 0 40 12"><path d="M1 6h37"/><path d="m34 2 4 4-4 4"/></svg><span class="tag" data-anim="pop" style="--d:5.5">Metaheurística</span><p>ITC 2011; Sørensen y Stidsen (2013)</p></div>
+    <div class="card dec" data-anim="left" style="--d:4.5"><h3>Se busca la máxima calidad posible</h3><svg class="arr" data-anim="growx" style="--d:6" viewBox="0 0 40 12"><path d="M1 6h37"/><path d="m34 2 4 4-4 4"/></svg><span class="tag dk" data-anim="pop" style="--d:7">Método híbrido</span><p>Fonseca et al. (2016b); Demirović y Musliu (2017)</p></div>
+    <div class="synth" data-anim="up" style="--d:8.5">
+      <span class="tag" style="min-width:80px">Síntesis</span>
+      <div class="synth-cols">
+        <p>La literatura se mueve hacia la optimización matemática y, sin embargo, el caso lo gana la metaheurística. No es una contradicción.</p>
+        <p class="b" data-anim="fade" style="--d:11">Los mejores métodos actuales usan ambos: la metaheurística aporta la escala y el método exacto aporta la precisión y la vara de medir.</p>
+      </div>
+    </div>
+  </div>
+  <footer><span></span></footer>
+</section>
+
+<!-- 18 · Conclusiones -->
+<section class="slide dark">
+  <div class="eyebrow">Conclusiones</div>
+  <h2 data-anim="up">Conclusiones</h2>
+  <div class="content">
+    <div class="cards4 concl">
+      <div class="cc" data-anim="up" style="--d:1.5"><div class="cc-top"><span class="cc-ic"><svg class="ic"><use href="#i-chart"/></svg></span><span class="cc-n">01</span></div><h3>El tamaño decide</h3><p>El número de sesiones de clase que programa el colegio determina qué enfoque es viable.</p></div>
+      <div class="cc" data-anim="up" style="--d:2.5"><div class="cc-top"><span class="cc-ic"><svg class="ic"><use href="#i-layers"/></svg></span><span class="cc-n">02</span></div><h3>Garantía contra escala</h3><p>Los exactos garantizan y miden la calidad, pero no escalan. Las metaheurísticas escalan, pero no miden.</p></div>
+      <div class="cc" data-anim="up" style="--d:3.5"><div class="cc-top"><span class="cc-ic"><svg class="ic"><use href="#i-award"/></svg></span><span class="cc-n">03</span></div><h3>La evidencia del caso</h3><p>ALNS superó a los MIP en 78 de 100 colegios con 30 veces menos tiempo y un solo procesador.</p></div>
+      <div class="cc" data-anim="up" style="--d:4.5"><div class="cc-top"><span class="cc-ic"><svg class="ic"><use href="#i-merge"/></svg></span><span class="cc-n">04</span></div><h3>El futuro es híbrido</h3><p>Combinar ambos enfoques entrega los mejores resultados conocidos.</p></div>
+    </div>
+    <div class="final" data-anim="wipe" style="--d:7">No hay un ganador único: el tamaño del colegio y el objetivo definen el método.</div>
+    <p class="thanks" data-anim="fade" style="--d:10">Gracias. Preguntas y comentarios.</p>
+  </div>
+  <footer><span></span></footer>
+</section>
+
+<!-- 19 · Referencias -->
+<section class="slide">
+  <div class="eyebrow">Referencias</div>
+  <h2 data-anim="up">Referencias</h2>
+  <div class="content">
+    <div class="main refs" data-anim="fade" style="--d:1.5">
+      <p>Demirović, E., Musliu, N. (2017): MaxSAT-based large neighborhood search for high school timetabling. Computers &amp; Operations Research, 78, 172-180.</p>
+      <p>Fonseca, G., Santos, H., Toffolo, T., Brito, S., Souza, M. (2016a): GOAL solver: a hybrid local search based solver for high school timetabling. Annals of Operations Research, 239, 77-97.</p>
+      <p>Fonseca, G., Santos, H., Carrano, E. (2016b): Integrating matheuristics and metaheuristics for timetabling. Computers &amp; Operations Research, 74, 108-117.</p>
+      <p>Kristiansen, S., Sørensen, M., Stidsen, T. (2015): Integer programming for the generalized high school timetabling problem. Journal of Scheduling, 18, 377-392.</p>
+      <p>Pillay, N. (2014): A survey of school timetabling research. Annals of Operations Research, 218, 261-293.</p>
+      <p>Post, G., Di Gaspero, L., Kingston, J., McCollum, B., Schaerf, A. (2016): The Third International Timetabling Competition. Annals of Operations Research, 239, 69-75.</p>
+      <p>Sørensen, M., Dahms, F. (2014): A two-stage decomposition of high school timetabling applied to cases in Denmark. Computers &amp; Operations Research, 43, 36-49.</p>
+      <p>Sørensen, M., Stidsen, T. (2013): Comparing solution approaches for a complete model of high school timetabling. DTU Management Engineering, Report 5.2013.</p>
+      <p>Tan, J., Goh, S., Kendall, G., Sabar, N. (2021): A survey of the state-of-the-art of optimisation methodologies in school timetabling problems. Expert Systems with Applications, 165, 113943.</p>
+    </div>
+  </div>
+  <footer><span></span></footer>
+</section>
+
+<!-- 20 · Anexo A -->
+<section class="slide">
+  <div class="eyebrow">Anexo A</div>
+  <h2 data-anim="up">El modelo MIP del caso, en simple</h2>
+  <div class="content"><div class="main annex">
+    <div class="card ax" data-anim="left" style="--d:1.5"><h3>Variable</h3><p>x(e, r, t) = 1 si la clase e se dicta en la sala r en el bloque t; 0 si no.</p></div>
+    <div class="card ax" data-anim="left" style="--d:2.2"><h3>Cada clase, un lugar</h3><p>La suma de x sobre todas las salas y bloques es 1 para cada clase.</p></div>
+    <div class="card ax" data-anim="left" style="--d:2.9"><h3>Sin choques de personas</h3><p>Para cada profesor o grupo de alumnos y cada bloque, la suma de sus clases es a lo más 1.</p></div>
+    <div class="card ax" data-anim="left" style="--d:3.6"><h3>Sin choques de salas</h3><p>Para cada sala y cada bloque, la suma de clases asignadas es a lo más 1.</p></div>
+    <div class="card ax obj" data-anim="left" style="--d:4.3"><h3>Objetivo</h3><p>Minimizar la penalización: 60 puntos por clase sin bloque, 10 por clase sin sala, 6 a 7 por ventana, entre otros.</p></div>
+  </div></div>
+  <footer><span>Fuente: Sørensen y Stidsen (2013), secciones 2.2 y 2.4. El modelo permite dejar clases sin asignar pagando la penalización</span></footer>
+</section>
+
+<!-- 21 · Anexo B -->
+<section class="slide">
+  <div class="eyebrow">Anexo B</div>
+  <h2 data-anim="up">Los operadores de ALNS</h2>
+  <div class="content"><div class="main s21">
+    <div>
+      <h3 data-anim="fade" style="--d:1">Destruir: qué clases se sacan</h3>
+      <div class="ops">
+        <div class="card op" data-anim="left" style="--d:1.8"><span class="tag slate">Random</span><span>Clases al azar, para explorar</span></div>
+        <div class="card op" data-anim="left" style="--d:2.4"><span class="tag slate">Related</span><span>Clases que comparten profesores, alumnos o curso</span></div>
+        <div class="card op" data-anim="left" style="--d:3"><span class="tag slate">Time</span><span>Las clases de un mismo bloque</span></div>
+        <div class="card op" data-anim="left" style="--d:3.6"><span class="tag slate">Class</span><span>Las clases de un mismo curso</span></div>
+      </div>
+    </div>
+    <div>
+      <h3 data-anim="fade" style="--d:4.5">Reparar: cómo se reinsertan</h3>
+      <div class="ops">
+        <div class="card op" data-anim="right" style="--d:5.2"><span class="tag">Greedy</span><span>Inserta lo que menos penalización agrega ahora</span></div>
+        <div class="card op" data-anim="right" style="--d:5.8"><span class="tag">Regret-k</span><span>Inserta primero la clase que más perdería si espera</span></div>
+      </div>
+      <h3 class="mt" data-anim="fade" style="--d:7">Aceptar y aprender</h3>
+      <ul>
+        <li data-anim="up" style="--d:7.6">Acepta un horario peor con probabilidad decreciente (recocido simulado)</li>
+        <li data-anim="up" style="--d:8.2">Cada 100 iteraciones actualiza la probabilidad de usar cada operador</li>
+        <li data-anim="up" style="--d:8.8">Destruye hasta 10% de las clases al inicio y 1% al final</li>
+      </ul>
+    </div>
+  </div></div>
+  <footer><span>Fuente: Sørensen y Stidsen (2013), sección 3 y Tabla 1</span></footer>
+</section>
+
+</div></div></div>
+
+<div id="progress"><i></i></div>
+<nav id="ui" aria-label="Navegación">
+  <button class="nav" id="prev" title="Anterior (←)" aria-label="Anterior"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+  <span id="count" class="nav">1 / 21</span>
+  <button class="nav" id="next" title="Siguiente (→)" aria-label="Siguiente"><svg class="ic"><use href="#i-chev-r"/></svg></button>
+  <span class="sep nav"></span>
+  <button id="ov" title="Vista general (O)" aria-label="Vista general"><svg class="ic"><use href="#i-grid"/></svg></button>
+  <button id="fs" title="Pantalla completa (F)" aria-label="Pantalla completa"><svg class="ic"><use href="#i-max"/></svg></button>
+</nav>
+<div id="hint"><kbd>←</kbd><kbd>→</kbd> navegar · <kbd>F</kbd> pantalla completa · <kbd>O</kbd> vista general</div>
+
+<script>
+(() => {
+  const body = document.body;
+  const deck = document.getElementById('deck');
+  const sizer = document.getElementById('sizer');
+  const slides = [...deck.querySelectorAll('.slide')];
+  const N = slides.length;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let cur = -1;
+
+  /* ---------- Construcción de elementos generados ---------- */
+  // Portada: grilla tipo horario que se reorganiza sola
+  const hero = document.getElementById('hero');
+  'rdsddr dsdrdd ddrdsd sdddrd drdsdd ddsddr rddrds'.replace(/ /g, '').split('').forEach(ch => {
+    const t = document.createElement('i');
+    t.className = 'tile' + (ch === 'd' ? '' : ' ' + ch);
+    t.dataset.anim = 'pop';
+    t.style.setProperty('--d', (Math.random() * 7).toFixed(2));
+    hero.appendChild(t);
+  });
+  let heroTimer = null;
+  const heroStop = () => { clearInterval(heroTimer); heroTimer = null; };
+  const heroStart = () => {
+    heroStop();
+    if (reduce) return;
+    heroTimer = setInterval(() => {
+      const tiles = [...hero.children];
+      const full = tiles.filter(t => t.classList.contains('r') || t.classList.contains('s'));
+      const free = tiles.filter(t => !t.classList.contains('r') && !t.classList.contains('s'));
+      const a = full[Math.random() * full.length | 0], b = free[Math.random() * free.length | 0];
+      const cls = a.classList.contains('r') ? 'r' : 's';
+      a.classList.remove(cls); b.classList.add(cls);
+    }, 1200);
+  };
+
+  // Diapositiva 3: celdas del horario aparecen en diagonal
+  document.querySelectorAll('.tt i').forEach((c, i) => {
+    c.dataset.anim = 'pop';
+    c.style.setProperty('--d', (2 + ((i / 5 | 0) + i % 5) * 0.55).toFixed(2));
+  });
+
+  // Diapositiva 14: mini horarios de ALNS (S = clase, E = vacío, X = clase destruida, R = clase reinsertada)
+  document.querySelectorAll('.mg').forEach(g => {
+    let kx = 0, kr = 0;
+    g.dataset.g.split(' ').forEach(row => [...row].forEach(ch => {
+      const c = document.createElement('i');
+      if (ch === 'E') c.className = 'e';
+      if (ch === 'X') { c.className = 'x'; c.style.setProperty('--dd', (1250 + kx++ * 230) + 'ms'); }
+      if (ch === 'R') { c.className = 'r'; c.dataset.anim = 'pop'; c.style.setProperty('--d', (13.5 + kr++ * 1.3).toFixed(1)); }
+      g.appendChild(c);
+    }));
+  });
+
+  /* ---------- Contadores ---------- */
+  const fmt = (v, dec) => {
+    let [i, f] = v.toFixed(dec).split('.');
+    i = i.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return f ? i + ',' + f : i;
+  };
+  function countUp(el) {
+    const target = parseFloat(el.dataset.count), dec = +(el.dataset.dec || 0);
+    cancelAnimationFrame(el._raf);
+    if (reduce) { el.textContent = fmt(target, dec); return; }
+    const d = parseFloat(getComputedStyle(el).getPropertyValue('--d')) || 0;
+    const t0 = performance.now() + 180 + d * 110 + 120;
+    const dur = 1200;
+    el.textContent = fmt(0, dec);
+    const step = t => {
+      const p = Math.min(1, Math.max(0, (t - t0) / dur));
+      el.textContent = fmt(target * (1 - Math.pow(1 - p, 3)), dec);
+      if (p < 1) el._raf = requestAnimationFrame(step);
+    };
+    el._raf = requestAnimationFrame(step);
+  }
+
+  /* ---------- Escalado ---------- */
+  function fit() {
+    if (body.classList.contains('overview')) return layoutOverview();
+    deck.style.setProperty('--s', Math.min(innerWidth / 1280, innerHeight / 720));
+  }
+
+  /* ---------- Navegación ---------- */
+  const countEl = document.getElementById('count');
+  const progress = document.getElementById('progress');
+  function go(n, force) {
+    n = Math.max(0, Math.min(N - 1, n));
+    if (n === cur && !force) return;
+    slides.forEach((s, i) => {
+      s.classList.toggle('past', i < n);
+      s.classList.remove('active', 'current');
+    });
+    void slides[n].offsetWidth; // reinicia las animaciones al volver a una diapositiva
+    slides[n].classList.add('active', 'current');
+    cur = n;
+    slides[n].querySelectorAll('[data-count]').forEach(countUp);
+    n === 0 && !body.classList.contains('overview') ? heroStart() : heroStop();
+    countEl.textContent = (n + 1) + ' / ' + N;
+    progress.style.setProperty('--p', (n + 1) / N);
+    history.replaceState(null, '', '#' + (n + 1));
+  }
+
+  /* ---------- Vista general ---------- */
+  function layoutOverview() {
+    const cols = innerWidth < 700 ? 2 : innerWidth < 1200 ? 3 : 4, gap = 70, pad = 40;
+    const rows = Math.ceil(N / cols);
+    const W = cols * 1280 + (cols - 1) * gap, H = rows * 720 + (rows - 1) * gap;
+    const s = (innerWidth - 2 * pad - 16) / W;
+    deck.style.setProperty('--s', s);
+    deck.style.setProperty('--ox', pad + 'px');
+    deck.style.width = W + 'px';
+    deck.style.height = H + 'px';
+    deck.style.gridTemplateColumns = `repeat(${cols}, 1280px)`;
+    sizer.style.height = (H * s + 2 * pad) + 'px';
+  }
+  function toggleOverview(on) {
+    on = on ?? !body.classList.contains('overview');
+    body.classList.toggle('overview', on);
+    if (on) {
+      heroStop();
+      layoutOverview();
+      requestAnimationFrame(() => slides[cur].scrollIntoView({ block: 'center' }));
+    } else {
+      deck.style.width = deck.style.height = deck.style.gridTemplateColumns = sizer.style.height = '';
+      document.getElementById('viewport').scrollTop = 0;
+      fit();
+      go(cur, true);
+    }
+  }
+  slides.forEach((s, i) => s.addEventListener('click', () => {
+    if (!body.classList.contains('overview')) return;
+    cur = i;
+    toggleOverview(false);
+  }));
+
+  /* ---------- Pantalla completa ---------- */
+  function toggleFs() {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen?.();
+  }
+
+  /* ---------- Eventos ---------- */
+  addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (body.classList.contains('overview')) {
+      if (k === 'Escape' || k === 'o' || k === 'O' || k === 'Enter') { toggleOverview(false); e.preventDefault(); }
+      return;
+    }
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(k)) { go(cur + 1); e.preventDefault(); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(k)) { go(cur - 1); e.preventDefault(); }
+    else if (k === 'Home') go(0);
+    else if (k === 'End') go(N - 1);
+    else if (k === 'f' || k === 'F') toggleFs();
+    else if (k === 'o' || k === 'O') toggleOverview(true);
+    hideHint();
+  });
+  const bind = (id, fn) => document.getElementById(id).addEventListener('click', e => { fn(); e.currentTarget.blur(); });
+  bind('prev', () => go(cur - 1));
+  bind('next', () => go(cur + 1));
+  bind('ov', () => toggleOverview());
+  bind('fs', toggleFs);
+
+  let tx = null;
+  addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+  addEventListener('touchend', e => {
+    if (tx === null || body.classList.contains('overview')) return;
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 50) go(cur + (dx < 0 ? 1 : -1));
+    tx = null;
+  });
+
+  let idleTimer;
+  const wake = () => {
+    body.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => body.classList.add('idle'), 2500);
+  };
+  addEventListener('mousemove', wake);
+  wake();
+
+  const hint = document.getElementById('hint');
+  const hideHint = () => hint.classList.add('hide');
+  setTimeout(hideHint, 4500);
+
+  addEventListener('resize', fit);
+  addEventListener('hashchange', () => go((parseInt(location.hash.slice(1)) || 1) - 1));
+
+  fit();
+  go((parseInt(location.hash.slice(1)) || 1) - 1, true);
+})();
+</script>
+</body>
+</html>
