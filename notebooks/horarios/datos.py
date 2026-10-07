@@ -12,7 +12,8 @@ from collections import defaultdict
 class DatosColegio:
     """Catálogo y parámetros institucionales del Colegio Madres Dominicas (año escolar 2026)."""
 
-    ANIO = 2026
+    ANIO = 2026            # Año de los datos de entrada (mallas, jornadas y docentes)
+    ANIO_HORARIO = 2027    # Año del horario que genera el motor (propuesta para el año siguiente)
     DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
 
     # Bloques pedagógicos de 45 minutos (fuente: HORARIO CURSOS 2026.xlsx)

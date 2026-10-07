@@ -93,6 +93,11 @@
   </nav>
 
   <main id="contenido" tabindex="-1">
+    <!-- Membrete de la hoja impresa o en PDF (oculto en pantalla; ver "Hoja de impresión" en estilos.css) -->
+    <div class="hoja-membrete" aria-hidden="true">
+      <span>Colegio Madres Dominicas · Concepción</span>
+      <span id="hoja-anio"></span>
+    </div>
     <!-- ============================== CURSOS ============================== -->
     <section class="vista" id="vista-cursos" role="tabpanel" aria-labelledby="tab-cursos" hidden>
       <div class="curso-simple">
@@ -125,6 +130,9 @@
             </button>
             <button type="button" class="boton-icono" data-imprimir aria-label="Imprimir horario" title="Imprimir">
               <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v7H7z"/></svg>
+            </button>
+            <button type="button" class="boton-icono" data-descargar-pdf aria-label="Descargar horario en PDF" title="Descargar PDF">
+              <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 20h14"/></svg>
             </button>
           </div>
         </div>

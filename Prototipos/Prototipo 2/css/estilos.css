@@ -781,7 +781,7 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
 
 /* ------------------------------------------------------------ impresión --- */
 @media print {
-  @page { size: landscape; margin: 10mm; }
+  @page { size: letter landscape; margin: 10mm; }   /* carta horizontal, como el PDF descargado */
   body { background: #fff; color: #000; }
   .barra, .pestanas, .selector, .detalle, .pie, .cabecera-acciones, .consejo, .tooltip, .dias-movil, .leyenda-nota { display: none !important; }
   main { padding: 0; }
@@ -789,6 +789,47 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
   .sesion, .vacia.fuera, .vacia.pastoral, .calor-celda, .g-pausa.colacion { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .sesion { break-inside: avoid; }
   .grilla > .fuera-dia { display: flex !important; }
+}
+
+/* ------------------------------------------- hoja de impresión y PDF --- */
+/* js/app.js agrega html.hoja al imprimir Cursos, Docentes o Salas (beforeprint) y en la copia
+   que se convierte a PDF: queda solo el horario de la semana con un membrete, a un ancho fijo, y
+   --hoja-zoom lo reduce lo justo para que quepa en una plana horizontal. El tema claro lo fija app.js. */
+.hoja-membrete { display: none; }
+[data-descargar-pdf][aria-busy="true"] { cursor: progress; opacity: .55; }
+html.hoja body { display: block; min-height: 0; background: #fff; }
+html.hoja body > :not(main) { display: none !important; }
+html.hoja main { width: 1000px; margin: 0 auto; padding: 0; background: #fff; zoom: var(--hoja-zoom, 1); }
+html.hoja .hoja-membrete {
+  display: flex; justify-content: space-between; gap: 1rem;
+  margin-bottom: .9rem; padding-bottom: .4rem; border-bottom: 1px solid var(--line-strong);
+  font-family: var(--font-display); font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-2);
+}
+html.hoja .disposicion { display: block; max-width: none; }
+html.hoja .panel { gap: .8rem; }
+html.hoja :is(.selector, .cabecera-acciones, .curso-barra, .curso-pista, .plan-curso, .dias-movil, .leyenda-nota, .consejo,
+  #panel-docente > .columnas, #panel-docente > .seccion, #panel-sala > .estadisticas) { display: none !important; }
+html.hoja .cabecera { padding-bottom: .7rem; }
+html.hoja .grilla > .fuera-dia { display: flex !important; }
+html.hoja #vista-cursos .curso-titulo {
+  position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal;
+  font-size: 1.6rem; font-weight: 850; line-height: 1.1;
+}
+/* Sin marcas del momento ni estados de la interacción: la hoja vale para cualquier día */
+html.hoja :is(.g-columna-hoy, .marca-hoy) { display: none !important; }
+html.hoja .g-dia.es-hoy .g-dia-nombre { color: var(--ink) !important; }
+html.hoja :is(.g-dia.es-hoy .g-dia-nombre, .sesion.es-ahora .sesion-titulo)::before,
+html.hoja .g-dia.es-hoy .g-dia-nombre::after { content: none !important; }
+html.hoja .sesion.es-ahora::after { display: none; }
+html.hoja .sesion { opacity: 1 !important; filter: none !important; transform: none !important; box-shadow: none !important; outline: none !important; }
+html.hoja * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+/* html2canvas dibuja el texto sin font-stretch: con el ancho normal la diagramación calza con lo dibujado
+   (si no, las letras más anchas se comen los espacios entre palabras) */
+html.hoja-pdf * { font-stretch: 100% !important; }
+@media print {
+  html.hoja, html.hoja body { background: #fff; }
+  html.hoja main { break-inside: avoid; }
 }
 
 /* =============================================================================
@@ -938,25 +979,7 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
 }
 
 @media print {
-  #vista-cursos .curso-barra, #vista-cursos .curso-pista, #vista-cursos .plan-curso:not([open]) { display: none !important; }
-  #vista-cursos .curso-titulo {
-    position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal;
-    font-size: 1.5rem; font-weight: 850; margin-bottom: .2rem;
-  }
   #vista-cursos .curso-meta { color: #000; border-bottom-color: #000; }
-  /* El papel es blanco: se imprime siempre con la paleta clara, aunque la pantalla esté en tema oscuro */
-  #vista-cursos {
-    --ink: oklch(0.21 0.02 262); --ink-2: oklch(0.41 0.02 262); --muted: oklch(0.55 0.016 262);
-    --line: oklch(0.905 0.006 262); --line-strong: oklch(0.81 0.01 262); --hatch: oklch(0.86 0.008 262);
-    --accent: oklch(0.48 0.15 262); --surface: oklch(1 0 0);
-    --fill-l: 0.935; --fill-c: 0.052; --edge-l: 0.84; --edge-c: 0.075;
-    --text-l: 0.33;  --text-c: 0.085; --dot-l: 0.64;   --dot-c: 0.15;
-    color-scheme: light;
-  }
-  /* Una sola hoja horizontal: menos aire y la jornada larga (lunes hasta 16:40) un poco más chica */
-  #vista-cursos .panel { gap: .5rem; }
-  #vista-cursos .grilla-marco { zoom: .94; }
-  #vista-cursos .grilla-marco.jornada-larga { zoom: .74; }
 }
 
 /* =============================================================================

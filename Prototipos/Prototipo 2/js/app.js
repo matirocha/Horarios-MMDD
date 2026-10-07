@@ -614,7 +614,7 @@
       return `<li><button type="button" class="sesion cat-${info.cat}${ahora ? ' es-ahora' : ''}"
           data-sesion data-dia="${pz.dia}" data-inicio="${pz.inicio}" data-fin="${pz.fin}" data-clave="${esc(pz.v.asignatura)}"
           aria-label="${esc(`${info.nombre}, ${pz.dia}, ${rango(pz.inicio, pz.fin)}, con ${pz.v.docentes.join(', ')}, en ${lugar}`)}">
-          <span class="sesion-titulo">${pz.dia}${esHoy ? ' · hoy' : ''}</span>
+          <span class="sesion-titulo">${pz.dia}${esHoy ? '<span class="marca-hoy"> · hoy</span>' : ''}</span>
           <span class="sesion-hora">${rango(pz.inicio, pz.fin)}</span>
           <span class="sesion-sub">${esc(pz.v.docentes.join(' · '))} · ${esc(lugar)}</span>
         </button></li>`;
@@ -675,8 +675,6 @@
       ${curso.parvulo ? '' : planCurso(curso, estado.planAbierto)}`;
 
     prepararGrilla(panel);
-    const marco = $('.grilla-marco', panel);
-    if (marco) marco.classList.toggle('jornada-larga', Math.max(...curso.jornada) > 8);   // para ajustar la impresión
     // Fundido del contenedor (no de cada tarjeta: .sesion tiene su propia transición de opacidad)
     if (animarEntrada) animar.aparecer($$('.grilla-marco, .parvulo-clases', panel), { y: 6, stagger: 0, duracion: 0.25 });
   }
@@ -690,6 +688,10 @@
         <button type="button" class="boton" data-imprimir>
           <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v7H7z"/></svg>
           Imprimir
+        </button>
+        <button type="button" class="boton" data-descargar-pdf>
+          <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 20h14"/></svg>
+          PDF
         </button>
       </div>`;
   }
@@ -1612,7 +1614,122 @@
   buscador.addEventListener('blur', () => setTimeout(cerrarResultados, 120));
 
   // ===========================================================================
-  // 14. EVENTOS
+  // 14. IMPRESIÓN Y PDF
+  // ===========================================================================
+  // Cursos, docentes y salas se imprimen como una "hoja": solo el horario de la semana, en tema
+  // claro, con un ancho fijo y escalado para caber en una plana horizontal. El PDF se arma con la
+  // misma hoja (html2canvas-pro + jsPDF, que se cargan desde la CDN al pedir el primer PDF).
+  const VISTAS_HOJA = ['cursos', 'docentes', 'salas'];
+  // Área útil de una carta horizontal (la fija @page en estilos.css) con márgenes de 10 mm, en px CSS
+  // (96 por pulgada): 259 × 196 mm ≈ 980 × 740 px, con un resguardo
+  const HOJA = { ancho: 960, alto: 720 };
+  const LIBRERIAS_PDF = [
+    'https://cdn.jsdelivr.net/npm/html2canvas-pro@2.5.2/dist/html2canvas-pro.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  ];
+  const scriptsCargados = new Map();
+  let temaAntesDeImprimir;
+
+  $('#hoja-anio').textContent = `Horario ${DATOS.meta.anio} · ${OFICIAL ? 'oficial' : 'generado'}`;
+
+  // La hoja muestra el estado final: sin tarjetas a medio aparecer ni cifras contando
+  function terminarAnimaciones() {
+    if (window.gsap) window.gsap.globalTimeline.getChildren(false).forEach(t => t.progress(1));
+  }
+
+  function cargarScript(src) {
+    if (!scriptsCargados.has(src)) {
+      scriptsCargados.set(src, new Promise((ok, falla) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = ok;
+        s.onerror = () => { scriptsCargados.delete(src); falla(new Error(`No se pudo cargar ${src}`)); };
+        document.head.appendChild(s);
+      }));
+    }
+    return scriptsCargados.get(src);
+  }
+
+  function nombreHoja() {
+    const nombre = estado.vista === 'docentes' ? estado.docente
+      : estado.vista === 'salas' ? nombreEspacio(estado.espacio)
+        : cursoPorId.get(estado.curso).nombre;
+    return `Horario ${DATOS.meta.anio} - ${nombre}`.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+
+  function prepararImpresion() {
+    const raiz = document.documentElement;
+    temaAntesDeImprimir = raiz.dataset.theme;
+    raiz.dataset.theme = 'light';   // el papel es blanco
+    terminarAnimaciones();
+    if (!VISTAS_HOJA.includes(estado.vista)) return;
+    // Se mide la hoja a escala 1 y se reduce lo justo para que quepa en una plana
+    raiz.classList.add('hoja');
+    raiz.style.setProperty('--hoja-zoom', '1');
+    const hoja = $('main');
+    const escala = Math.min(1, HOJA.ancho / hoja.offsetWidth, HOJA.alto / hoja.offsetHeight);
+    raiz.style.setProperty('--hoja-zoom', escala.toFixed(3));
+  }
+
+  function terminarImpresion() {
+    const raiz = document.documentElement;
+    raiz.classList.remove('hoja');
+    raiz.style.removeProperty('--hoja-zoom');
+    if (temaAntesDeImprimir) raiz.dataset.theme = temaAntesDeImprimir;
+    else delete raiz.dataset.theme;
+  }
+
+  async function descargarPDF(boton) {
+    if (boton.getAttribute('aria-busy') === 'true') return;
+    boton.setAttribute('aria-busy', 'true');
+    try {
+      await Promise.all(LIBRERIAS_PDF.map(cargarScript));
+      terminarAnimaciones();
+      // La captura se hace sobre una copia de la página con la hoja aplicada: la pantalla no cambia.
+      // El ancho de ventana fijo evita el diseño de celular (un día a la vez) al descargar desde el teléfono.
+      const lienzo = await window.html2canvas($('main'), {
+        scale: 3, backgroundColor: '#ffffff', logging: false,
+        windowWidth: 1280, windowHeight: 900, scrollX: 0, scrollY: 0,
+        onclone: async copia => {
+          const raiz = copia.documentElement;
+          raiz.dataset.theme = 'light';
+          raiz.classList.add('hoja', 'hoja-pdf');
+          raiz.style.setProperty('--hoja-zoom', '1');
+          // html2canvas copia ::before/::after de la página original como nodos propios antes de onclone,
+          // así que las marcas de "hoy" y "Ahora" se quitan aquí y no solo con el CSS de la hoja
+          $$('.es-hoy html2canvaspseudoelement, .es-ahora html2canvaspseudoelement', copia).forEach(n => n.remove());
+          // La copia vuelve a cargar estilos.css: sin esperarlo, a veces se dibuja la página sin estilos
+          await Promise.all($$('link[rel="stylesheet"]', copia).map(l => l.sheet || new Promise(listo => {
+            l.addEventListener('load', listo);
+            l.addEventListener('error', listo);
+          })));
+          if (copia.fonts) await copia.fonts.ready;
+        },
+      });
+      // Una plana carta horizontal con márgenes de 10 mm; la hoja se centra y conserva su proporción
+      const pdf = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' });
+      const ancho = pdf.internal.pageSize.getWidth();
+      const alto = pdf.internal.pageSize.getHeight();
+      const margen = 10;
+      const k = Math.min((ancho - 2 * margen) / lienzo.width, (alto - 2 * margen) / lienzo.height);
+      const w = lienzo.width * k;
+      const h = lienzo.height * k;
+      pdf.addImage(lienzo, 'PNG', (ancho - w) / 2, margen, w, h, undefined, 'FAST');
+      pdf.setProperties({ title: nombreHoja(), creator: 'Horarios MMDD' });
+      pdf.save(`${nombreHoja()}.pdf`);
+    } catch (e) {
+      console.error(e);
+      window.alert('No se pudo generar el PDF. Revisa la conexión a internet (las herramientas del PDF se descargan al usarlas) o usa Imprimir y elige "Guardar como PDF".');
+    } finally {
+      boton.removeAttribute('aria-busy');
+    }
+  }
+
+  window.addEventListener('beforeprint', prepararImpresion);
+  window.addEventListener('afterprint', terminarImpresion);
+
+  // ===========================================================================
+  // 15. EVENTOS
   // ===========================================================================
   document.addEventListener('click', ev => {
     const t = ev.target.closest('button, [data-tarjeta]');
@@ -1636,6 +1753,7 @@
       return;
     }
     if (t.matches('[data-imprimir]')) { window.print(); return; }
+    if (t.matches('[data-descargar-pdf]')) { descargarPDF(t); return; }
     if (t.matches('[data-paso]')) { paso(Number(t.dataset.paso)); return; }
 
     if (t.matches('[data-sesion]')) {
@@ -1801,7 +1919,7 @@
   }, 30000);
 
   // ===========================================================================
-  // 15. INICIO
+  // 16. INICIO
   // ===========================================================================
   $('#marca-anio').textContent = DATOS.meta.anio;
   $('#pie-datos').textContent = (OFICIAL

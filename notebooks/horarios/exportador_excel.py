@@ -163,7 +163,7 @@ class ExportadorExcel:
             rotulo, valor = filas[i] if i < len(filas) else (None, None)
             cls._combinar(ws, fila, 4, fila, 5, rotulo, negrita=True, borde=False, v='center')
             cls._combinar(ws, fila, 6, fila, 8, valor, negrita=True, tam=9, borde=False)
-        cls._escribir(ws, 6, 2, DatosColegio.ANIO, negrita=True, tam=11, borde=False, fuente='Calibri')
+        cls._escribir(ws, 6, 2, DatosColegio.ANIO_HORARIO, negrita=True, tam=11, borde=False, fuente='Calibri')
         ws.row_dimensions[7].height = 5.25
 
     @classmethod
@@ -482,7 +482,7 @@ class ExportadorExcel:
         auditoria = ValidadorRestricciones.auditar(horario)
         m = auditoria['metricas']
         cls._formato_hoja(ws, {'A': 0.66, 'B': 46, 'C': 42, 'D': 22})
-        cls._escribir(ws, 2, 2, f'INFORME DE CUMPLIMIENTO Y FACTIBILIDAD — AÑO ESCOLAR {DatosColegio.ANIO}',
+        cls._escribir(ws, 2, 2, f'INFORME DE CUMPLIMIENTO Y FACTIBILIDAD — AÑO ESCOLAR {DatosColegio.ANIO_HORARIO}',
                       negrita=True, tam=11, borde=False, h=None)
         estado = ('FACTIBLE (100% restricciones duras cumplidas)' if auditoria['valido']
                   else f"NO FACTIBLE ({len(auditoria['errores_duros'])} errores)")
@@ -587,7 +587,7 @@ class ExportadorExcel:
         for col, ancho in {'A': 26, 'B': 20, 'C': 13, 'D': 34, 'E': 16}.items():
             ws.column_dimensions[col].width = ancho
         ws.page_margins = PageMargins(left=0.63, right=0.63, top=0.94, bottom=0.94)
-        cls._combinar(ws, 1, 1, 1, 5, f'DISTRIBUCIÓN DE HORAS POR ASIGNATURAS – AÑO ACADÉMICO {DatosColegio.ANIO}.',
+        cls._combinar(ws, 1, 1, 1, 5, f'DISTRIBUCIÓN DE HORAS POR ASIGNATURAS – AÑO ACADÉMICO {DatosColegio.ANIO_HORARIO}.',
                       negrita=True, tam=14, borde=False, h=None, fuente='Calibri')
         rellenos = {'jefatura': cls.CELESTE, 'skills': cls.VERDE, 'orientec': cls.AZUL}
         estilo = {'tam': 10, 'fuente': 'Abadi', 'v': 'center', 'color_borde': cls.BORDE_DOCUMENTO}

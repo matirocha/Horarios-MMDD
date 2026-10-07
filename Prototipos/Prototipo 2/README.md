@@ -65,7 +65,11 @@ completo), `datos/resumen_<año>.js` (lo que muestra la tarjeta del menú) y `as
 - Recorre cursos, docentes o salas con las flechas `←` `→` del teclado; `Esc` cierra el detalle.
 - En el menú de cursos las flechas mueven la selección, `Enter` abre el curso y `Esc` cierra el menú.
 - En el celular la grilla muestra un día a la vez; el detalle aparece desde abajo.
-- Botón de tema claro/oscuro e impresión de la grilla en horizontal.
+- Botón de tema claro/oscuro.
+- En Cursos, Docentes y Salas, **Imprimir** deja el horario de la semana en una sola hoja horizontal
+  (con membrete, en tema claro y sin las marcas de "hoy"), y el botón de descarga, junto a él, guarda esa
+  misma hoja como PDF de una plana (carta horizontal). El PDF usa html2canvas-pro y jsPDF, que se descargan
+  de la CDN al pedir el primero: sin conexión, usa Imprimir y elige *Guardar como PDF*.
 - Si el equipo está en horario de clases se marcan el día de hoy y el bloque en curso.
 
 ## Archivos
