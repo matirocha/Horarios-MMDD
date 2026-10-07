@@ -5,8 +5,14 @@
 PROTOTIPO 2 — EXPORTADOR DE DATOS PARA LA PLATAFORMA WEB DE HORARIOS MMDD
 ===============================================================================
 
-Ejecuta el motor de 'notebooks/generador_horarios.py', audita el horario obtenido
-y escribe todo lo que necesita la página web en 'datos/horarios.js':
+Prepara los dos horarios que se eligen en el menú de inicio de la página:
+
+  - 2026: el horario OFICIAL, leído tal cual de 'data/Data 2026/HORARIO CURSOS 2026.xlsx'
+    (los docentes de cada clase salen de la distribución horaria 2026 del motor).
+  - 2027: el horario GENERADO por el motor de 'notebooks/generador_horarios.py'.
+
+Ambos se auditan con el mismo validador y se escriben con el mismo formato en
+'datos/horarios_<año>.js', más un resumen liviano para el menú en 'datos/resumen_<año>.js':
 
   - Bloques, recreos y días de la semana.
   - Los 24 cursos regulares y los 3 niveles de párvulos (jornada, profesor/a jefe,
@@ -15,12 +21,13 @@ y escribe todo lo que necesita la página web en 'datos/horarios.js':
   - Las salas de especialidad y los recintos deportivos (ocupación y bloqueos de pastoral).
   - Las franjas de electivos de 3° y 4° medio y el informe de auditoría.
 
-Los datos se guardan como un script (window.HORARIOS_MMDD = {...}) para que la página
+Los datos se guardan como scripts (window.HORARIOS_MMDD = {...}) para que la página
 funcione abriendo 'index.html' directamente, sin servidor.
 
 Uso:
-    python "Prototipos/Prototipo 2/exportar_datos.py"            # semilla por defecto (3)
-    python "Prototipos/Prototipo 2/exportar_datos.py" --seed 7
+    python "Prototipos/Prototipo 2/exportar_datos.py"                     # 2026 y 2027 (semilla 3)
+    python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2027 --seed 7
+    python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2026
 """
 
 import os
@@ -28,6 +35,7 @@ import sys
 import json
 import zipfile
 import argparse
+import unicodedata
 from datetime import datetime
 from collections import defaultdict
 
@@ -35,10 +43,14 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(os.path.dirname(AQUI))
 sys.path.insert(0, os.path.join(RAIZ, 'notebooks'))
 
-from generador_horarios import (DatosColegio, ExportadorExcel, MotorHorarios,  # noqa: E402
-                                ValidadorRestricciones)
+from generador_horarios import (DatosColegio, ExportadorExcel, HorarioEscolar,  # noqa: E402
+                                MotorHorarios, ValidadorRestricciones)
 
 D = DatosColegio
+
+ANIO_OFICIAL = 2026     # Horario vigente, leído del Excel del colegio
+ANIO_GENERADO = 2027    # Horario propuesto por el motor
+CURSO_MUESTRA = '3° MEDIO A'   # Curso cuya semana se dibuja en la tarjeta de cada año del menú
 
 # Ciclos en los que se agrupan los cursos en el selector de la página
 CICLOS = [
@@ -89,7 +101,8 @@ def numero_franja(asignatura):
     return int(asignatura.rsplit(' ', 1)[1]) if asignatura.startswith('Formación Diferenciada') else None
 
 
-def exportar_cursos(horario):
+def exportar_cursos(horario, jornadas=None):
+    jornadas = jornadas or D.JORNADAS
     malla = D.get_malla_curricular()
     cursos = []
     for curso in D.todos_los_cursos():
@@ -117,7 +130,7 @@ def exportar_cursos(horario):
             'parvulo': D.es_parvulo(curso),
             'codigo': D.codigo_corto(curso),
             'jefe': D.PROFESORES_JEFES.get(curso),
-            'jornada': list(D.JORNADAS[curso]),
+            'jornada': list(jornadas[curso]),
             'horas': sum(h for _, h, _, _ in malla[curso]),
             'gimnasio': D.zona_deportiva(curso),
             'malla': [{'asignatura': a, 'horas': h, 'docentes': list(D.docentes_de(d)), 'espacio': e}
@@ -256,6 +269,190 @@ def exportar_auditoria(horario):
     }
 
 
+# =============================================================================
+# HORARIO OFICIAL 2026 (lectura del Excel del colegio)
+# =============================================================================
+
+def _normalizar(texto):
+    """'C. NATURALES' / 'C.NATURALES' / 'c naturales' -> 'CNATURALES' (sin tildes, espacios ni puntos)."""
+    texto = unicodedata.normalize('NFD', str(texto).upper())
+    return ''.join(ch for ch in texto if ch.isalnum() or ch in '/-')
+
+
+# Etiqueta normalizada de la grilla del Excel -> asignatura de la malla
+ASIGNATURA_DE_ETIQUETA = {
+    'LENGUAJE': 'Lenguaje y Comunicación',
+    'LENGAUJE': 'Lenguaje y Comunicación',     # Errata del Excel (4° básico B)
+    'MATEMATICA': 'Educación Matemática',
+    'INGLES': 'Idioma Extranjero Inglés',
+    'CSOCIALES': 'Ciencias Sociales',
+    'HISTORIA': 'Historia, Geografía y CC.SS.',
+    'CNATURALES': 'Ciencias Naturales',
+    'BIOLOGIA': 'Biología',
+    'QUIMICA': 'Química',
+    'FISICA': 'Física',
+    'TECNOLOGIA': 'Educación Tecnológica',
+    'ARTES': 'Artes Visuales',
+    'MUSICA': 'Educación Musical',
+    'ARTES-MUSICA': 'Artes Visuales / Música',
+    'EDFISICA': 'Educación Física y Salud',
+    'ORIEN/TEC': 'Orientación / Tecnología',
+    'ORIENTACION': 'Orientación',
+    'RELIGION': 'Religión',
+    'FILOSOFIA': 'Filosofía',
+    'EDCIUDADANA': 'Educación Ciudadana',
+    'CCCIUDADANA': 'Ciencias para la Ciudadanía',
+    'CCIUDADANIA': 'Ciencias para la Ciudadanía',
+    # Párvulos: su grilla muestra el código del curso en los bloques de Ed. Física
+    'PK': 'Educación Física y Salud',
+    'KA': 'Educación Física y Salud',
+    'KB': 'Educación Física y Salud',
+}
+
+AMARILLO_SKILLS = 'FFFFFF00'   # Relleno de English skills en las grillas del Excel
+
+
+def curso_de_codigo(codigo):
+    """Códigos de las hojas de salas y gimnasios: '2a' = 2° básico A, '2A' = 2° medio A, '7B' = 7° básico B."""
+    codigo = str(codigo or '').strip()
+    parvulos = {'PK': 'PREKINDER A', 'KA': 'KINDER A', 'KB': 'KINDER B'}
+    if codigo.upper() in parvulos:
+        return parvulos[codigo.upper()]
+    if len(codigo) != 2 or codigo[0] not in '12345678' or codigo[1].upper() not in 'AB':
+        return None
+    numero, seccion = codigo[0], codigo[1]
+    tipo = 'MEDIO' if numero in '1234' and seccion.isupper() else 'BÁSICO'
+    return f'{numero}° {tipo} {seccion.upper()}'
+
+
+def _grilla_hoja(ws, fila_desde=1, columna=2):
+    """
+    Ubica la primera grilla semanal bajo 'fila_desde' (fila con 'HORAS' en la columna B).
+    Retorna ([(fila, bloque)], columna del lunes).
+    """
+    fila = fila_desde
+    while fila <= ws.max_row and str(ws.cell(fila, columna).value or '').strip() != 'HORAS':
+        fila += 1
+    filas = []
+    for r in range(fila + 1, fila + 16):
+        b = ws.cell(r, columna).value
+        if isinstance(b, (int, float)) and 1 <= int(b) <= 10:
+            filas.append((r, int(b)))
+        elif b is None and filas:
+            break
+    return filas, columna + 2
+
+
+def _skills_por_bloque(wb):
+    """(curso, día, bloque) con English skills según la sala ELECTIVO 1 (hoja SALAS ELECTIVOS)."""
+    ws = wb['SALAS ELECTIVOS']
+    skills = set()
+    filas, col0 = _grilla_hoja(ws)
+    for r, b in filas:
+        for i, dia in enumerate(D.DIAS):
+            curso = curso_de_codigo(ws.cell(r, col0 + i).value)
+            if curso:
+                skills.add((curso, dia, b))
+    return skills
+
+
+def _recintos_por_bloque(wb):
+    """(curso, día, bloque) -> recinto deportivo, según la hoja GIMNASIOS."""
+    ws = wb['GIMNASIOS']
+    recintos = {}
+    for fila in range(1, ws.max_row + 1):
+        titulo = str(ws.cell(fila, 4).value or '').strip().upper()
+        if titulo not in D.RECINTOS_DEPORTIVOS:
+            continue
+        filas, col0 = _grilla_hoja(ws, fila)
+        for r, b in filas:
+            for i, dia in enumerate(D.DIAS):
+                curso = curso_de_codigo(ws.cell(r, col0 + i).value)
+                if curso:
+                    recintos[(curso, dia, b)] = titulo
+    return recintos
+
+
+def leer_horario_oficial(ruta=None):
+    """
+    Construye un HorarioEscolar con el horario oficial 2026 tal como está en el Excel:
+    la asignatura de cada bloque sale de la grilla de cada curso, English skills de la sala
+    ELECTIVO 1 (o del relleno amarillo), las franjas de electivos de sus etiquetas y el recinto
+    deportivo de la hoja GIMNASIOS. Los docentes se asignan con la distribución horaria 2026.
+    Retorna (horario, jornadas, avisos).
+    """
+    import openpyxl
+    wb = openpyxl.load_workbook(ruta or ExportadorExcel.RUTA_EXCEL_OFICIAL)
+    hojas = {_normalizar(n): wb[n] for n in wb.sheetnames}
+    malla = D.get_malla_curricular()
+    skills = _skills_por_bloque(wb)
+    recintos_reales = _recintos_por_bloque(wb)
+    horario = HorarioEscolar()
+    jornadas = {}
+    avisos = []
+
+    for curso in D.todos_los_cursos():
+        ws = hojas.get(_normalizar(curso))
+        if ws is None:
+            avisos.append(f'No se encontró la hoja de {curso}')
+            jornadas[curso] = D.JORNADAS[curso]
+            continue
+        lecciones = {a: (D.docentes_de(d), e) for a, _, d, e in malla[curso]}
+        # Etiqueta de cada bloque de las franjas de electivos de este curso -> (n° de franja, franja)
+        etiquetas_franja = {}
+        for k, franja in enumerate(D.franjas_de(curso), 1):
+            for etiqueta in D.etiquetas_franja(franja, curso):
+                etiquetas_franja[_normalizar(etiqueta)] = (k, franja)
+
+        ultimo = [0] * len(D.DIAS)
+        filas, col0 = _grilla_hoja(ws)
+        for r, b in filas:
+            for i, dia in enumerate(D.DIAS):
+                celda = ws.cell(r, col0 + i)
+                texto = str(celda.value or '').strip()
+                if not texto or texto.upper() == 'PASTORAL':
+                    continue
+                clave = _normalizar(texto)
+                ultimo[i] = max(ultimo[i], b)
+
+                if clave in etiquetas_franja:
+                    k, franja = etiquetas_franja[clave]
+                    detalle = {doc: (et, sala, f"{asig.capitalize()} ({seccion})")
+                               for asig, seccion, doc, sala, et in franja['grupos']}
+                    docentes = tuple(dict.fromkeys(g[2] for g in franja['grupos']))
+                    horario.asignar(curso, dia, b, D.nombre_franja(k), docentes, 'Salas electivos',
+                                    etiqueta=texto, clave=f'{D.nivel(curso)} A-B', detalle=detalle)
+                    continue
+
+                asignatura = ASIGNATURA_DE_ETIQUETA.get(clave)
+                if asignatura is None:
+                    avisos.append(f'{curso}: etiqueta desconocida "{texto}" el {dia} bloque {b}')
+                    continue
+                relleno = celda.fill.fgColor.rgb if celda.fill and celda.fill.fill_type else None
+                if asignatura == 'Idioma Extranjero Inglés' and ((curso, dia, b) in skills or relleno == AMARILLO_SKILLS):
+                    asignatura = 'English Skills'
+                if asignatura not in lecciones:
+                    avisos.append(f'{curso}: "{texto}" ({dia} bloque {b}) no está en la malla 2026')
+                docentes, espacio = lecciones.get(asignatura, ((), 'Aula'))
+                horario.asignar(curso, dia, b, asignatura, docentes, espacio)
+        jornadas[curso] = D.JORNADAS[curso] if D.es_parvulo(curso) else tuple(ultimo)
+
+    # Recintos deportivos según la hoja GIMNASIOS; si un bloque no aparece ahí, se usa la regla del motor
+    def asignar_recintos():
+        recintos = defaultdict(list)
+        for (dia, b), cursos in horario.gimnasio_ocupado.items():
+            for curso in cursos:
+                destino = recintos_reales.get((curso, dia, b))
+                if destino is None:
+                    zona = D.zona_deportiva(curso)
+                    destino = zona if not recintos[(zona, dia, b)] else 'PATIO SANTO DOMINGO'
+                recintos[(destino, dia, b)].append(curso)
+        return recintos
+
+    horario.asignar_recintos = asignar_recintos
+    return horario, jornadas, avisos
+
+
 def exportar_escudo():
     """Copia el escudo del Excel oficial 2026 como PNG con fondo transparente."""
     ruta_excel = ExportadorExcel.RUTA_EXCEL_OFICIAL
@@ -283,49 +480,104 @@ def exportar_escudo():
     return True
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Exporta los horarios generados para la plataforma web (Prototipo 2)')
-    parser.add_argument('--seed', type=int, default=3, help='Semilla del generador (default: 3)')
-    args = parser.parse_args()
-
-    horario = MotorHorarios(seed=args.seed).generar()
-    datos = {
-        'meta': {
-            'colegio': 'Colegio Madres Dominicas',
-            'ciudad': 'Concepción',
-            'anio': D.ANIO,
-            'semilla': args.seed,
-            'generado': datetime.now().strftime('%Y-%m-%d %H:%M'),
-        },
+def construir_datos(horario, meta, jornadas=None):
+    return {
+        'meta': meta,
         'dias': D.DIAS,
         'bloques': [{'numero': b, 'inicio': ini, 'fin': fin} for b, (ini, fin) in D.HORARIOS_BLOQUES.items()],
         'pausas': [{'despues': b, 'nombre': nombre, 'rango': rango} for b, (nombre, rango) in D.RECREOS.items()],
         'pares': [list(p) for p in D.PARES],
         'ciclos': [{'id': i, 'nombre': n} for i, n in CICLOS],
-        'cursos': exportar_cursos(horario),
+        'cursos': exportar_cursos(horario, jornadas),
         'docentes': exportar_docentes(horario),
         'espacios': exportar_espacios(horario),
         'franjas': exportar_franjas(),
         'auditoria': exportar_auditoria(horario),
     }
 
-    destino = os.path.join(AQUI, 'datos', 'horarios.js')
-    os.makedirs(os.path.dirname(destino), exist_ok=True)
+
+def escribir_datos(datos):
+    """Escribe datos/horarios_<año>.js (completo) y datos/resumen_<año>.js (tarjeta del menú)."""
+    meta = datos['meta']
+    anio = meta['anio']
+    carpeta = os.path.join(AQUI, 'datos')
+    os.makedirs(carpeta, exist_ok=True)
+    origen = 'Excel oficial' if meta['fuente'] == 'oficial' else f"Semilla {meta['semilla']}"
+
+    destino = os.path.join(carpeta, f'horarios_{anio}.js')
     with open(destino, 'w', encoding='utf-8') as f:
         f.write('// Archivo generado por exportar_datos.py — no editar a mano.\n')
-        f.write(f"// Semilla {args.seed} · {datos['meta']['generado']}\n")
+        f.write(f"// Horario {anio} · {origen} · {meta['generado']}\n")
         f.write('window.HORARIOS_MMDD = ')
         json.dump(datos, f, ensure_ascii=False, separators=(',', ':'))
         f.write(';\n')
 
-    escudo = exportar_escudo()
     a = datos['auditoria']
-    print(f"Datos exportados en {os.path.relpath(destino, RAIZ)}")
+    m = a['metricas']
+    # Semana de un curso para la mini-grilla de la tarjeta: asignatura por día y bloque (None si no hay clase)
+    curso = next(c for c in datos['cursos'] if c['id'] == CURSO_MUESTRA)
+    clases = {(k['dia'], k['bloque']): k['asignatura'] for k in curso['clases']}
+    muestra = {'curso': curso['nombre'],
+               'dias': [[clases.get((dia, b)) for b in range(1, max(curso['jornada']) + 1)] for dia in D.DIAS]}
+    resumen = {
+        **meta,
+        'cursos': len(datos['cursos']),
+        'docentes': len(datos['docentes']),
+        'valido': a['valido'],
+        'totalErrores': a['totalErrores'],
+        'bloques': m['total_bloques_asignados'],
+        'bloquesEsperados': m['total_bloques_esperados'],
+        'dobles': m['porcentaje_bloques_dobles'],
+        'ventanas': m['total_ventanas_docentes'],
+        'patio': m['uso_patio'],
+        'muestra': muestra,
+    }
+    with open(os.path.join(carpeta, f'resumen_{anio}.js'), 'w', encoding='utf-8') as f:
+        f.write('// Archivo generado por exportar_datos.py — no editar a mano.\n')
+        f.write(f'(window.HORARIOS_MMDD_RESUMEN = window.HORARIOS_MMDD_RESUMEN || {{}})[{anio}] = ')
+        json.dump(resumen, f, ensure_ascii=False, separators=(',', ':'))
+        f.write(';\n')
+
+    estado = 'FACTIBLE' if a['valido'] else f"{a['totalErrores']} incumplimientos"
+    print(f"Horario {anio} ({origen}) exportado en {os.path.relpath(destino, RAIZ)}")
     print(f"  {len(datos['cursos'])} cursos · {len(datos['docentes'])} docentes · {len(datos['espacios'])} espacios")
-    print(f"  Auditoría: {'FACTIBLE' if a['valido'] else 'NO FACTIBLE'} "
-          f"({a['metricas']['total_bloques_asignados']}/{a['metricas']['total_bloques_esperados']} bloques, "
-          f"{a['metricas']['porcentaje_bloques_dobles']}% en bloques dobles)")
-    print(f"  Escudo: {'assets/escudo.png' if escudo else 'no disponible (se usa el monograma)'}")
+    print(f"  Auditoría: {estado} ({m['total_bloques_asignados']}/{m['total_bloques_esperados']} bloques, "
+          f"{m['porcentaje_bloques_dobles']}% en bloques dobles)")
+
+
+def meta_base(anio, fuente, **extra):
+    return {
+        'colegio': 'Colegio Madres Dominicas',
+        'ciudad': 'Concepción',
+        'anio': anio,
+        'fuente': fuente,      # 'oficial' (Excel del colegio) o 'generado' (motor)
+        'generado': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        **extra,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Exporta los horarios 2026 (oficial) y 2027 (generado) '
+                                                 'para la plataforma web (Prototipo 2)')
+    parser.add_argument('--anio', type=int, choices=[ANIO_OFICIAL, ANIO_GENERADO],
+                        help='Exporta solo ese año (por defecto, ambos)')
+    parser.add_argument('--seed', type=int, default=3, help='Semilla del generador para 2027 (default: 3)')
+    args = parser.parse_args()
+
+    if args.anio in (None, ANIO_OFICIAL):
+        horario, jornadas, avisos = leer_horario_oficial()
+        archivo = os.path.relpath(ExportadorExcel.RUTA_EXCEL_OFICIAL, RAIZ).replace(os.sep, '/')
+        escribir_datos(construir_datos(horario, meta_base(ANIO_OFICIAL, 'oficial', semilla=None, archivo=archivo),
+                                       jornadas))
+        for aviso in avisos:
+            print(f'  Aviso: {aviso}')
+
+    if args.anio in (None, ANIO_GENERADO):
+        horario = MotorHorarios(seed=args.seed).generar()
+        escribir_datos(construir_datos(horario, meta_base(ANIO_GENERADO, 'generado', semilla=args.seed)))
+
+    escudo = exportar_escudo()
+    print(f"Escudo: {'assets/escudo.png' if escudo else 'no disponible (se usa el monograma)'}")
 
 
 if __name__ == '__main__':

@@ -1,24 +1,49 @@
-# Prototipo 2 — Visualizador web de horarios MMDD 2026
+# Prototipo 2 — Visualizador web de horarios MMDD (2026 y 2027)
 
-Página web interactiva para revisar los horarios que genera `notebooks/generador_horarios.py`
-(semilla por defecto: 3). Funciona abriendo `index.html` directamente en el navegador, sin
-instalar nada ni levantar un servidor.
+Página web interactiva para revisar dos horarios del colegio:
+
+| Año | Origen |
+| :--- | :--- |
+| **2026** | Horario **oficial**, leído tal cual de `data/Data 2026/HORARIO CURSOS 2026.xlsx`. |
+| **2027** | Horario **generado** por `notebooks/generador_horarios.py` (semilla por defecto: 3). |
+
+Funciona abriendo `index.html` directamente en el navegador, sin instalar nada ni levantar un servidor.
 
 ## Cómo abrirla
 
 1. Abre `index.html` con doble clic (Chrome, Edge o Firefox).
-2. Para cargar un horario nuevo, regenera los datos y recarga la página:
+2. En el **menú de inicio** elige el año: cada tarjeta muestra la semana de 3° Medio A, los totales
+   y el resultado de la auditoría. Al entrar, el año queda en la dirección (`index.html?anio=2027`),
+   así que al recargar se vuelve directo a ese horario.
+3. Para cambiar de año, usa el botón `2026 · Oficial` / `2027 · Generado` de la barra superior: vuelve
+   al menú y, al elegir el otro año, se abre la misma vista (por ejemplo, el mismo curso).
+
+Para regenerar los datos y recargar la página:
 
 ```bash
 python "Prototipos/Prototipo 2/exportar_datos.py"
 ```
 
 ```bash
-python "Prototipos/Prototipo 2/exportar_datos.py" --seed 7
+python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2027 --seed 7
 ```
 
-El script ejecuta el motor, audita el resultado y escribe `datos/horarios.js` y `assets/escudo.png`
+```bash
+python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2026
+```
+
+Sin `--anio` se exportan los dos años. El script escribe `datos/horarios_<año>.js` (el horario
+completo), `datos/resumen_<año>.js` (lo que muestra la tarjeta del menú) y `assets/escudo.png`
 (el escudo se toma del Excel oficial 2026).
+
+### Cómo se lee el horario oficial 2026
+
+- La asignatura de cada bloque sale de la grilla de cada curso (se corrigen erratas como `LENGAUJE`).
+- *English skills* se reconoce por la sala ELECTIVO 1 de la hoja `SALAS ELECTIVOS` o por el relleno amarillo.
+- Las franjas de electivos de 3° y 4° medio, por sus etiquetas (`CHP 3AB`, `LE-QU-EC S. 1`, …).
+- El recinto de Ed. Física, por la hoja `GIMNASIOS`.
+- El Excel no indica qué docente dicta cada clase: se asignan según la distribución horaria 2026 del
+  motor. Por eso la auditoría 2026 muestra choques de docentes donde esa distribución no calza con la grilla.
 
 ## Vistas
 
@@ -32,6 +57,7 @@ El script ejecuta el motor, audita el resultado y escribe `datos/horarios.js` y 
 
 ## Uso rápido
 
+- En el menú de inicio, `←` `→` eligen la tarjeta y `Enter` la abre (también `1` = 2026, `2` = 2027); `Esc` vuelve al horario.
 - Toca cualquier clase para ver docente(s), sala, horario y las otras sesiones de esa asignatura en la semana; en Cursos esas otras sesiones quedan marcadas en la grilla.
 - En Docentes y Salas, pasa el cursor (o toca) un elemento de la leyenda para destacarlo en la grilla.
 - La página recuerda el último curso visto.
@@ -46,12 +72,15 @@ El script ejecuta el motor, audita el resultado y escribe `datos/horarios.js` y 
 
 ```text
 Prototipo 2/
-├── index.html          # Estructura de la página
-├── css/estilos.css     # Diseño (tema claro y oscuro, responsivo, impresión)
-├── js/app.js           # Lógica de las vistas y animaciones
-├── datos/horarios.js   # Datos generados (no editar a mano)
-├── assets/escudo.png   # Escudo del colegio
-└── exportar_datos.py   # Ejecuta el motor y exporta los datos para la web
+├── index.html               # Estructura de la página (menú de inicio + plataforma)
+├── css/estilos.css          # Diseño (tema claro y oscuro, responsivo, impresión)
+├── js/menu.js               # Menú de inicio: elige el año y carga sus datos y app.js
+├── js/app.js                # Lógica de las vistas y animaciones
+├── datos/horarios_2026.js   # Horario oficial 2026 (generado, no editar a mano)
+├── datos/horarios_2027.js   # Horario generado 2027 (generado, no editar a mano)
+├── datos/resumen_<año>.js   # Resumen de cada año para las tarjetas del menú
+├── assets/escudo.png        # Escudo del colegio
+└── exportar_datos.py        # Lee el Excel 2026, ejecuta el motor (2027) y exporta los datos
 ```
 
 Las animaciones usan [GSAP](https://gsap.com) desde cdnjs. Sin conexión a internet la página

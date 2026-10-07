@@ -314,7 +314,20 @@ Horarios-MMDD/
 │       ├── HORARIO CURSOS 2026.xlsx            # Mallas, jornadas, electivos, gimnasios, salas y diseño
 │       └── DISTRIBUCIÓN HORARIA 2026.docx      # Dotación docente y asignación profesor-curso
 ├── notebooks/
-│   ├── generador_horarios.py                   # Motor algorítmico, auditoría y exportación a Excel
+│   ├── generador_horarios.py                   # Punto de entrada: genera el horario, Excel y consola
+│   ├── comparar_metaheuristicas.py             # Compara tiempos y resultados de las metaheurísticas
+│   ├── horarios/                               # Paquete con el código del motor
+│   │   ├── datos.py                            # DatosColegio: parámetros y mallas 2026
+│   │   ├── horario.py                          # HorarioEscolar: estructura del horario final
+│   │   ├── validador.py                        # ValidadorRestricciones: auditoría de restricciones
+│   │   ├── modelo.py                           # ModeloHorario: sesiones y función de costo incremental
+│   │   ├── construccion.py                     # ConstruccionVoraz: solución inicial
+│   │   ├── metaheuristicas/                    # Metaheurísticas de mejora (una por archivo)
+│   │   │   ├── base.py                         # Interfaz común Metaheuristica
+│   │   │   └── min_conflicts_tabu.py           # Min-Conflicts con lista tabú
+│   │   ├── motor.py                            # MotorHorarios: encadena las fases y mide tiempos
+│   │   ├── exportador_excel.py                 # ExportadorExcel: libros .xlsx con el diseño oficial
+│   │   └── menu.py                             # MenuInteractivo: consola
 │   └── Outputs Excel/                          # Libros generados automáticamente
 │       ├── Horario_Cursos_MMDD.xlsx            # Mismo formato que HORARIO CURSOS 2026.xlsx
 │       └── Horarios_Docentes_Colegio_MMDD.xlsx # Distribución horaria y grilla de cada docente
@@ -346,6 +359,8 @@ flowchart LR
 5. **Validación y Despliegue:** Contraste de horarios generados versus horarios manuales históricos y despliegue en la plataforma web interactiva.
 
 ### Motor actual (`MotorHorarios`)
+Cada fase está en su propio módulo de `notebooks/horarios/`: el modelo de sesiones en `modelo.py`, la solución inicial en `construccion.py` y la metaheurística de mejora en `metaheuristicas/`.
+
 1. **Modelo de sesiones:** cada asignatura se descompone en sesiones dobles (90 min, siempre dentro de un par pedagógico) y, si sus horas son impares, una sesión simple. Las franjas de electivos se fijan primero y se comparten entre A y B.
 2. **Construcción voraz:** se ubican primero las sesiones dobles y luego las simples, de la más restringida (co-docencia, docentes con mayor carga, Educación Física) a la menos restringida, en la posición de menor costo.
 3. **Búsqueda local Min-Conflicts con lista tabú:** se elige una restricción violada, una de sus sesiones y el mejor intercambio dentro del curso (par por par o bloque por bloque, lo que mantiene la jornada completa), con ruido aleatorio y reinicios desde la mejor solución encontrada.
@@ -378,6 +393,16 @@ Opciones de línea de comandos (los Excel se generan siempre al iniciar):
 | `--curso "3° MEDIO A"` | Muestra el horario de un curso. |
 | `--docente "Inglés 1"` | Muestra el horario de un docente. |
 | `--seed N` | Cambia la semilla del generador (por defecto 3). |
+| `--metaheuristica NOMBRE` | Metaheurística de mejora (por defecto `min_conflicts_tabu`). |
+
+### Comparar metaheurísticas
+`comparar_metaheuristicas.py` ejecuta cada metaheurística registrada con varias semillas, sobre la misma solución inicial, y muestra el tiempo de construcción, el tiempo de búsqueda, los pasos y si el horario quedó factible (no genera Excel).
+
+```bash
+python notebooks/comparar_metaheuristicas.py --semillas 1 2 3 4 5 --csv resultados.csv
+```
+
+Para agregar una metaheurística nueva: crear un archivo en `notebooks/horarios/metaheuristicas/` con una subclase de `Metaheuristica` (ver `base.py`) que implemente `buscar(modelo, rng)`, y registrarla en `METAHEURISTICAS` de `metaheuristicas/__init__.py`. Queda disponible en `--metaheuristica` y en el script de comparación.
 
 ### 1. `Horario_Cursos_MMDD.xlsx` (Horario por Cursos)
 Replica la estructura y el diseño de `HORARIO CURSOS 2026.xlsx`: fuente Cavolini, encabezados y recreos en amarillo, bloques y horarios en crema, bordes naranjos y el escudo del colegio.

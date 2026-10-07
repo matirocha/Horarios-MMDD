@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8642", "--bind", "127.0.0.1", "--directory", "Prototipos/Prototipo 2"],
       "port": 8642
+    },
+    {
+      "name": "documentos",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8643", "--bind", "127.0.0.1", "--directory", "documents"],
+      "port": 8643
     }
   ]
 }

@@ -1,7 +1,8 @@
 /* =============================================================================
-   HORARIOS MMDD 2026 — Prototipo 2
-   Visualizador de los horarios generados por notebooks/generador_horarios.py.
-   Lee window.HORARIOS_MMDD (datos/horarios.js) y dibuja cinco vistas:
+   HORARIOS MMDD — Prototipo 2
+   Visualizador del horario oficial 2026 (Excel del colegio) y del horario 2027 generado
+   por notebooks/generador_horarios.py. js/menu.js carga el año elegido en
+   window.HORARIOS_MMDD (datos/horarios_<año>.js) y luego este archivo, que dibuja cinco vistas:
    cursos, docentes, salas y gimnasios, colegio por bloque y auditoría.
    Las animaciones usan GSAP cuando está disponible; sin él la página funciona igual.
    ========================================================================== */
@@ -16,7 +17,7 @@
     $('main').innerHTML = `
       <div class="aviso-datos">
         <h1>Faltan los datos del horario</h1>
-        <p class="nota">No se encontró <code>datos/horarios.js</code>. Ejecuta
+        <p class="nota">No se encontró <code>datos/horarios_${window.HORARIOS_MMDD_ANIO || '&lt;año&gt;'}.js</code>. Ejecuta
         <code>python exportar_datos.py</code> dentro de la carpeta <code>Prototipo 2</code> y recarga la página.</p>
       </div>`;
     return;
@@ -25,6 +26,8 @@
   // ===========================================================================
   // 1. CATÁLOGOS E ÍNDICES
   // ===========================================================================
+  // Horario oficial (leído del Excel del colegio) o generado por el motor
+  const OFICIAL = DATOS.meta.fuente === 'oficial';
   const DIAS = DATOS.dias;
   const DIA_CORTO = { 'Lunes': 'Lun', 'Martes': 'Mar', 'Miércoles': 'Mié', 'Jueves': 'Jue', 'Viernes': 'Vie' };
   const BLOQUE = Object.fromEntries(DATOS.bloques.map(b => [b.numero, b]));
@@ -243,7 +246,7 @@
       };
       paso('.marca', { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.6 }, 0);
       paso('.escudo', { rotate: -12, scale: 0.7 }, { rotate: 0, scale: 1, duration: 0.8, ease: 'back.out(2)' }, 0);
-      paso('.buscador, #tema', { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.08 }, 0.1);
+      paso('.anio-chip, .buscador, #tema', { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: 0.5, stagger: 0.08 }, 0.1);
       paso('.pestana', { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.45, stagger: 0.05 }, 0.15);
       paso('.vista:not([hidden]) .sel-grupo', { opacity: 0, x: -12 }, { opacity: 1, x: 0, duration: 0.4, stagger: 0.04 }, 0.2);
     },
@@ -850,7 +853,7 @@
     }).join('');
     return `
       <section class="seccion">
-        <div class="seccion-titulo"><h2>Distribución horaria</h2><p>Calculada desde el horario generado</p></div>
+        <div class="seccion-titulo"><h2>Distribución horaria</h2><p>Calculada desde el horario ${OFICIAL ? 'oficial' : 'generado'}</p></div>
         <div class="tabla-marco"><table class="tabla">
           <thead><tr><th>Curso</th><th>Asignatura</th><th class="num">Horas</th></tr></thead>
           <tbody>${filas}</tbody>
@@ -1041,7 +1044,7 @@
     const cursos = new Set(e.usos.flatMap(u => u.items.map(i => i.curso || i.texto)));
     const vacio = !e.usos.length
       ? `<p class="nota">${e.nombre === 'PATIO SANTO DOMINGO'
-        ? 'El horario generado no necesita el Patio Santo Domingo: toda la Educación Física cabe en los gimnasios.'
+        ? `El horario ${OFICIAL ? 'oficial' : 'generado'} no necesita el Patio Santo Domingo: toda la Educación Física cabe en los gimnasios.`
         : 'Esta sala no tiene clases programadas en el modelo; solo se muestran sus bloqueos de pastoral.'}</p>`
       : '';
 
@@ -1348,12 +1351,14 @@
       <div class="veredicto">
         <div class="veredicto-sello${a.valido ? '' : ' mal'}">${a.valido ? ICONO_OK : ICONO_MAL}</div>
         <div>
-          <span class="eyebrow">Auditoría de restricciones · semilla ${DATOS.meta.semilla}</span>
+          <span class="eyebrow">Auditoría de restricciones · ${OFICIAL ? `horario oficial ${DATOS.meta.anio}` : `semilla ${DATOS.meta.semilla}`}</span>
           <h1>${a.valido ? 'Horario factible' : 'Horario con conflictos'}</h1>
           <p>${a.valido
             ? `Cumple las ${a.criterios.length} restricciones duras auditadas en ${m.cursos_auditados} cursos y ${m.docentes_auditados} docentes.`
             : `Se encontraron ${a.totalErrores} incumplimientos de restricciones duras.`}
-            Generado el ${dia}-${mes}-${anio} a las ${fecha[1]}.</p>
+            ${OFICIAL ? 'Leído del Excel oficial' : 'Generado'} el ${dia}-${mes}-${anio} a las ${fecha[1]}.</p>
+          ${OFICIAL ? `<p class="nota">El Excel oficial no indica qué docente dicta cada clase: se asignan según la
+            distribución horaria 2026, así que los choques de docentes muestran dónde esa distribución no calza con la grilla.</p>` : ''}
           ${advertencias}
         </div>
       </div>
@@ -1383,7 +1388,9 @@
           <div class="calor-escala"><span>0</span><span class="calor-escala-barra"></span><span>${DOCENTES.length} docentes</span></div>
         </section>
       </div>
-      <p class="nota">Para revisar otro horario, ejecuta <code>python exportar_datos.py --seed N</code> en la carpeta del prototipo y recarga la página.</p>`;
+      <p class="nota">${OFICIAL
+        ? `Datos leídos de <code>${esc(DATOS.meta.archivo)}</code>. Si el Excel cambia, ejecuta <code>python exportar_datos.py --anio ${DATOS.meta.anio}</code> en la carpeta del prototipo y recarga la página.`
+        : `Para revisar otro horario, ejecuta <code>python exportar_datos.py --anio ${DATOS.meta.anio} --seed N</code> en la carpeta del prototipo y recarga la página.`}</p>`;
 
     const panel = $('#panel-auditoria');
     if (animarEntrada) {
@@ -1797,7 +1804,9 @@
   // 15. INICIO
   // ===========================================================================
   $('#marca-anio').textContent = DATOS.meta.anio;
-  $('#pie-datos').textContent = `Horario generado con la semilla ${DATOS.meta.semilla} · ${DATOS.meta.generado} · `
+  $('#pie-datos').textContent = (OFICIAL
+    ? `Horario oficial ${DATOS.meta.anio} · ${DATOS.meta.archivo} · `
+    : `Horario ${DATOS.meta.anio} generado con la semilla ${DATOS.meta.semilla} · ${DATOS.meta.generado} · `)
     + `${DATOS.auditoria.metricas.total_bloques_asignados}/${DATOS.auditoria.metricas.total_bloques_esperados} bloques asignados`;
 
   renderSelectorCursos();

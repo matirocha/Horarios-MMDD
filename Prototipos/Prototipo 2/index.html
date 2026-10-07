@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Horarios MMDD 2026</title>
-  <meta name="description" content="Visualizador de los horarios generados para el Colegio Madres Dominicas, año escolar 2026.">
+  <title>Horarios MMDD</title>
+  <meta name="description" content="Visualizador de horarios del Colegio Madres Dominicas: el horario oficial 2026 y el horario 2027 generado por el proyecto.">
   <link rel="icon" href="assets/escudo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,9 +13,41 @@
   <script>
     // Aplica el tema guardado antes de pintar, para evitar un parpadeo
     try { const t = localStorage.getItem('mmdd-tema'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+    // Si la URL ya trae el año (?anio=2027) se entra directo al horario; si no, se parte en el menú
+    document.documentElement.classList.add(/[?&]anio=\d{4}/.test(location.search) ? 'con-anio' : 'menu-abierto');
   </script>
 </head>
 <body>
+  <!-- ============================== MENÚ DE INICIO ==============================
+       Elige entre el horario oficial 2026 (Excel del colegio) y el 2027 generado por el
+       proyecto. js/menu.js dibuja las tarjetas y carga datos/horarios_<año>.js y js/app.js. -->
+  <section class="menu" id="menu" aria-labelledby="menu-titulo">
+    <div class="menu-fondo" aria-hidden="true"></div>
+    <div class="menu-acciones">
+      <button class="boton-icono" type="button" id="menu-tema" aria-label="Cambiar entre tema claro y oscuro">
+        <svg class="icono icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12H5M19 12h2.5M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></svg>
+        <svg class="icono icono-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+      </button>
+      <button class="boton-icono" type="button" id="menu-cerrar" aria-label="Volver al horario" hidden>
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="menu-contenido">
+      <div class="menu-cabecera">
+        <img class="menu-escudo" src="assets/escudo.png" alt="" width="64" height="83"
+             onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'escudo-texto menu-escudo',textContent:'MD'}))">
+        <span class="eyebrow menu-colegio">Colegio Madres Dominicas · Concepción</span>
+        <h1 class="menu-titulo" id="menu-titulo"><span class="visualmente-oculto">Horarios</span><span class="menu-letras" aria-hidden="true">Horarios</span></h1>
+        <p class="menu-bajada">Elige el año escolar que quieres revisar</p>
+      </div>
+      <div class="menu-tarjetas" id="menu-tarjetas" role="list"></div>
+      <p class="menu-pie">
+        <span class="menu-teclas" aria-hidden="true"><kbd>←</kbd><kbd>→</kbd> elegir · <kbd>Enter</kbd> abrir</span>
+        <span>Taller de Gestión de Operaciones · Ingeniería Civil Industrial, Universidad de Concepción</span>
+      </p>
+    </div>
+  </section>
+
   <a class="saltar" href="#contenido">Ir al horario</a>
 
   <header class="barra">
@@ -27,6 +59,12 @@
         <span class="marca-colegio">Colegio Madres Dominicas · Concepción</span>
       </div>
     </div>
+
+    <button id="cambiar-anio" class="anio-chip" type="button" title="Volver al menú para elegir otro año">
+      <span class="anio-chip-punto" aria-hidden="true"></span>
+      <span id="anio-chip-texto">Cambiar año</span>
+      <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg>
+    </button>
 
     <div class="buscador" role="search">
       <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
@@ -158,8 +196,10 @@
 
   <!-- Animaciones: GSAP (si no carga, la página funciona igual, sin animaciones) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-  <!-- Datos generados por exportar_datos.py a partir de notebooks/generador_horarios.py -->
-  <script src="datos/horarios.js"></script>
-  <script src="js/app.js"></script>
+  <!-- Resumen de cada año para las tarjetas del menú (exportar_datos.py). El horario completo
+       (datos/horarios_<año>.js) y js/app.js los carga js/menu.js al elegir el año. -->
+  <script src="datos/resumen_2026.js"></script>
+  <script src="datos/resumen_2027.js"></script>
+  <script src="js/menu.js"></script>
 </body>
 </html>
