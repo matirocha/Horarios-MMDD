@@ -786,7 +786,7 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
   .barra, .pestanas, .selector, .detalle, .pie, .cabecera-acciones, .consejo, .tooltip, .dias-movil, .leyenda-nota { display: none !important; }
   main { padding: 0; }
   .disposicion { display: block; }
-  .sesion, .vacia.fuera, .vacia.pastoral, .calor-celda { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sesion, .vacia.fuera, .vacia.pastoral, .calor-celda, .g-pausa.colacion { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .sesion { break-inside: avoid; }
   .grilla > .fuera-dia { display: flex !important; }
 }
@@ -800,24 +800,57 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
 #vista-cursos .panel { gap: .9rem; }
 
 /* Barra: "Horario de [curso ⌄]"  ‹ › ⎙ */
-#vista-cursos .curso-barra { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: .6rem 1rem; }
+#vista-cursos .curso-barra { position: relative; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: .6rem 1rem; }
 #vista-cursos .curso-elegir { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
-#vista-cursos .curso-select-marco { position: relative; display: inline-flex; align-items: center; max-width: 100%; }
-#vista-cursos .curso-select-marco .icono { position: absolute; right: .75rem; width: 1.3rem; height: 1.3rem; pointer-events: none; }
-#curso-select {
-  appearance: none; -webkit-appearance: none;
+.curso-boton {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 1rem;
   max-width: 100%; min-height: 2.75rem;
-  padding: .15rem 2.6rem .15rem .75rem;
-  border: 1px solid var(--line-strong); border-radius: 10px;
-  background: var(--surface); color: var(--ink);
+  padding: .2rem .45rem .2rem .8rem;
+  border: 1px solid var(--line-strong); border-radius: 12px;
+  background: var(--surface); text-align: left;
   font-family: var(--font-display); font-weight: 800; font-stretch: 105%;
   font-size: clamp(1.5rem, 2.6vw, 2rem); line-height: 1.2;
-  cursor: pointer;
-  transition: border-color .2s;
+  transition: border-color .2s, box-shadow .2s;
 }
-#curso-select:hover { border-color: var(--ink); }
-#curso-select optgroup, #curso-select option { font-family: var(--font-body); font-size: 1rem; font-weight: 400; font-stretch: 100%; }
-#curso-select optgroup { font-weight: 700; }
+.curso-boton:hover, .curso-boton[aria-expanded="true"] { border-color: var(--ink); }
+.curso-boton[aria-expanded="true"] { box-shadow: 0 0 0 3px var(--accent-wash); }
+.curso-boton-flecha {
+  display: grid; place-items: center; flex: none;
+  width: 2.2rem; height: 2.2rem; border-radius: 50%;
+  background: var(--surface-2);
+  transition: background-color .2s, color .2s;
+}
+.curso-boton:hover .curso-boton-flecha { background: var(--ink); color: var(--on-ink); }
+.curso-boton-flecha .icono { width: 1.25rem; height: 1.25rem; stroke-width: 2.2; transition: transform .3s; }
+.curso-boton[aria-expanded="true"] .curso-boton-flecha .icono { transform: rotate(180deg); }
+
+/* Menú de cursos: ciclos en columnas, una fila por nivel con sus secciones A y B */
+.curso-menu {
+  position: absolute; z-index: 20; top: calc(100% + .5rem); left: 0;
+  width: min(100%, 52rem);
+  padding: .8rem 1.1rem 1.1rem;
+  border: 1px solid var(--line-strong); border-radius: 14px;
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.curso-menu-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .6rem; }
+.curso-menu-titulo { font-family: var(--font-display); font-weight: 700; font-size: var(--t-md); }
+#vista-cursos .curso-menu-cabecera .boton-icono { width: 2.25rem; height: 2.25rem; }
+.curso-menu-grupos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.1rem 1.25rem; }
+.curso-menu-grupo { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.curso-menu-grupo > .eyebrow {
+  margin-bottom: .2rem; padding-left: .55rem;
+  text-transform: none; letter-spacing: .01em; font-stretch: 100%; font-size: var(--t-sm);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.curso-menu-fila {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .35rem;
+  padding: .2rem .2rem .2rem .55rem; border-radius: 10px;
+  transition: background-color .2s;
+}
+.curso-menu-fila:has(.chip-curso:hover), .curso-menu-fila:has([aria-current="true"]) { background: var(--surface-2); }
+.curso-menu-nivel { font-weight: 700; font-size: var(--t-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.curso-menu .chip-curso { width: 2.6rem; height: 2.5rem; border-radius: 8px; }
+.curso-menu .chip-vacio { width: 2.6rem; }
 
 /* Una línea de datos y la raya negra de las cabeceras del sitio */
 #vista-cursos .curso-meta {
@@ -827,7 +860,7 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
 }
 #vista-cursos .curso-pista { font-size: var(--t-xs); color: var(--muted); }
 
-/* Grilla: días con su hora de salida, una etiqueta por periodo, recreos como aire */
+/* Grilla: días con su hora de salida, una etiqueta por periodo, recreos y colación rotulados */
 #vista-cursos .grilla { grid-template-columns: 3.4rem repeat(5, minmax(0, 1fr)); }
 #vista-cursos .g-dia { border-bottom: 0; padding: 0 .1rem .4rem; }
 #vista-cursos .g-dia-nombre { text-transform: none; letter-spacing: 0; font-stretch: 100%; font-weight: 700; font-size: var(--t-base); }
@@ -841,7 +874,13 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
 #vista-cursos .g-periodo span { font-family: var(--font-data); font-stretch: 92%; font-variant-numeric: tabular-nums; line-height: 1.2; }
 #vista-cursos .g-periodo span:first-child { font-size: .8rem; font-weight: 650; color: var(--ink); }
 #vista-cursos .g-periodo span:last-child { font-size: .72rem; color: var(--muted); }
-#vista-cursos .g-pausa-etiqueta { text-transform: none; letter-spacing: 0; font-stretch: 100%; font-size: .72rem; }
+#vista-cursos .g-pausa { gap: .5rem; padding: 0 .4rem; font-size: .72rem; }
+#vista-cursos .g-pausa::before, #vista-cursos .g-pausa::after { min-width: .5rem; }
+#vista-cursos .g-pausa-texto { text-align: center; line-height: 1.25; }
+#vista-cursos .g-pausa-texto b { font-family: var(--font-display); font-weight: 650; font-stretch: 100%; color: var(--ink-2); }
+/* La colación (almuerzo) es la pausa larga: banda con fondo para distinguirla de los recreos */
+#vista-cursos .g-pausa.colacion { background: var(--surface-2); border-radius: 6px; color: var(--ink-2); }
+#vista-cursos .g-pausa.colacion .g-pausa-texto b { color: var(--ink); }
 
 /* Tarjetas: asignatura, docentes y (solo en bloques sueltos) su horario */
 #vista-cursos .sesion.cat-electivo { background-image: none; }
@@ -875,13 +914,23 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
 #vista-cursos .plan-curso > summary:hover { color: var(--ink); }
 #vista-cursos .plan-curso .tabla-marco { max-width: 48rem; }
 
+@media (max-width: 879px) {
+  .curso-menu { width: min(100%, 30rem); }
+  .curso-menu-grupos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 719px) {
   #vista-cursos .grilla { grid-template-columns: 3.4rem minmax(0, 1fr); }
   #vista-cursos .curso-barra { flex-wrap: nowrap; }
   #vista-cursos .curso-elegir { flex: 1 1 0; }
-  #vista-cursos .curso-select-marco, #curso-select { width: 100%; }
-  #curso-select { font-size: var(--t-lg); }
+  .curso-boton { width: 100%; font-size: var(--t-lg); }
   #vista-cursos .curso-barra .boton-icono { width: 2.75rem; height: 2.75rem; }
+  #vista-cursos .curso-menu-cabecera .boton-icono { width: 2.5rem; height: 2.5rem; }
+  .curso-menu { width: 100%; padding: .7rem .75rem 1rem; }
+  .curso-menu-grupos { gap: 1rem .6rem; }
+  .curso-menu-fila { padding-left: .45rem; gap: .3rem; }
+  .curso-menu .chip-curso, .curso-menu .chip-vacio { width: 2.5rem; }
+  .curso-menu .chip-curso { height: 2.75rem; }
   #vista-cursos [data-imprimir] { display: none; }
   #vista-cursos .dias-movil button { min-height: 2.75rem; }
   #vista-cursos .sesion-sub, #vista-cursos .sesion-hora { font-size: .8rem; }

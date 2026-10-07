@@ -328,6 +328,8 @@
    *   celda(pieza, ctx)   HTML de una sesión
    *   subDia(dia)         texto bajo el nombre del día
    *   pausaDia(dia, b)    contenido opcional de la pausa que sigue al bloque b en ese día
+   *   simple              vista Cursos: un rótulo por periodo doble y las pausas rotuladas día a día
+   *   diaConPausa(dia, b) (vista simple) si ese día muestra la pausa que sigue al bloque b
    */
   function segmentar(dia, op) {
     const piezas = [];
@@ -370,8 +372,8 @@
       plantilla.push('minmax(3.55rem, auto)');
       if (PAUSA[b] && b < op.maxBloque) {
         filaPausa[b] = fila++;
-        // Vista simple (Cursos): el recreo es solo aire; la colación conserva su rótulo
-        plantilla.push(op.simple ? (PAUSA[b].nombre === 'COLACIÓN' ? '1.6rem' : '.6rem') : '1.4rem');
+        // Vista simple (Cursos): la fila crece si el rótulo no cabe en una línea
+        plantilla.push(op.simple ? `minmax(${PAUSA[b].nombre === 'COLACIÓN' ? '1.9rem' : '1.5rem'}, auto)` : '1.4rem');
       }
     }
     const hoy = momentoActual();
@@ -400,12 +402,22 @@
       if (!filaPausa[b]) continue;
       const p = PAUSA[b];
       const r = filaPausa[b];
+      const texto = p.rango.replace(' - ', '–');
+      const nombre = p.nombre === 'COLACIÓN' ? 'Colación' : 'Recreo';
       if (op.simple) {
-        if (p.nombre === 'COLACIÓN') partes.push(`<div class="g-pausa-etiqueta" data-col="1" style="grid-area:${r}/1">Colación</div>`);
+        // Vista simple (Cursos): cada día que sigue con clases rotula su pausa; los días seguidos comparten banda
+        const conPausa = DIAS.map(d => (op.diaConPausa ? op.diaConPausa(d, b) : true));
+        for (let i = 0; i < DIAS.length; i++) {
+          if (!conPausa[i]) continue;
+          let j = i;
+          while (j + 1 < DIAS.length && conPausa[j + 1]) j++;
+          partes.push(`<div class="g-pausa${p.nombre === 'COLACIÓN' ? ' colacion' : ''}" data-col="${i + 2}" data-hasta="${j + 2}" style="grid-area:${r}/${i + 2}/${r + 1}/${j + 3}">
+            <span class="g-pausa-texto"><b>${nombre}</b> ${texto}</span></div>`);
+          i = j;
+        }
         continue;
       }
-      const texto = p.rango.replace(' - ', '–');
-      partes.push(`<div class="g-pausa-etiqueta" data-col="1" style="grid-area:${r}/1">${p.nombre === 'COLACIÓN' ? 'Colación' : 'Recreo'}</div>`);
+      partes.push(`<div class="g-pausa-etiqueta" data-col="1" style="grid-area:${r}/1">${nombre}</div>`);
       const porDia = op.pausaDia ? DIAS.map(d => op.pausaDia(d, b)) : [];
       if (porDia.some(Boolean)) {
         DIAS.forEach((d, i) => partes.push(porDia[i]
@@ -475,10 +487,12 @@
   }
 
   function aplicarDiaMovil(raiz) {
-    const col = String(DIAS.indexOf(estado.diaMovil) + 2);
+    const col = DIAS.indexOf(estado.diaMovil) + 2;
     $$('.grilla > [data-col]', raiz).forEach(el => {
       const c = el.dataset.col;
-      el.classList.toggle('fuera-dia', c !== '1' && c !== 'band' && c !== col);
+      // data-hasta: banda que abarca varios días seguidos (pausas de la vista Cursos)
+      const enDia = Number(c) <= col && col <= Number(el.dataset.hasta || c);
+      el.classList.toggle('fuera-dia', c !== '1' && c !== 'band' && !enDia);
     });
     $$('[data-dia-movil]', raiz).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.diaMovil === estado.diaMovil)));
   }
@@ -503,10 +517,26 @@
   // ===========================================================================
   // 6. VISTA CURSOS
   // ===========================================================================
+  // Menú "Horario de [curso ⌄]": un bloque por ciclo, una fila por nivel y un botón por sección
   function renderSelectorCursos() {
-    $('#curso-select').innerHTML = DATOS.ciclos.map(ciclo => `
-      <optgroup label="${esc(ciclo.nombre)}">${CURSOS.filter(c => c.ciclo === ciclo.id)
-        .map(c => `<option value="${esc(c.id)}">${esc(c.nombre)}</option>`).join('')}</optgroup>`).join('');
+    const secciones = [...new Set(CURSOS.map(c => c.seccion))].sort();
+    $('#curso-menu-grupos').innerHTML = DATOS.ciclos.map(ciclo => {
+      const cursos = CURSOS.filter(c => c.ciclo === ciclo.id);
+      const filas = [...new Set(cursos.map(c => c.nivel))].map(nivel => `
+        <div class="curso-menu-fila">
+          <span class="curso-menu-nivel">${esc(nombreNivel(nivel))}</span>
+          ${secciones.map(s => {
+            const c = cursos.find(k => k.nivel === nivel && k.seccion === s);
+            return c
+              ? `<button type="button" class="chip-curso" data-elegir-curso="${esc(c.id)}" aria-label="${esc(c.nombre)}" tabindex="-1">${esc(s)}</button>`
+              : '<span class="chip-vacio" aria-hidden="true"></span>';
+          }).join('')}
+        </div>`).join('');
+      return `
+        <div class="curso-menu-grupo" role="group" aria-labelledby="menu-${ciclo.id}">
+          <span class="eyebrow" id="menu-${ciclo.id}">${esc(ciclo.nombre)}</span>${filas}
+        </div>`;
+    }).join('');
   }
 
   // Opciones de una franja de electivos para un curso, con nombre común y sin repetir
@@ -534,6 +564,8 @@
       subDia(dia) {
         return `Salida ${BLOQUE[curso.jornada[DIAS.indexOf(dia)]].fin}`;
       },
+      // El recreo o la colación solo se muestran si ese día quedan clases después
+      diaConPausa: (dia, b) => b < curso.jornada[DIAS.indexOf(dia)],
       textoVacio(pz) {
         if (pz.v.tipo === 'fuera') return pz.inicio === curso.jornada[DIAS.indexOf(pz.dia)] + 1 ? 'Fin de jornada' : '';
         if (pz.v.tipo === 'parvulo') return 'Jornada parvularia';
@@ -623,8 +655,8 @@
     // El estado del plan se guarda fuera del DOM: los párvulos no tienen plan y no deben cerrarlo
     const planPrevio = $('.plan-curso', panel);
     if (planPrevio) estado.planAbierto = planPrevio.open;
-    const select = $('#curso-select');
-    if (select.value !== curso.id) select.value = curso.id;
+    $('#curso-actual').textContent = curso.nombre;
+    $$('#curso-menu [data-elegir-curso]').forEach(b => b.setAttribute('aria-current', String(b.dataset.elegirCurso === curso.id)));
     guardar('mmdd-curso', curso.id);
     document.title = `${curso.nombre} · Horarios MMDD ${DATOS.meta.anio}`;
 
@@ -1455,6 +1487,43 @@
       s.classList.remove('abierto');
       $('.selector-toggle', s).setAttribute('aria-expanded', 'false');
     });
+    cerrarMenuCursos();
+  }
+
+  const menuCursos = $('#curso-menu');
+  const botonCursos = $('#curso-boton');
+
+  function abrirMenuCursos() {
+    menuCursos.hidden = false;
+    botonCursos.setAttribute('aria-expanded', 'true');
+    // Cada vez que se abre, el foco parte en el curso que se está viendo
+    $$('[data-elegir-curso]', menuCursos).forEach(b => { b.tabIndex = b.getAttribute('aria-current') === 'true' ? 0 : -1; });
+    $('[aria-current="true"]', menuCursos).focus();
+    animar.aparecer([menuCursos], { y: -6, duracion: 0.2 });
+  }
+
+  function cerrarMenuCursos(devolverFoco = false) {
+    if (menuCursos.hidden) return;
+    menuCursos.hidden = true;
+    botonCursos.setAttribute('aria-expanded', 'false');
+    if (devolverFoco) botonCursos.focus();
+  }
+
+  // Botón vecino en la dirección de la flecha, por su posición en pantalla (vale para 4 o 2 columnas)
+  function chipVecino(actual, tecla) {
+    const centro = el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const c0 = centro(actual);
+    const horizontal = tecla === 'ArrowLeft' || tecla === 'ArrowRight';
+    const signo = tecla === 'ArrowRight' || tecla === 'ArrowDown' ? 1 : -1;
+    let mejor = null;
+    let menor = Infinity;
+    $$('[data-elegir-curso]', menuCursos).forEach(el => {
+      const c = centro(el);
+      const avance = signo * (horizontal ? c.x - c0.x : c.y - c0.y);
+      const desvio = Math.abs(horizontal ? c.y - c0.y : c.x - c0.x);
+      if (avance > 1 && desvio < 8 && avance < menor) { menor = avance; mejor = el; }
+    });
+    return mejor;
   }
 
   function paso(delta) {
@@ -1552,6 +1621,13 @@
       if (abierto) animar.aparecer($$('.sel-grupo', s), { y: 8, stagger: 0.03 });
       return;
     }
+    if (t === botonCursos) { if (menuCursos.hidden) abrirMenuCursos(); else cerrarMenuCursos(); return; }
+    if (t.matches('[data-cerrar-cursos]')) { cerrarMenuCursos(true); return; }
+    if (t.matches('[data-elegir-curso]')) {
+      cerrarMenuCursos(true);
+      ir('cursos', { curso: t.dataset.elegirCurso }, { subir: false });
+      return;
+    }
     if (t.matches('[data-imprimir]')) { window.print(); return; }
     if (t.matches('[data-paso]')) { paso(Number(t.dataset.paso)); return; }
 
@@ -1645,13 +1721,32 @@
   window.addEventListener('scroll', () => { tooltip.hidden = true; }, { passive: true });
 
   $('#filtro-docentes').addEventListener('input', renderSelectorDocentes);
-  $('#curso-select').addEventListener('change', ev => ir('cursos', { curso: ev.target.value }, { subir: false }));
+  // Menú de cursos: se cierra al tocar fuera o al salir con Tab; dentro, las flechas recorren los botones
+  const elegirCurso = $('.curso-elegir');
+  document.addEventListener('pointerdown', ev => {
+    if (!menuCursos.hidden && !elegirCurso.contains(ev.target)) cerrarMenuCursos();
+  });
+  elegirCurso.addEventListener('focusout', ev => {
+    if (ev.relatedTarget && !elegirCurso.contains(ev.relatedTarget)) cerrarMenuCursos();
+  });
+  elegirCurso.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && !menuCursos.hidden) { ev.stopPropagation(); cerrarMenuCursos(true); return; }
+    if (ev.target === botonCursos && ev.key === 'ArrowDown') { ev.preventDefault(); ev.stopPropagation(); abrirMenuCursos(); return; }
+    if (!ev.target.matches('[data-elegir-curso]')) return;
+    const chips = $$('[data-elegir-curso]', menuCursos);
+    let destino;
+    if (ev.key === 'Home') destino = chips[0];
+    else if (ev.key === 'End') destino = chips[chips.length - 1];
+    else if (ev.key.startsWith('Arrow')) destino = chipVecino(ev.target, ev.key);
+    else return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (destino) { ev.target.tabIndex = -1; destino.tabIndex = 0; destino.focus(); }
+  });
 
   document.addEventListener('keydown', ev => {
-    // En un select las flechas son nativas, pero "/" no escribe nada: el atajo de búsqueda sigue activo
-    const escribiendoTexto = ev.target.matches('input, textarea');
-    const escribiendo = escribiendoTexto || ev.target.matches('select');
-    if ((ev.key === '/' && !escribiendoTexto) || (ev.key.toLowerCase() === 'k' && (ev.ctrlKey || ev.metaKey))) {
+    const escribiendo = ev.target.matches('input, textarea');
+    if ((ev.key === '/' && !escribiendo) || (ev.key.toLowerCase() === 'k' && (ev.ctrlKey || ev.metaKey))) {
       ev.preventDefault();
       buscador.focus();
       return;

@@ -60,11 +60,23 @@
       <div class="curso-simple">
         <div class="curso-barra">
           <div class="curso-elegir">
-            <label class="eyebrow" for="curso-select">Horario de</label>
-            <span class="curso-select-marco">
-              <select id="curso-select"></select>
-              <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-            </span>
+            <span class="eyebrow" id="curso-rotulo">Horario de</span>
+            <button type="button" id="curso-boton" class="curso-boton" aria-haspopup="dialog" aria-expanded="false"
+                    aria-controls="curso-menu" aria-labelledby="curso-rotulo curso-actual">
+              <span id="curso-actual"></span>
+              <span class="curso-boton-flecha" aria-hidden="true">
+                <svg class="icono" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+              </span>
+            </button>
+            <div class="curso-menu" id="curso-menu" role="dialog" aria-label="Elegir curso" hidden>
+              <div class="curso-menu-cabecera">
+                <span class="curso-menu-titulo">Elige un curso</span>
+                <button type="button" class="boton-icono" data-cerrar-cursos aria-label="Cerrar">
+                  <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+              </div>
+              <div class="curso-menu-grupos" id="curso-menu-grupos"></div>
+            </div>
           </div>
           <div class="cabecera-acciones">
             <button type="button" class="boton-icono" data-paso="-1" aria-label="Curso anterior" title="Curso anterior (←)">
