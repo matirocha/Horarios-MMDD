@@ -1,17 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-Modelo de sesiones del horario y función de costo incremental.
+Modelo de sesiones del horario y función objetivo (costo incremental).
 
-Es el estado compartido sobre el que trabajan la solución inicial (construccion.py)
-y las metaheurísticas (metaheuristicas/). Cada curso se descompone en sesiones
-(bloques dobles de 90 min o simples de 45 min). Los dobles ocupan siempre un par
-pedagógico (1-2, 3-4, 5-6, 7-8, 9-10), por lo que nunca cruzan un recreo, y la
-jornada de cada curso queda completa sin huecos. Las franjas de electivos son
-sesiones fijas compartidas por las secciones A y B.
+Es el estado compartido sobre el que trabajan la solución inicial
+(heuristicas/construccion_voraz.py) y los métodos de mejora (heuristicas/min_conflicts.py
+y metaheuristicas/). Cada curso se descompone en sesiones (bloques dobles de 90 min o
+simples de 45 min). Los dobles ocupan siempre un par pedagógico (1-2, 3-4, 5-6, 7-8, 9-10),
+por lo que nunca cruzan un recreo, y la jornada de cada curso queda completa sin huecos.
+Las franjas de electivos son sesiones fijas compartidas por las secciones A y B.
 
-Cada restricción se representa con una clave ('D' docente, 'F' asignatura en el día,
-'G' recintos deportivos, 'R' sala de capacidad limitada) cuyo costo se actualiza al
-registrar o retirar una sesión, así un movimiento se evalúa sin recorrer el horario.
+FUNCIÓN OBJETIVO (se minimiza; el valor actual está en self.costo)
+
+    f(x) = PESO_DURO · H(x) + PESO_PATIO · P(x) = 1000 · H(x) + 1 · P(x)
+
+  H(x) = número de violaciones duras (self.duras), suma de:
+    'D' docente:  por cada (docente, día, bloque), grupos que atiende a la vez − 1.
+    'F' familia:  por cada (curso, día, asignatura), sesiones ese día − 1.
+    'R' sala:     por cada (sala, día, bloque), cursos sobre su capacidad (English skills: 1).
+    'G' recintos: por cada (día, bloque), cursos en Ed. Física que no caben en los dos
+                  gimnasios ni en el Patio Santo Domingo.
+  P(x) = bloques en que un curso se desborda al Patio Santo Domingo (restricción blanda).
+
+  Como P(x) nunca supera 50 bloques, una sola violación dura (1000) pesa más que todo el
+  costo blando: el método prioriza la factibilidad. f(x) = 0 es el óptimo.
+  Las demás reglas (carga horaria, jornada completa, bloques dobles en pares, electivos
+  sincronizados, jefaturas) se cumplen por construcción de la representación.
+
+Cada restricción se representa con una clave ('D', 'F', 'G', 'R') cuyo costo se actualiza
+al registrar o retirar una sesión, así un movimiento se evalúa sin recorrer el horario.
+Para agregar un criterio nuevo a la función objetivo (p. ej. ventanas docentes) hay que
+definir su clave en claves_sesion() y su costo en costo_clave().
 """
 
 from collections import defaultdict
