@@ -6,7 +6,7 @@ de un horario ya construido.
 
 from collections import defaultdict
 
-from .datos import DatosColegio
+from ..datos import DatosColegio
 
 
 class ValidadorRestricciones:

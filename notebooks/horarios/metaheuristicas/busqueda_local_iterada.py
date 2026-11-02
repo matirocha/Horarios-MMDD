@@ -13,7 +13,7 @@ Alterna una búsqueda local con perturbaciones:
 """
 
 from ..heuristicas.min_conflicts import elegir_sesion_en_conflicto, mejor_movimiento
-from .base import Metaheuristica
+from ..mejora import Metaheuristica
 
 
 def perturbar(modelo, rng, intensidad):

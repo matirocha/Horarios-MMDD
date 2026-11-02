@@ -33,9 +33,6 @@ class MotorHorarios:
     'tiempo_max' (segundos) limita la duración de la búsqueda; None = sin límite.
     """
 
-    PESO_DURO = ModeloHorario.PESO_DURO
-    PESO_PATIO = ModeloHorario.PESO_PATIO
-
     def __init__(self, seed=42, max_pasos=150000, metaheuristica='min_conflicts_tabu', construccion=None,
                  tiempo_max=None):
         self.seed = seed

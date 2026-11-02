@@ -10,10 +10,21 @@ comparar tiempos y resultados entre ellos, ver notebooks/comparar_metaheuristica
   busqueda_tabu            Búsqueda tabú (busqueda_tabu.py)
   busqueda_local_iterada   Búsqueda local iterada, ILS (busqueda_local_iterada.py)
   min_conflicts_tabu       Híbrido tabú + ruido + reinicios ILS (min_conflicts_tabu.py, por defecto)
+
+CÓMO AGREGAR UNA METAHEURÍSTICA NUEVA
+  1. Crear un archivo en esta carpeta con una subclase de Metaheuristica (mejora.py) que
+     defina 'nombre' e implemente _buscar(modelo, rng, seg). Su constructor debe aceptar
+     'max_pasos' y 'tiempo_max' y pasarlos a super().__init__.
+  2. En el bucle de búsqueda: revisar self.parada_comun(modelo, seg) al inicio de cada paso
+     y llamar a seg.registrar(paso, modelo) después de cada movimiento. Así el tiempo, la
+     mejor solución y la curva de convergencia se miden igual que en las demás.
+     Los operadores de búsqueda local están en heuristicas/min_conflicts.py.
+  3. Registrarla en METAHEURISTICAS (abajo). Queda disponible en
+     'generador_horarios.py --metaheuristica <nombre>' y en 'comparar_metaheuristicas.py'.
 """
 
 from ..heuristicas.min_conflicts import MinConflictos
-from .base import Metaheuristica
+from ..mejora import Metaheuristica
 from .busqueda_local_iterada import BusquedaLocalIterada
 from .busqueda_tabu import BusquedaTabu
 from .min_conflicts_tabu import MinConflictosTabu

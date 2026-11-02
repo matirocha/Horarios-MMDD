@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Fase de mejora: interfaz común y medición del tiempo de ejecución.
+Fase de mejora: clases base y medición del tiempo de ejecución.
 
-Toda heurística de búsqueda local (heuristicas/min_conflicts.py) y toda metaheurística
-(metaheuristicas/) hereda de MetodoMejora. La clase base se encarga de lo que debe
-medirse igual en todos los métodos para poder compararlos:
+  MetodoMejora    base de todo método que mejora una solución completa.
+  Metaheuristica  base de las metaheurísticas (metaheuristicas/).
+  Seguimiento     cronómetro y memoria de la mejor solución de cada búsqueda.
+
+La heurística Min-Conflicts (heuristicas/min_conflicts.py) hereda de MetodoMejora y
+cada metaheurística de Metaheuristica. La clase base se encarga de lo que debe medirse
+igual en todos los métodos para poder compararlos:
 
   - el cronómetro de la búsqueda y el límite de tiempo opcional ('tiempo_max');
   - la mejor solución encontrada (costo y posiciones) y su restauración al final;
@@ -115,3 +119,12 @@ class MetodoMejora:
         if seg.tiempo_agotado():
             return 'tiempo_max'
         return None
+
+
+class Metaheuristica(MetodoMejora):
+    """
+    Método de mejora que guía a la búsqueda local para escapar de óptimos locales.
+    Para crear una nueva, ver las instrucciones en metaheuristicas/__init__.py.
+    """
+
+    tipo = 'metaheurística'

@@ -313,27 +313,27 @@ Horarios-MMDD/
 │   └── Data 2026/                              # Datos oficiales vigentes del modelo
 │       ├── HORARIO CURSOS 2026.xlsx            # Mallas, jornadas, electivos, gimnasios, salas y diseño
 │       └── DISTRIBUCIÓN HORARIA 2026.docx      # Dotación docente y asignación profesor-curso
-├── notebooks/
+├── notebooks/                                  # Código Python (guía de cada archivo en notebooks/README.md)
 │   ├── generador_horarios.py                   # Punto de entrada: genera el horario, Excel y consola
 │   ├── comparar_metaheuristicas.py             # Compara tiempos y resultados de los métodos de mejora
 │   ├── modelo_matematico.py                    # Modelo de programación entera (OR-Tools: CP-SAT, SCIP...)
-│   ├── horarios/                               # Paquete con el código del motor
-│   │   ├── datos.py                            # DatosColegio: parámetros y mallas 2026
-│   │   ├── horario.py                          # HorarioEscolar: estructura del horario final
-│   │   ├── validador.py                        # ValidadorRestricciones: auditoría de restricciones
-│   │   ├── modelo.py                           # ModeloHorario: sesiones y función objetivo (costo incremental)
-│   │   ├── heuristicas/                        # Heurísticas
-│   │   │   ├── construccion_voraz.py           # Heurística constructiva voraz: solución inicial
-│   │   │   └── min_conflicts.py                # Heurística Min-Conflicts: operadores de búsqueda local
-│   │   ├── mejora.py                           # MetodoMejora: interfaz común y medición de tiempos
-│   │   ├── metaheuristicas/                    # Metaheurísticas de mejora (una por archivo)
-│   │   │   ├── base.py                         # Interfaz común Metaheuristica
-│   │   │   ├── busqueda_tabu.py                # Búsqueda tabú (lista tabú + aspiración)
-│   │   │   ├── busqueda_local_iterada.py       # Búsqueda local iterada (ILS)
-│   │   │   └── min_conflicts_tabu.py           # Híbrido Min-Conflicts + tabú + ruido + reinicios (por defecto)
-│   │   ├── motor.py                            # MotorHorarios: encadena las fases y mide tiempos
-│   │   ├── exportador_excel.py                 # ExportadorExcel: libros .xlsx con el diseño oficial
-│   │   └── menu.py                             # MenuInteractivo: consola
+│   ├── horarios/                               # Paquete con el código del motor, por fases
+│   │   ├── datos.py                            # 1. DatosColegio: parámetros y mallas 2026
+│   │   ├── modelo.py                           # 2. ModeloHorario: sesiones y función objetivo (costo incremental)
+│   │   ├── heuristicas/                        # 3. Heurísticas
+│   │   │   ├── construccion_voraz.py           #    Heurística constructiva voraz: solución inicial
+│   │   │   └── min_conflicts.py                #    Heurística Min-Conflicts: operadores de búsqueda local
+│   │   ├── mejora.py                           # 4. Clases base de los métodos de mejora y medición de tiempos
+│   │   ├── metaheuristicas/                    # 4. Metaheurísticas de mejora (una por archivo)
+│   │   │   ├── busqueda_tabu.py                #    Búsqueda tabú (lista tabú + aspiración)
+│   │   │   ├── busqueda_local_iterada.py       #    Búsqueda local iterada (ILS)
+│   │   │   └── min_conflicts_tabu.py           #    Híbrido Min-Conflicts + tabú + ruido + reinicios (por defecto)
+│   │   ├── motor.py                            # 5. MotorHorarios: encadena las fases y mide tiempos
+│   │   └── salidas/                            # 6. Trabajo sobre el horario ya generado
+│   │       ├── horario.py                      #    HorarioEscolar: estructura del horario final
+│   │       ├── validador.py                    #    ValidadorRestricciones: auditoría de restricciones
+│   │       ├── exportador_excel.py             #    ExportadorExcel: libros .xlsx con el diseño oficial
+│   │       └── menu.py                         #    MenuInteractivo: consola
 │   └── Outputs Excel/                          # Libros generados automáticamente
 │       ├── Horario_Cursos_MMDD.xlsx            # Mismo formato que HORARIO CURSOS 2026.xlsx
 │       └── Horarios_Docentes_Colegio_MMDD.xlsx # Distribución horaria y grilla de cada docente
@@ -365,7 +365,7 @@ flowchart LR
 5. **Validación y Despliegue:** Contraste de horarios generados versus horarios manuales históricos y despliegue en la plataforma web interactiva.
 
 ### Motor actual (`MotorHorarios`)
-Cada fase está en su propio módulo de `notebooks/horarios/`: el modelo de sesiones en `modelo.py`, las heurísticas en `heuristicas/` y las metaheurísticas de mejora en `metaheuristicas/` (una por archivo).
+Cada fase está en su propio módulo de `notebooks/horarios/`: el modelo de sesiones en `modelo.py`, las heurísticas en `heuristicas/`, las metaheurísticas de mejora en `metaheuristicas/` (una por archivo) y la auditoría, los Excel y la consola en `salidas/`. La guía de cada archivo está en [`notebooks/README.md`](notebooks/README.md).
 
 1. **Modelo de sesiones:** cada asignatura se descompone en sesiones dobles (90 min, siempre dentro de un par pedagógico) y, si sus horas son impares, una sesión simple. Las franjas de electivos se fijan primero y se comparten entre A y B.
 2. **Construcción voraz:** se ubican primero las sesiones dobles y luego las simples, de la más restringida (co-docencia, docentes con mayor carga, Educación Física) a la menos restringida, en la posición de menor costo.
@@ -462,7 +462,7 @@ Cómo decidir qué método es mejor:
 4. **Calidad secundaria:** ventanas docentes y % de bloques dobles. Mientras no estén en la función objetivo, sus diferencias son casuales; para compararlos hay que agregarlos a $f(x)$ (`modelo.py`).
 5. Con 10 a 30 semillas, las diferencias por semilla se pueden contrastar con una prueba pareada de Wilcoxon (`scipy.stats.wilcoxon`) y las curvas de `--convergencia` muestran cuál baja el costo más rápido.
 
-Para agregar una metaheurística nueva: crear un archivo en `notebooks/horarios/metaheuristicas/` con una subclase de `Metaheuristica` (ver `base.py`) que implemente `_buscar(modelo, rng, seg)` usando los operadores de `heuristicas/min_conflicts.py`, revisar `self.parada_comun(modelo, seg)` en cada paso, llamar a `seg.registrar(paso, modelo)` después de cada movimiento, y registrarla en `METAHEURISTICAS` de `metaheuristicas/__init__.py`. Queda disponible en `--metaheuristica` y en el script de comparación, con sus tiempos medidos igual que los demás.
+Para agregar una metaheurística nueva: crear un archivo en `notebooks/horarios/metaheuristicas/` con una subclase de `Metaheuristica` (`horarios/mejora.py`; instrucciones en `metaheuristicas/__init__.py`) que implemente `_buscar(modelo, rng, seg)` usando los operadores de `heuristicas/min_conflicts.py`, revisar `self.parada_comun(modelo, seg)` en cada paso, llamar a `seg.registrar(paso, modelo)` después de cada movimiento, y registrarla en `METAHEURISTICAS` de `metaheuristicas/__init__.py`. Queda disponible en `--metaheuristica` y en el script de comparación, con sus tiempos medidos igual que los demás.
 
 ### Modelo matemático
 ```bash

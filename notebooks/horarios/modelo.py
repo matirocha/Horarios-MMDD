@@ -35,7 +35,7 @@ definir su clave en claves_sesion() y su costo en costo_clave().
 from collections import defaultdict
 
 from .datos import DatosColegio
-from .horario import HorarioEscolar
+from .salidas.horario import HorarioEscolar
 
 
 class ModeloHorario:

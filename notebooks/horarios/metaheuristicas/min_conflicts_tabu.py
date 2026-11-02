@@ -14,7 +14,7 @@ Es el método con que se generan los horarios del proyecto. Combina:
 """
 
 from ..heuristicas.min_conflicts import elegir_sesion_en_conflicto, mejor_movimiento
-from .base import Metaheuristica
+from ..mejora import Metaheuristica
 from .busqueda_local_iterada import perturbar
 from .busqueda_tabu import ListaTabu
 

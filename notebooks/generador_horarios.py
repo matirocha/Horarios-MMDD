@@ -14,19 +14,16 @@ oficiales del año 2026 (carpeta data/Data 2026):
   - HORARIO CURSOS 2026.xlsx       -> bloques, jornadas, cargas, electivos y recintos.
   - DISTRIBUCIÓN HORARIA 2026.docx -> dotación docente y asignación profesor-curso.
 
-El código vive en el paquete horarios/ (ver horarios/__init__.py):
-  - heurísticas en horarios/heuristicas/ (construcción voraz y Min-Conflicts);
-  - metaheurísticas en horarios/metaheuristicas/ (una por archivo).
-Este archivo reexporta sus clases para que 'from generador_horarios import ...' siga
-funcionando. El modelo matemático exacto está en modelo_matematico.py.
+El código vive en el paquete horarios/ (ver notebooks/README.md). El modelo
+matemático exacto está en modelo_matematico.py y la comparación de métodos en
+comparar_metaheuristicas.py.
 """
 
 import argparse
 
-from horarios import (METAHEURISTICAS, BusquedaLocalIterada, BusquedaTabu, ConstruccionVoraz,  # noqa: F401
-                      DatosColegio, ExportadorExcel, HorarioEscolar, MenuInteractivo, Metaheuristica,
-                      MetodoMejora, MinConflictos, MinConflictosTabu, ModeloHorario, MotorHorarios,
-                      ValidadorRestricciones, crear_metaheuristica)
+from horarios import METAHEURISTICAS, MenuInteractivo, MotorHorarios
+# Los prototipos web importan estas clases desde este archivo ('from generador_horarios import ...')
+from horarios import DatosColegio, ExportadorExcel, HorarioEscolar, ValidadorRestricciones  # noqa: F401
 
 
 def main():

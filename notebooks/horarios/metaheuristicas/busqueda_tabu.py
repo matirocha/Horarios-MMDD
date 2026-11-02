@@ -13,7 +13,7 @@ Para no volver de inmediato a la solución anterior usa una memoria de corto pla
 """
 
 from ..heuristicas.min_conflicts import elegir_sesion_en_conflicto, mejor_movimiento, posicion_destino
-from .base import Metaheuristica
+from ..mejora import Metaheuristica
 
 
 class ListaTabu:
