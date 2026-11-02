@@ -5,12 +5,12 @@ Menú interactivo y vista por consola de los horarios generados.
 
 import os
 
-from .datos import DatosColegio
+from ..datos import DatosColegio
 from .exportador_excel import ExportadorExcel
 from .validador import ValidadorRestricciones
 
 # Carpeta notebooks/ (los Excel se guardan en notebooks/Outputs Excel/)
-CARPETA_NOTEBOOKS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CARPETA_NOTEBOOKS = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class MenuInteractivo:
@@ -129,16 +129,16 @@ class MenuInteractivo:
 
     def exportar(self):
         """Genera ambos libros Excel en la carpeta Outputs Excel/."""
-        print(f"\n⏳ Generando libros Excel en carpeta 'Outputs Excel/' ...")
+        print("\n⏳ Generando libros Excel en carpeta 'Outputs Excel/' ...")
 
         # 1. Horario de cursos
         ExportadorExcel.exportar_horario_cursos(self.horario, self.ruta_excel_cursos)
-        print(f"✅ ¡Horario de Cursos generado exitosamente!")
+        print("✅ ¡Horario de Cursos generado exitosamente!")
         print(f"📁 [1] Cursos:   {self.ruta_excel_cursos}")
 
         # 2. Horario de docentes
         ExportadorExcel.exportar_horario_docentes(self.horario, self.ruta_excel_docentes)
-        print(f"✅ ¡Horarios de Docentes generado exitosamente!")
+        print("✅ ¡Horarios de Docentes generado exitosamente!")
         print(f"📁 [2] Docentes: {self.ruta_excel_docentes}\n")
 
     def mostrar_auditoria(self):

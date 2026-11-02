@@ -19,11 +19,11 @@ try:
 except ImportError:  # El motor y la consola funcionan sin openpyxl; solo la exportación lo requiere
     openpyxl = None
 
-from .datos import DatosColegio
+from ..datos import DatosColegio
 from .validador import ValidadorRestricciones
 
 # Raíz del repositorio (notebooks/horarios/ -> notebooks/ -> raíz)
-RAIZ_REPOSITORIO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+RAIZ_REPOSITORIO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 class ExportadorExcel:
@@ -259,9 +259,6 @@ class ExportadorExcel:
         cls._hoja_auditoria(wb.create_sheet('AUDITORIA'), horario)
         wb.save(ruta_salida)
         return ruta_salida
-
-    # Alias por retrocompatibilidad
-    exportar_horario = exportar_horario_cursos
 
     @classmethod
     def _hoja_curso(cls, ws, curso, horario):

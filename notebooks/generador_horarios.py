@@ -14,15 +14,16 @@ oficiales del año 2026 (carpeta data/Data 2026):
   - HORARIO CURSOS 2026.xlsx       -> bloques, jornadas, cargas, electivos y recintos.
   - DISTRIBUCIÓN HORARIA 2026.docx -> dotación docente y asignación profesor-curso.
 
-El código vive en el paquete horarios/ (ver horarios/__init__.py). Este archivo
-reexporta sus clases para que 'from generador_horarios import ...' siga funcionando.
+El código vive en el paquete horarios/ (ver notebooks/README.md). El modelo
+matemático exacto está en modelo_matematico.py y la comparación de métodos en
+comparar_metaheuristicas.py.
 """
 
 import argparse
 
-from horarios import (METAHEURISTICAS, ConstruccionVoraz, DatosColegio, ExportadorExcel,  # noqa: F401
-                      HorarioEscolar, MenuInteractivo, Metaheuristica, MinConflictosTabu,
-                      ModeloHorario, MotorHorarios, ValidadorRestricciones, crear_metaheuristica)
+from horarios import METAHEURISTICAS, MenuInteractivo, MotorHorarios
+# Los prototipos web importan estas clases desde este archivo ('from generador_horarios import ...')
+from horarios import DatosColegio, ExportadorExcel, HorarioEscolar, ValidadorRestricciones  # noqa: F401
 
 
 def main():
@@ -34,11 +35,17 @@ def main():
     parser.add_argument('--seed', type=int, default=3, help="Semilla del generador (default: 3)")
     parser.add_argument('--metaheuristica', choices=sorted(METAHEURISTICAS), default='min_conflicts_tabu',
                         help="Metaheurística de mejora (default: min_conflicts_tabu)")
+    parser.add_argument('--tiempo-max', type=float, default=None,
+                        help="Segundos máximos de la búsqueda (default: sin límite)")
     args = parser.parse_args()
 
     # 1. Generar horario factible
-    motor = MotorHorarios(seed=args.seed, metaheuristica=args.metaheuristica)
+    motor = MotorHorarios(seed=args.seed, metaheuristica=args.metaheuristica, tiempo_max=args.tiempo_max)
     horario = motor.generar()
+    e, t = motor.estadisticas, motor.tiempos
+    print(f"Horario generado con {e['metaheuristica']} (semilla {args.seed}): {e['duras_finales']} violaciones "
+          f"duras, costo {e['costo_final']}, {e['pasos']} pasos. Tiempo: construcción "
+          f"{t['construccion'] * 1000:.0f} ms, búsqueda {t['busqueda'] * 1000:.0f} ms, total {t['total'] * 1000:.0f} ms.")
     menu = MenuInteractivo(horario)
 
     # 2. Generar siempre el Excel en Outputs Excel automáticamente

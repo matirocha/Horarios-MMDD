@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 Motor de generación de horarios: encadena el modelo de sesiones, la solución
-inicial y una metaheurística de mejora, y mide el tiempo de cada fase.
+inicial (heurística constructiva) y un método de mejora (metaheurística), y mide
+el tiempo de cada fase.
 """
 
 import random
 import time
 
-from .construccion import ConstruccionVoraz
+from .heuristicas import ConstruccionVoraz
 from .metaheuristicas import crear_metaheuristica
 from .modelo import ModeloHorario
 
@@ -18,24 +19,27 @@ class MotorHorarios:
 
     1. Modelo de sesiones (ModeloHorario): bloques dobles de 90 min o simples de 45 min,
        con las franjas de electivos fijas y compartidas por las secciones A y B.
-    2. Solución inicial (ConstruccionVoraz): sesiones dobles y luego simples, de la más
-       restringida a la menos restringida, en la posición de menor costo.
-    3. Metaheurística de mejora (por defecto Min-Conflicts con lista tabú): repara las
-       violaciones intercambiando sesiones dentro de cada curso.
+    2. Solución inicial (heuristicas/construccion_voraz.py): sesiones dobles y luego simples,
+       de la más restringida a la menos restringida, en la posición de menor costo.
+    3. Método de mejora (metaheuristicas/, por defecto el híbrido Min-Conflicts + tabú +
+       reinicios): repara las violaciones intercambiando sesiones dentro de cada curso.
 
     Las tres fases comparten un mismo generador aleatorio con semilla 'seed', así cada
     ejecución con la misma semilla da el mismo horario. Tras generar(), 'tiempos' guarda
-    la duración de cada fase en segundos y 'estadisticas' el resultado de la búsqueda.
+    la duración de cada fase en segundos y 'estadisticas' el resultado de la búsqueda
+    (pasos, motivo de parada, tiempo hasta la primera solución factible y hasta la mejor,
+    e historial de convergencia).
+
+    'tiempo_max' (segundos) limita la duración de la búsqueda; None = sin límite.
     """
 
-    PESO_DURO = ModeloHorario.PESO_DURO
-    PESO_PATIO = ModeloHorario.PESO_PATIO
-
-    def __init__(self, seed=42, max_pasos=150000, metaheuristica='min_conflicts_tabu', construccion=None):
+    def __init__(self, seed=42, max_pasos=150000, metaheuristica='min_conflicts_tabu', construccion=None,
+                 tiempo_max=None):
         self.seed = seed
         self.max_pasos = max_pasos
+        self.tiempo_max = tiempo_max
         if isinstance(metaheuristica, str):
-            metaheuristica = crear_metaheuristica(metaheuristica, max_pasos=max_pasos)
+            metaheuristica = crear_metaheuristica(metaheuristica, max_pasos=max_pasos, tiempo_max=tiempo_max)
         self.metaheuristica = metaheuristica
         self.construccion = construccion or ConstruccionVoraz()
         self.modelo = None
@@ -63,6 +67,7 @@ class MotorHorarios:
                         'salida': t4 - t3, 'total': t4 - t0}
         self.estadisticas = dict(resultado,
                                  metaheuristica=self.metaheuristica.nombre,
+                                 tipo=self.metaheuristica.tipo,
                                  costo_construccion=costo_construccion,
                                  duras_construccion=duras_construccion,
                                  costo_final=self.modelo.costo,

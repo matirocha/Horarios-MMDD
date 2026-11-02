@@ -313,21 +313,27 @@ Horarios-MMDD/
 │   └── Data 2026/                              # Datos oficiales vigentes del modelo
 │       ├── HORARIO CURSOS 2026.xlsx            # Mallas, jornadas, electivos, gimnasios, salas y diseño
 │       └── DISTRIBUCIÓN HORARIA 2026.docx      # Dotación docente y asignación profesor-curso
-├── notebooks/
+├── notebooks/                                  # Código Python (guía de cada archivo en notebooks/README.md)
 │   ├── generador_horarios.py                   # Punto de entrada: genera el horario, Excel y consola
-│   ├── comparar_metaheuristicas.py             # Compara tiempos y resultados de las metaheurísticas
-│   ├── horarios/                               # Paquete con el código del motor
-│   │   ├── datos.py                            # DatosColegio: parámetros y mallas 2026
-│   │   ├── horario.py                          # HorarioEscolar: estructura del horario final
-│   │   ├── validador.py                        # ValidadorRestricciones: auditoría de restricciones
-│   │   ├── modelo.py                           # ModeloHorario: sesiones y función de costo incremental
-│   │   ├── construccion.py                     # ConstruccionVoraz: solución inicial
-│   │   ├── metaheuristicas/                    # Metaheurísticas de mejora (una por archivo)
-│   │   │   ├── base.py                         # Interfaz común Metaheuristica
-│   │   │   └── min_conflicts_tabu.py           # Min-Conflicts con lista tabú
-│   │   ├── motor.py                            # MotorHorarios: encadena las fases y mide tiempos
-│   │   ├── exportador_excel.py                 # ExportadorExcel: libros .xlsx con el diseño oficial
-│   │   └── menu.py                             # MenuInteractivo: consola
+│   ├── comparar_metaheuristicas.py             # Compara tiempos y resultados de los métodos de mejora
+│   ├── modelo_matematico.py                    # Modelo de programación entera (OR-Tools: CP-SAT, SCIP...)
+│   ├── horarios/                               # Paquete con el código del motor, por fases
+│   │   ├── datos.py                            # 1. DatosColegio: parámetros y mallas 2026
+│   │   ├── modelo.py                           # 2. ModeloHorario: sesiones y función objetivo (costo incremental)
+│   │   ├── heuristicas/                        # 3. Heurísticas
+│   │   │   ├── construccion_voraz.py           #    Heurística constructiva voraz: solución inicial
+│   │   │   └── min_conflicts.py                #    Heurística Min-Conflicts: operadores de búsqueda local
+│   │   ├── mejora.py                           # 4. Clases base de los métodos de mejora y medición de tiempos
+│   │   ├── metaheuristicas/                    # 4. Metaheurísticas de mejora (una por archivo)
+│   │   │   ├── busqueda_tabu.py                #    Búsqueda tabú (lista tabú + aspiración)
+│   │   │   ├── busqueda_local_iterada.py       #    Búsqueda local iterada (ILS)
+│   │   │   └── min_conflicts_tabu.py           #    Híbrido Min-Conflicts + tabú + ruido + reinicios (por defecto)
+│   │   ├── motor.py                            # 5. MotorHorarios: encadena las fases y mide tiempos
+│   │   └── salidas/                            # 6. Trabajo sobre el horario ya generado
+│   │       ├── horario.py                      #    HorarioEscolar: estructura del horario final
+│   │       ├── validador.py                    #    ValidadorRestricciones: auditoría de restricciones
+│   │       ├── exportador_excel.py             #    ExportadorExcel: libros .xlsx con el diseño oficial
+│   │       └── menu.py                         #    MenuInteractivo: consola
 │   └── Outputs Excel/                          # Libros generados automáticamente
 │       ├── Horario_Cursos_MMDD.xlsx            # Mismo formato que HORARIO CURSOS 2026.xlsx
 │       └── Horarios_Docentes_Colegio_MMDD.xlsx # Distribución horaria y grilla de cada docente
@@ -359,13 +365,43 @@ flowchart LR
 5. **Validación y Despliegue:** Contraste de horarios generados versus horarios manuales históricos y despliegue en la plataforma web interactiva.
 
 ### Motor actual (`MotorHorarios`)
-Cada fase está en su propio módulo de `notebooks/horarios/`: el modelo de sesiones en `modelo.py`, la solución inicial en `construccion.py` y la metaheurística de mejora en `metaheuristicas/`.
+Cada fase está en su propio módulo de `notebooks/horarios/`: el modelo de sesiones en `modelo.py`, las heurísticas en `heuristicas/`, las metaheurísticas de mejora en `metaheuristicas/` (una por archivo) y la auditoría, los Excel y la consola en `salidas/`. La guía de cada archivo está en [`notebooks/README.md`](notebooks/README.md).
 
 1. **Modelo de sesiones:** cada asignatura se descompone en sesiones dobles (90 min, siempre dentro de un par pedagógico) y, si sus horas son impares, una sesión simple. Las franjas de electivos se fijan primero y se comparten entre A y B.
 2. **Construcción voraz:** se ubican primero las sesiones dobles y luego las simples, de la más restringida (co-docencia, docentes con mayor carga, Educación Física) a la menos restringida, en la posición de menor costo.
-3. **Búsqueda local Min-Conflicts con lista tabú:** se elige una restricción violada, una de sus sesiones y el mejor intercambio dentro del curso (par por par o bloque por bloque, lo que mantiene la jornada completa), con ruido aleatorio y reinicios desde la mejor solución encontrada.
+3. **Método de mejora (por defecto, el híbrido `min_conflicts_tabu`):** se elige una restricción violada, una de sus sesiones y el mejor intercambio dentro del curso (par por par o bloque por bloque, lo que mantiene la jornada completa), con lista tabú, ruido aleatorio y reinicios desde la mejor solución encontrada.
 
 Con la semilla por defecto (`--seed 3`) el motor obtiene en menos de un segundo un horario con **936/936 bloques asignados, 0 violaciones duras, 92% de las horas en bloques dobles y sin uso del Patio Santo Domingo**.
+
+#### Heurísticas y metaheurísticas identificadas
+
+| Archivo (`notebooks/horarios/`) | Tipo | Técnica |
+| :--- | :--- | :--- |
+| `heuristicas/construccion_voraz.py` | Heurística constructiva | Ubica cada sesión, de la más a la menos restringida, en la posición de menor costo. Genera la solución inicial. |
+| `heuristicas/min_conflicts.py` | Heurística de mejora (búsqueda local) | **Min-Conflicts**: elige una restricción violada, una de sus sesiones y el intercambio que deja menos conflictos. Sola, solo acepta movimientos que no empeoran y se queda en óptimos locales. Sus operadores los usan todas las metaheurísticas. |
+| `metaheuristicas/busqueda_tabu.py` | Metaheurística | **Búsqueda tabú**: aplica el mejor intercambio aunque empeore; lista tabú de permanencia aleatoria y criterio de aspiración. |
+| `metaheuristicas/busqueda_local_iterada.py` | Metaheurística | **ILS**: descenso Min-Conflicts hasta un óptimo local, vuelta a la mejor solución y perturbación al azar. |
+| `metaheuristicas/min_conflicts_tabu.py` | Metaheurística híbrida (por defecto) | Min-Conflicts + búsqueda tabú + ruido (*random walk*) + reinicios con perturbación de la ILS. |
+
+#### Función objetivo
+Todos los métodos minimizan la misma función, calculada de forma incremental en `modelo.py`:
+
+$$f(x) = 1000 \cdot H(x) + 1 \cdot P(x)$$
+
+* $H(x)$: violaciones duras (choques de docentes, asignatura repetida en el día, sala de English skills sobre su capacidad y cursos en Educación Física que no caben en los recintos).
+* $P(x)$: bloques en que un curso se desborda al Patio Santo Domingo (blanda). Como $P(x) \le 50$, una sola violación dura pesa más que todo el costo blando.
+* $f(x) = 0$ es el óptimo. Las demás restricciones (cargas, jornada completa, bloques dobles, electivos y jefaturas) se cumplen por construcción.
+
+#### Modelo matemático (`notebooks/modelo_matematico.py`)
+Formulación de programación lineal entera del mismo problema y con la misma instancia: variables binarias $y_{lp}$ (sesión doble de la lección $l$ en el par $p$) y $z_{lx}$ (sesión simple en la celda $x$), restricciones duras como restricciones y objetivo $\min\, w_P \sum u_{gx} + w_V \sum v_{tdb}$ (uso del patio y, opcionalmente, ventanas docentes). La formulación completa está en el encabezado del archivo. Se resuelve con OR-Tools; la solución se vuelve a evaluar con la función objetivo de las metaheurísticas y con `ValidadorRestricciones`.
+
+| Solver (4 núcleos) | Objetivo: patio | Tiempo |
+| :--- | :---: | :---: |
+| CP-SAT (por defecto) | 0 (óptimo) | ≈ 0,4 s (≈ 15 s con `--hilos 1`) |
+| HiGHS | 0 (óptimo) | ≈ 90 s |
+| SCIP | 0 (óptimo) | ≈ 255 s |
+
+Con `--peso-ventanas 1`, CP-SAT encuentra en ≈ 20 s un horario óptimo con **1 ventana docente**, contra ≈ 125 de los horarios de las metaheurísticas (que hoy no minimizan las ventanas).
 
 ---
 
@@ -377,6 +413,7 @@ Con la semilla por defecto (`--seed 3`) el motor obtiene en menos de un segundo 
 
 ```bash
 pip install openpyxl pillow
+pip install ortools        # solo para notebooks/modelo_matematico.py
 ```
 
 ```bash
@@ -393,16 +430,49 @@ Opciones de línea de comandos (los Excel se generan siempre al iniciar):
 | `--curso "3° MEDIO A"` | Muestra el horario de un curso. |
 | `--docente "Inglés 1"` | Muestra el horario de un docente. |
 | `--seed N` | Cambia la semilla del generador (por defecto 3). |
-| `--metaheuristica NOMBRE` | Metaheurística de mejora (por defecto `min_conflicts_tabu`). |
+| `--metaheuristica NOMBRE` | Método de mejora: `min_conflicts_tabu` (por defecto), `busqueda_tabu`, `busqueda_local_iterada` o `min_conflicts`. |
+| `--tiempo-max S` | Límite de segundos de la búsqueda (por defecto, sin límite). |
 
 ### Comparar metaheurísticas
-`comparar_metaheuristicas.py` ejecuta cada metaheurística registrada con varias semillas, sobre la misma solución inicial, y muestra el tiempo de construcción, el tiempo de búsqueda, los pasos y si el horario quedó factible (no genera Excel).
+`comparar_metaheuristicas.py` ejecuta cada método registrado con varias semillas (por defecto 1 a 10) y el mismo presupuesto (por defecto 20 s por búsqueda). Para cada semilla todos parten de la misma solución inicial. No genera Excel.
 
 ```bash
-python notebooks/comparar_metaheuristicas.py --semillas 1 2 3 4 5 --csv resultados.csv
+python notebooks/comparar_metaheuristicas.py
+python notebooks/comparar_metaheuristicas.py --semillas 1 2 3 4 5 --tiempo-max 10 --csv resultados.csv
+python notebooks/comparar_metaheuristicas.py --convergencia convergencia.csv   # curvas costo vs. tiempo
 ```
 
-Para agregar una metaheurística nueva: crear un archivo en `notebooks/horarios/metaheuristicas/` con una subclase de `Metaheuristica` (ver `base.py`) que implemente `buscar(modelo, rng)`, y registrarla en `METAHEURISTICAS` de `metaheuristicas/__init__.py`. Queda disponible en `--metaheuristica` y en el script de comparación.
+Por ejecución informa si el horario quedó factible, el costo final $f(x)$, los pasos, el **tiempo de búsqueda**, el **tiempo hasta la primera solución factible**, el tiempo hasta la mejor solución y los indicadores de la auditoría (ventanas docentes, % de bloques dobles y uso del patio). El resumen ordena los métodos por % de ejecuciones factibles, costo final medio y mediana del tiempo hasta factible. El tiempo se mide en la clase base (`mejora.py`), igual para todos los métodos.
+
+Resultados de referencia (semillas 1 a 10, límite de 20 s, un núcleo):
+
+| Método | Tipo | Factibles | Mediana hasta factible | Mediana de búsqueda | Peor caso |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| `min_conflicts_tabu` (híbrido) | Metaheurística | 10 / 10 | 0,23 s | 0,25 s | 0,64 s |
+| `busqueda_local_iterada` | Metaheurística | 10 / 10 | 1,7 s | 2,0 s | 5,3 s |
+| `busqueda_tabu` | Metaheurística | 4 / 10 | 0,13 s* | 20 s | 20 s (límite) |
+| `min_conflicts` | Heurística | 0 / 10 | – | 1,4 s | 1,8 s |
+
+\* Solo entre las 4 ejecuciones que llegaron a factible; las otras 6 ciclan alrededor de 1–2 violaciones hasta el límite de tiempo.
+
+Cómo decidir qué método es mejor:
+1. **Eficacia:** % de semillas que llegan a 0 violaciones duras y costo final medio (con el mismo límite de tiempo).
+2. **Eficiencia:** mediana del tiempo hasta la primera solución factible (la mediana resiste ejecuciones atípicas) y peor caso.
+3. **Robustez:** desviación estándar de los tiempos entre semillas.
+4. **Calidad secundaria:** ventanas docentes y % de bloques dobles. Mientras no estén en la función objetivo, sus diferencias son casuales; para compararlos hay que agregarlos a $f(x)$ (`modelo.py`).
+5. Con 10 a 30 semillas, las diferencias por semilla se pueden contrastar con una prueba pareada de Wilcoxon (`scipy.stats.wilcoxon`) y las curvas de `--convergencia` muestran cuál baja el costo más rápido.
+
+Para agregar una metaheurística nueva: crear un archivo en `notebooks/horarios/metaheuristicas/` con una subclase de `Metaheuristica` (`horarios/mejora.py`; instrucciones en `metaheuristicas/__init__.py`) que implemente `_buscar(modelo, rng, seg)` usando los operadores de `heuristicas/min_conflicts.py`, revisar `self.parada_comun(modelo, seg)` en cada paso, llamar a `seg.registrar(paso, modelo)` después de cada movimiento, y registrarla en `METAHEURISTICAS` de `metaheuristicas/__init__.py`. Queda disponible en `--metaheuristica` y en el script de comparación, con sus tiempos medidos igual que los demás.
+
+### Modelo matemático
+```bash
+python notebooks/modelo_matematico.py                          # CP-SAT, minimiza el uso del patio
+python notebooks/modelo_matematico.py --hilos 1                # 1 hilo, comparable con las metaheurísticas
+python notebooks/modelo_matematico.py --solver SCIP --tiempo-max 600
+python notebooks/modelo_matematico.py --peso-ventanas 1        # minimiza además las ventanas docentes
+python notebooks/modelo_matematico.py --excel "Outputs Modelo" # Excel del horario obtenido
+```
+Informa el estado (óptimo o factible), el objetivo, la cota inferior y el gap, el tiempo de construcción y de resolución, y la validación de la solución. `--lp modelo.lp` exporta el modelo en formato LP.
 
 ### 1. `Horario_Cursos_MMDD.xlsx` (Horario por Cursos)
 Replica la estructura y el diseño de `HORARIO CURSOS 2026.xlsx`: fuente Cavolini, encabezados y recreos en amarillo, bloques y horarios en crema, bordes naranjos y el escudo del colegio.

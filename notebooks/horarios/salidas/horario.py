@@ -6,7 +6,7 @@ docentes y de recintos deportivos.
 
 from collections import defaultdict
 
-from .datos import DatosColegio
+from ..datos import DatosColegio
 
 
 class HorarioEscolar:
@@ -25,18 +25,6 @@ class HorarioEscolar:
         self.docente_detalle = defaultdict(dict)
         # gimnasio_ocupado[(dia, bloque)] = list(cursos)
         self.gimnasio_ocupado = defaultdict(list)
-
-    def esta_disponible(self, curso, dia, bloque, docente, es_gimnasio=False):
-        """Evalúa si un bloque está libre para el curso y el docente, y si hay recinto deportivo."""
-        if bloque not in DatosColegio.get_bloques_permitidos(curso, dia):
-            return False
-        if bloque in self.asignaciones[curso][dia]:
-            return False
-        if (dia, bloque) in self.docente_ocupado[docente]:
-            return False
-        if es_gimnasio and len(self.gimnasio_ocupado[(dia, bloque)]) >= len(DatosColegio.RECINTOS_DEPORTIVOS):
-            return False
-        return True
 
     def asignar(self, curso, dia, bloque, asignatura, docentes, espacio='Aula', etiqueta=None,
                 clave=None, detalle=None):
@@ -64,19 +52,6 @@ class HorarioEscolar:
                 self.docente_ocupado[doc][(dia, bloque)] = (curso, asignatura)
         if espacio == 'Gimnasio':
             self.gimnasio_ocupado[(dia, bloque)].append(curso)
-
-    def desasignar(self, curso, dia, bloque):
-        """Elimina una asignación."""
-        if bloque in self.asignaciones[curso][dia]:
-            item = self.asignaciones[curso][dia].pop(bloque)
-            for doc in item['docentes']:
-                self.docente_claves[doc][(dia, bloque)].discard(curso)
-                if not self.docente_claves[doc][(dia, bloque)]:
-                    self.docente_ocupado[doc].pop((dia, bloque), None)
-                    self.docente_detalle[doc].pop((dia, bloque), None)
-            if item.get('espacio') == 'Gimnasio':
-                if curso in self.gimnasio_ocupado[(dia, bloque)]:
-                    self.gimnasio_ocupado[(dia, bloque)].remove(curso)
 
     def asignar_recintos(self):
         """
