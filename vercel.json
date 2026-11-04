@@ -7,7 +7,7 @@
     "api/*.py": {
       "maxDuration": 300,
       "includeFiles": "{notebooks/*.py,notebooks/horarios/**,Prototipos/Prototipo 2/*.py}",
-      "excludeFiles": "{data/**,documents/**,papers/**,Actas/**,Presentacion de avance/**,Presentacion de Investigacion/**,Prototipos/Prototipo 1/**,Prototipos/Prototipo 2/datos/**,Prototipos/Prototipo 2/assets/**,notebooks/Outputs Excel/**,public/**,.claude/**,**/__pycache__/**,*.pdf}"
+      "excludeFiles": "{data/**,documents/**,papers/**,Actas/**,Presentacion*/**,Prototipos/Prototipo 1/**,Prototipos/Prototipo 2/datos/**,notebooks/Outputs Excel/**,public/**,**/*.pdf}"
     }
   }
 }
