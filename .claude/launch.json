@@ -8,6 +8,12 @@
       "port": 8642
     },
     {
+      "name": "prototipo-2-dev",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["Prototipos/Prototipo 2/servidor.py", "--puerto", "8765"],
+      "port": 8765
+    },
+    {
       "name": "documentos",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8643", "--bind", "127.0.0.1", "--directory", "documents"],

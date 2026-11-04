@@ -72,6 +72,46 @@ completo), `datos/resumen_<año>.js` (lo que muestra la tarjeta del menú) y `as
   de la CDN al pedir el primero: sin conexión, usa Imprimir y elige *Guardar como PDF*.
 - Si el equipo está en horario de clases se marcan el día de hoy y el bloque en curso.
 
+## Modo desarrollador
+
+El botón `</>` de la barra superior activa el modo desarrollador para los dos horarios (se recuerda
+entre visitas). Con el modo activo:
+
+- **Auditoría** suma la sección *Función objetivo del horario*: f(x) = 1000 · H(x) calculada sobre la
+  grilla con la misma definición que el motor (choques de docentes, asignatura repetida en el día,
+  sala English skills y gimnasios), con el desglose por tipo y la lista de violaciones. El horario
+  oficial 2026 da f(x) = 33.000 (30 choques de docentes y 3 repeticiones); el 2027, f(x) = 0.
+- En **Cursos** y **Docentes**, las clases con conflictos quedan marcadas en rojo y su detalle explica
+  qué violación las afecta.
+- Aparece la pestaña **Edición**:
+
+| Sección | Qué permite |
+| :--- | :--- |
+| **Docentes** | Agregar, renombrar, cambiar de departamento y quitar docentes. Al quitar uno se elige quién se queda con sus clases, jefaturas y electivos. Muestra la carga en grilla de cada docente frente a los 42 bloques de la semana. |
+| **Asignación** | Por curso, quién dicta cada asignatura (dos docentes en la co-docencia) y el profesor/a jefe; la Orientación sigue a la jefatura. Las horas y jornadas no se editan. |
+| **Electivos** | Nombre, sección, docente y sala de cada electivo de las 3 franjas de 3° y 4° medio; agregar o quitar electivos. Avisa si un docente queda en dos electivos de la misma franja o si una sala se repite o tiene bloqueo de pastoral. |
+| **Resolver** | Resuelve la instancia editada con el método elegido: construcción voraz, Min-Conflicts, búsqueda tabú, búsqueda local iterada, Min-Conflicts + tabú (con sus parámetros) o el modelo matemático (CP-SAT, HiGHS, SCIP o CBC). Muestra f(x) inicial y final, tiempos por fase, convergencia y la auditoría, y permite **ver el resultado en el visualizador** (solo en esa pestaña del navegador) o descargarlo con el formato de `datos/horarios_<año>.js`. |
+| **Comparar** | Ejecuta los métodos elegidos con varias semillas y el mismo presupuesto (el modelo se repite tantas veces como semillas) y compara factibilidad, f(x) inicial y final, tiempo de ejecución (mediana, media ± desviación, hasta factible), pasos, ventanas y % de bloques dobles. Incluye gráficos de tiempos, función objetivo y convergencia, y descarga en CSV. |
+
+La instancia editada se guarda en el navegador (se puede exportar e importar como JSON y volver a la
+original con *Restablecer*). Editar no cambia los archivos de `datos/` ni los de `notebooks/`.
+
+### Servidor local del solver
+
+Resolver y Comparar ejecutan el motor Python de `notebooks/horarios` (y OR-Tools para el modelo), así
+que necesitan el servidor local. Desde la carpeta del repositorio:
+
+```bash
+python "Prototipos/Prototipo 2/servidor.py" --abrir
+```
+
+Abre `http://localhost:8765` con la pestaña Edición. También funciona con la página abierta con doble
+clic, siempre que el servidor esté corriendo (si el navegador bloquea la conexión, usa la dirección
+del servidor). `--puerto 9000` cambia el puerto. El servidor solo acepta conexiones del propio equipo,
+aplica la instancia editada sobre `DatosColegio` mientras dura cada resolución y la valida antes
+(docentes existentes, co-docencia con dos docentes distintos, un docente por electivo en cada franja).
+GUROBI no se ofrece: en algunos equipos OR-Tools cierra el proceso al intentar crearlo.
+
 ## Archivos
 
 ```text
@@ -80,11 +120,13 @@ Prototipo 2/
 ├── css/estilos.css          # Diseño (tema claro y oscuro, responsivo, impresión)
 ├── js/menu.js               # Menú de inicio: elige el año y carga sus datos y app.js
 ├── js/app.js                # Lógica de las vistas y animaciones
+├── js/desarrollador.js      # Modo desarrollador: pestaña Edición, solver, comparación y diagnóstico de f(x)
 ├── datos/horarios_2026.js   # Horario oficial 2026 (generado, no editar a mano)
 ├── datos/horarios_2027.js   # Horario generado 2027 (generado, no editar a mano)
 ├── datos/resumen_<año>.js   # Resumen de cada año para las tarjetas del menú
 ├── assets/escudo.png        # Escudo del colegio
-└── exportar_datos.py        # Lee el Excel 2026, ejecuta el motor (2027) y exporta los datos
+├── exportar_datos.py        # Lee el Excel 2026, ejecuta el motor (2027) y exporta los datos
+└── servidor.py              # Servidor local del modo desarrollador (página + API del solver)
 ```
 
 Las animaciones usan [GSAP](https://gsap.com) desde cdnjs. Sin conexión a internet la página

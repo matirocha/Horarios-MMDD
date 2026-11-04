@@ -75,6 +75,11 @@
       <ul id="resultados" class="resultados" role="listbox" hidden></ul>
     </div>
 
+    <button id="modo-dev" class="boton-icono boton-dev" type="button" aria-pressed="false"
+            aria-label="Modo desarrollador" title="Activar el modo desarrollador (edición, solver y diagnósticos)">
+      <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 4.5l-3 15"/></svg>
+    </button>
+
     <button id="tema" class="boton-icono" type="button" aria-label="Cambiar entre tema claro y oscuro">
       <svg class="icono icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12H5M19 12h2.5M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></svg>
       <svg class="icono icono-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
@@ -88,6 +93,8 @@
       <button class="pestana" role="tab" type="button" data-vista="salas" id="tab-salas" aria-controls="vista-salas">Salas<span class="solo-escritorio"> y gimnasios</span></button>
       <button class="pestana" role="tab" type="button" data-vista="bloque" id="tab-bloque" aria-controls="vista-bloque">Por bloque</button>
       <button class="pestana" role="tab" type="button" data-vista="auditoria" id="tab-auditoria" aria-controls="vista-auditoria">Auditoría</button>
+      <!-- Solo con el modo desarrollador activo (botón </> de la barra) -->
+      <button class="pestana pestana-dev" role="tab" type="button" data-vista="edicion" id="tab-edicion" aria-controls="vista-edicion" hidden>Edición</button>
       <span class="pestanas-indicador" aria-hidden="true"></span>
     </div>
   </nav>
@@ -182,6 +189,13 @@
     <!-- ============================== AUDITORÍA ============================== -->
     <section class="vista" id="vista-auditoria" role="tabpanel" aria-labelledby="tab-auditoria" hidden>
       <div class="auditoria" id="panel-auditoria"></div>
+    </section>
+
+    <!-- ============================== EDICIÓN (modo desarrollador) ==============================
+         Dotación docente, asignación por curso, electivos, solver y comparación de métodos.
+         La dibuja js/desarrollador.js; el solver necesita servidor.py en ejecución. -->
+    <section class="vista" id="vista-edicion" role="tabpanel" aria-labelledby="tab-edicion" hidden>
+      <div class="edicion" id="panel-edicion"></div>
     </section>
   </main>
 

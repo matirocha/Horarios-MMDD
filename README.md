@@ -398,7 +398,7 @@ Formulación de programación lineal entera del mismo problema y con la misma in
 | HiGHS | factible | ≈ 0,4 s |
 | SCIP | factible | ≈ 46 s |
 
-Con `--peso-ventanas 1`, CP-SAT encuentra en ≈ 20 s un horario óptimo con **1 ventana docente**, contra ≈ 125 de los horarios de las metaheurísticas (que hoy no minimizan las ventanas).
+Con `--peso-ventanas 1 --tiempo-max 120`, CP-SAT encuentra un horario con **2 ventanas docentes** (cota inferior 1, sin probar optimalidad), contra ≈ 130 de los horarios de las metaheurísticas (que hoy no minimizan las ventanas).
 
 ---
 
@@ -445,12 +445,12 @@ Resultados de referencia (semillas 1 a 10, límite de 20 s, un núcleo):
 
 | Método | Tipo | Factibles | Mediana hasta factible | Mediana de búsqueda | Peor caso |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| `min_conflicts_tabu` (híbrido) | Metaheurística | 10 / 10 | 0,23 s | 0,25 s | 0,64 s |
-| `busqueda_local_iterada` | Metaheurística | 10 / 10 | 1,7 s | 2,0 s | 5,3 s |
-| `busqueda_tabu` | Metaheurística | 4 / 10 | 0,13 s* | 20 s | 20 s (límite) |
-| `min_conflicts` | Heurística | 0 / 10 | – | 1,4 s | 1,8 s |
+| `min_conflicts_tabu` (híbrido) | Metaheurística | 10 / 10 | 0,26 s | 0,26 s | 0,44 s |
+| `busqueda_local_iterada` | Metaheurística | 10 / 10 | 1,4 s | 1,4 s | 5,1 s |
+| `busqueda_tabu` | Metaheurística | 5 / 10 | 0,17 s* | 10 s | 20 s (límite) |
+| `min_conflicts` | Heurística | 0 / 10 | – | 0,97 s | 1,4 s |
 
-\* Solo entre las 4 ejecuciones que llegaron a factible; las otras 6 ciclan alrededor de 1–2 violaciones hasta el límite de tiempo.
+\* Solo entre las 5 ejecuciones que llegaron a factible; las otras 5 ciclan alrededor de 1–2 violaciones hasta el límite de tiempo.
 
 Cómo decidir qué método es mejor:
 1. **Eficacia:** % de semillas que llegan a 0 violaciones duras y costo final medio (con el mismo límite de tiempo).

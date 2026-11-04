@@ -4,6 +4,8 @@
    por notebooks/generador_horarios.py. js/menu.js carga el año elegido en
    window.HORARIOS_MMDD (datos/horarios_<año>.js) y luego este archivo, que dibuja cinco vistas:
    cursos, docentes, salas y gimnasios, colegio por bloque y auditoría.
+   El botón de modo desarrollador (barra superior) agrega la pestaña Edición y los diagnósticos
+   de js/desarrollador.js, que se carga solo al activarlo (ver la sección 12b).
    Las animaciones usan GSAP cuando está disponible; sin él la página funciona igual.
    ========================================================================== */
 (() => {
@@ -104,7 +106,10 @@
     'CIENCIAS PARA LA SALUD': 'Ciencias para la salud',
   };
 
-  const VISTAS = ['cursos', 'docentes', 'salas', 'bloque', 'auditoria'];
+  // La pestaña 'edicion' solo existe con el modo desarrollador activo (ver vistas())
+  const VISTAS_BASE = ['cursos', 'docentes', 'salas', 'bloque', 'auditoria'];
+  const TODAS_VISTAS = [...VISTAS_BASE, 'edicion'];
+  const SECCIONES_EDICION = ['docentes', 'asignacion', 'electivos', 'resolver', 'comparar'];
 
   // ===========================================================================
   // 2. UTILIDADES
@@ -267,7 +272,12 @@
     seleccion: null,       // { dia, inicio } de la celda abierta en el detalle
     resaltado: null,       // clave fijada desde la leyenda
     planAbierto: false,    // plan de estudios desplegado en Cursos
+    edicion: 'docentes',   // sección abierta de la pestaña Edición (modo desarrollador)
   };
+
+  // Modo desarrollador: se recuerda entre visitas y vale para los dos años
+  const DEV = { activo: leer('mmdd-dev') === '1', carga: null };
+  function vistas() { return DEV.activo ? TODAS_VISTAS : VISTAS_BASE; }
 
   function hashActual() {
     const e = encodeURIComponent;
@@ -276,13 +286,19 @@
       case 'docentes': return `#/docentes/${e(estado.docente)}`;
       case 'salas': return `#/salas/${e(estado.espacio)}`;
       case 'bloque': return `#/bloque/${e(estado.dia)}/${estado.bloque}`;
+      case 'edicion': return `#/edicion/${e(estado.edicion)}`;
       default: return '#/auditoria';
     }
   }
 
   function leerHash() {
     const [vista, a, b] = location.hash.replace(/^#\/?/, '').split('/').map(p => { try { return decodeURIComponent(p); } catch (e) { return p; } });
-    if (!VISTAS.includes(vista)) return false;
+    if (!TODAS_VISTAS.includes(vista)) return false;
+    // Un enlace a la pestaña Edición (p. ej. el que imprime servidor.py) enciende el modo desarrollador
+    if (vista === 'edicion') {
+      if (!DEV.activo) activarDev(true);
+      if (SECCIONES_EDICION.includes(a)) estado.edicion = a;
+    }
     estado.vista = vista;
     if (vista === 'cursos' && cursoPorId.has(a)) estado.curso = a;
     if (vista === 'docentes' && docentePorNombre.has(a)) estado.docente = a;
@@ -1367,6 +1383,7 @@
         <div class="kpi"><span class="kpi-valor"><span data-contar="${m.total_bloques_asignados}">${m.total_bloques_asignados}</span><small>/ ${m.total_bloques_esperados}</small></span><span class="kpi-etiqueta">bloques asignados</span></div>
         <div class="kpi"><span class="kpi-valor"><span data-contar="${m.total_ventanas_docentes}">${m.total_ventanas_docentes}</span></span><span class="kpi-etiqueta">bloques de ventana docente (libres entre dos clases del mismo día; menos es mejor)</span></div>
       </div>
+      ${DEV.activo ? '<div id="auditoria-dev" class="dev-auditoria"></div>' : ''}
 
       <section class="seccion">
         <div class="seccion-titulo"><h2>Restricciones duras</h2><p>Verificadas de forma independiente por el validador</p></div>
@@ -1417,6 +1434,11 @@
     const panel = $(`#vista-${estado.vista}`);
     $$('.sesion.seleccionada', panel).forEach(el => el.classList.remove('seleccionada'));
     const celda = $(`.sesion[data-dia="${dia}"][data-inicio="${inicio}"]`, panel);
+    // Modo desarrollador: conflictos de la función objetivo que tocan esta clase
+    if (DEV.activo && window.MMDD_DEV) {
+      const fin = celda ? Number(celda.dataset.fin) : inicio;
+      contenido.html += window.MMDD_DEV.detalleExtra(estado.vista, dia, inicio, fin);
+    }
     if (celda) celda.classList.add('seleccionada');
     // En Cursos se marcan las otras sesiones de la misma asignatura (reemplaza a la leyenda)
     $$('.sesion.misma-asig').forEach(el => el.classList.remove('misma-asig'));
@@ -1455,8 +1477,9 @@
   }
 
   function render({ vistaNueva = false, animar: conAnimacion = true } = {}) {
+    if (!vistas().includes(estado.vista)) estado.vista = 'cursos';
     if (estado.vista !== 'cursos') document.title = `Horarios MMDD ${DATOS.meta.anio}`;
-    VISTAS.forEach(v => { $(`#vista-${v}`).hidden = v !== estado.vista; });
+    TODAS_VISTAS.forEach(v => { $(`#vista-${v}`).hidden = v !== estado.vista; });
     $$('.pestana').forEach(t => {
       const activa = t.dataset.vista === estado.vista;
       t.setAttribute('aria-selected', String(activa));
@@ -1468,10 +1491,72 @@
       case 'docentes': renderDocentes(conAnimacion); break;
       case 'salas': renderSalas(conAnimacion); break;
       case 'bloque': renderBloque(conAnimacion); break;
+      case 'edicion': renderEdicion(conAnimacion); break;
       default: renderAuditoria(conAnimacion);
     }
+    if (DEV.activo && window.MMDD_DEV && estado.vista !== 'edicion') window.MMDD_DEV.despuesRender(estado.vista, conAnimacion);
     if (vistaNueva && conAnimacion) animar.vista($(`#vista-${estado.vista}`));
   }
+
+  // ===========================================================================
+  // 12b. MODO DESARROLLADOR
+  // ===========================================================================
+  // js/desarrollador.js dibuja la pestaña Edición (dotación docente, asignación, electivos,
+  // solver y comparación de métodos) y los diagnósticos de la función objetivo en Auditoría,
+  // Cursos y Docentes. Se carga la primera vez que se activa y usa window.MMDD_APP.
+  function cargarDev() {
+    if (window.MMDD_DEV) return Promise.resolve();
+    if (!DEV.carga) DEV.carga = cargarScript('js/desarrollador.js').catch(e => { DEV.carga = null; throw e; });
+    return DEV.carga;
+  }
+
+  function activarDev(activo) {
+    DEV.activo = activo;
+    guardar('mmdd-dev', activo ? '1' : '0');
+    document.documentElement.classList.toggle('modo-dev', activo);
+    $('#tab-edicion').hidden = !activo;
+    const boton = $('#modo-dev');
+    boton.setAttribute('aria-pressed', String(activo));
+    boton.title = activo ? 'Desactivar el modo desarrollador' : 'Activar el modo desarrollador (edición, solver y diagnósticos)';
+    moverIndicador();
+  }
+
+  function alternarDev() {
+    activarDev(!DEV.activo);
+    cerrarDetalle();
+    const g = G();
+    if (g) g.fromTo('#modo-dev .icono', { rotate: -20, scale: 0.6 }, { rotate: 0, scale: 1, duration: 0.45, ease: 'back.out(2)', clearProps: 'transform' });
+    if (!DEV.activo) {
+      if (estado.vista === 'edicion') ir('cursos');
+      else render({ animar: false });
+      return;
+    }
+    cargarDev()
+      .then(() => render({ animar: false }))
+      .catch(() => window.alert('No se pudo cargar js/desarrollador.js. Revisa que el archivo exista junto a app.js.'));
+  }
+
+  function renderEdicion(animarEntrada) {
+    const panel = $('#panel-edicion');
+    if (window.MMDD_DEV) { window.MMDD_DEV.renderEdicion(panel, animarEntrada); return; }
+    panel.innerHTML = '<p class="nota">Cargando el modo desarrollador…</p>';
+    cargarDev()
+      .then(() => { if (estado.vista === 'edicion') render({ animar: animarEntrada }); })
+      .catch(() => { panel.innerHTML = '<p class="nota">No se pudo cargar <code>js/desarrollador.js</code>.</p>'; });
+  }
+
+  // Lo que necesita js/desarrollador.js de esta página (datos, estado, navegación y utilidades)
+  window.MMDD_APP = {
+    DATOS, OFICIAL, DIAS, DIA_CORTO, BLOQUE, MAX_BLOQUE, CICLO, SECCIONES_EDICION,
+    cursoPorId, docentePorNombre, espacioPorNombre,
+    estado, ir, render, animar, G, guardar, leer, cargarScript,
+    esc, numero, capitalizar, normalizar, nombreNivel, nombreEspacio, infoAsig, rango,
+    enlaceDocente, enlaceCurso, enlaceEspacio,
+    nombreDepartamento(completo) {
+      const corto = String(completo || '').split(' –')[0].split(' - ')[0].trim();
+      return DEPARTAMENTOS[corto] || capitalizar(corto);
+    },
+  };
 
   function temaOscuro() {
     const t = document.documentElement.dataset.theme;
@@ -1733,6 +1818,12 @@
 
     if (t.matches('.pestana')) { ir(t.dataset.vista); return; }
     if (t.id === 'tema') { cambiarTema(); return; }
+    if (t.id === 'modo-dev') { alternarDev(); return; }
+    if (t.matches('[data-volver-original]')) {
+      try { sessionStorage.removeItem('mmdd-dev-resultado'); } catch (e) { /* almacenamiento no disponible */ }
+      location.href = `${location.pathname}?anio=${DATOS.meta.anio}${location.hash}`;
+      return;
+    }
     if (t.id === 'detalle-cerrar') { cerrarDetalle(); return; }
     if (t.matches('.selector-toggle')) {
       const s = t.closest('.selector');
@@ -1866,7 +1957,7 @@
   });
 
   document.addEventListener('keydown', ev => {
-    const escribiendo = ev.target.matches('input, textarea');
+    const escribiendo = ev.target.matches('input, textarea, select, [contenteditable]');
     if ((ev.key === '/' && !escribiendo) || (ev.key.toLowerCase() === 'k' && (ev.ctrlKey || ev.metaKey))) {
       ev.preventDefault();
       buscador.focus();
@@ -1879,12 +1970,14 @@
     }
     if (escribiendo || ev.altKey || ev.ctrlKey || ev.metaKey) return;
     if (ev.target.matches('.pestana') && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
-      const i = VISTAS.indexOf(estado.vista) + (ev.key === 'ArrowRight' ? 1 : -1);
-      const v = VISTAS[(i + VISTAS.length) % VISTAS.length];
+      const lista = vistas();
+      const i = lista.indexOf(estado.vista) + (ev.key === 'ArrowRight' ? 1 : -1);
+      const v = lista[(i + lista.length) % lista.length];
       ir(v);
       $(`.pestana[data-vista="${v}"]`).focus();
       return;
     }
+    if (estado.vista === 'edicion') return;   // la pestaña Edición maneja su propio teclado
     if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
       ev.preventDefault();
       paso(ev.key === 'ArrowRight' ? 1 : -1);
@@ -1918,11 +2011,26 @@
   // 16. INICIO
   // ===========================================================================
   $('#marca-anio').textContent = DATOS.meta.anio;
-  $('#pie-datos').textContent = (OFICIAL
-    ? `Horario oficial ${DATOS.meta.anio} · ${DATOS.meta.archivo} · `
-    : `Horario ${DATOS.meta.anio} generado con la semilla ${DATOS.meta.semilla} · ${DATOS.meta.generado} · `)
+  const RESULTADO_DEV = DATOS.meta.desarrollador;   // horario que viene del solver del modo desarrollador
+  $('#pie-datos').textContent = (RESULTADO_DEV
+    ? `Resultado del solver (${RESULTADO_DEV.nombre}${DATOS.meta.semilla != null ? `, semilla ${DATOS.meta.semilla}` : ''}) · ${DATOS.meta.generado} · `
+    : OFICIAL
+      ? `Horario oficial ${DATOS.meta.anio} · ${DATOS.meta.archivo} · `
+      : `Horario ${DATOS.meta.anio} generado con la semilla ${DATOS.meta.semilla} · ${DATOS.meta.generado} · `)
     + `${DATOS.auditoria.metricas.total_bloques_asignados}/${DATOS.auditoria.metricas.total_bloques_esperados} bloques asignados`;
+  if (RESULTADO_DEV) {
+    $('#hoja-anio').textContent = `Horario ${DATOS.meta.anio} · resultado del solver`;
+    $('#contenido').insertAdjacentHTML('afterbegin', `
+      <div class="aviso-resultado" role="status">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6M10 4v5.5L5 18a1.5 1.5 0 0 0 1.3 2.2h11.4A1.5 1.5 0 0 0 19 18l-5-8.5V4"/></svg>
+        <p><b>Resultado del solver</b> · ${esc(RESULTADO_DEV.nombre)}${DATOS.meta.semilla != null ? `, semilla ${DATOS.meta.semilla}` : ''}
+          · f(x) = ${esc(numero(RESULTADO_DEV.costo ?? '—'))} · ${RESULTADO_DEV.tiempo_ms != null ? `${numero(Math.round(RESULTADO_DEV.tiempo_ms))} ms` : ''}
+          · instancia ${RESULTADO_DEV.editada ? 'editada' : 'original'}. Solo existe en esta pestaña del navegador.</p>
+        <button type="button" class="boton" data-volver-original>Volver al horario ${DATOS.meta.anio}</button>
+      </div>`);
+  }
 
+  activarDev(DEV.activo);
   renderSelectorCursos();
   renderSelectorDocentes();
   renderSelectorSalas();
@@ -1934,4 +2042,8 @@
   escribirHash(true);
   animar.intro();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(moverIndicador);
+  // Con el modo desarrollador ya activo, sus marcas se agregan apenas carga el módulo
+  if (DEV.activo && estado.vista !== 'edicion') {
+    cargarDev().then(() => { if (estado.vista !== 'edicion') window.MMDD_DEV.despuesRender(estado.vista, true); }).catch(() => {});
+  }
 })();

@@ -283,9 +283,21 @@
     });
   }
 
+  // Horario resuelto en el modo desarrollador (?resultado=1): lo guarda js/desarrollador.js en
+  // sessionStorage al pulsar "Ver en el visualizador" y solo vale para esta pestaña del navegador
+  function resultadoDev(anio) {
+    if (new URLSearchParams(location.search).get('resultado') !== '1') return null;
+    try {
+      const datos = JSON.parse(sessionStorage.getItem('mmdd-dev-resultado'));
+      return datos && datos.meta && datos.meta.anio === anio ? datos : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function etiquetarBarra(anio) {
     const r = RESUMEN[anio];
-    const tipo = r ? (r.fuente === 'oficial' ? 'Oficial' : 'Generado') : '';
+    const tipo = resultadoDev(anio) ? 'Solver' : r ? (r.fuente === 'oficial' ? 'Oficial' : 'Generado') : '';
     $('#anio-chip-texto').textContent = tipo ? `${anio} · ${tipo}` : String(anio);
     $('#cambiar-anio').dataset.fuente = r ? r.fuente : '';
     $('#cambiar-anio').setAttribute('aria-label', `Horario ${anio}${tipo ? ` (${tipo.toLowerCase()})` : ''}. Cambiar de año`);
@@ -293,10 +305,15 @@
 
   async function cargarAnio(anio) {
     etiquetarBarra(anio);
-    try {
-      await cargarScript(`datos/horarios_${anio}.js`);
-    } catch (e) {
-      window.HORARIOS_MMDD = null;   // app.js muestra el aviso de datos faltantes
+    const resultado = resultadoDev(anio);
+    if (resultado) {
+      window.HORARIOS_MMDD = resultado;
+    } else {
+      try {
+        await cargarScript(`datos/horarios_${anio}.js`);
+      } catch (e) {
+        window.HORARIOS_MMDD = null;   // app.js muestra el aviso de datos faltantes
+      }
     }
     window.HORARIOS_MMDD_ANIO = anio;
     await cargarScript('js/app.js');

@@ -73,7 +73,7 @@ USO (requiere: pip install ortools)
 
   Tiempos de referencia (4 núcleos, datos 2026, w_V = 0): CP-SAT ≈ 0,4 s
   (≈ 0,8 s con 1 hilo), HiGHS ≈ 0,4 s, SCIP ≈ 46 s; todos encuentran un horario factible.
-  Con --peso-ventanas 1, CP-SAT prueba en ≈ 20 s que el óptimo tiene 1 ventana docente.
+  Con --peso-ventanas 1 --tiempo-max 120, CP-SAT llega a 2 ventanas docentes (cota inferior 1).
 """
 
 import argparse
