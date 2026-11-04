@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 ~$*
+# Salida del build de Vercel (copia del Prototipo 2, ver vercel.json) y configuración local de Vercel
+/public/
+.vercel/

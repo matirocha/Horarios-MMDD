@@ -117,7 +117,9 @@
     pintarServidor();
     for (const base of candidatos()) {
       try {
-        SRV.info = await pedir(base, 'estado', null, { espera: 2500 });
+        // En el mismo sitio (servidor.py o la función de Vercel) se espera más: la primera
+        // llamada a una función de Vercel arranca en frío y carga Python y OR-Tools
+        SRV.info = await pedir(base, 'estado', null, { espera: base === '' ? 30000 : 2500 });
         SRV.base = base;
         SRV.estado = 'conectado';
         break;
@@ -129,6 +131,8 @@
   }
 
   const api = (ruta, cuerpo, opciones) => pedir(SRV.base, ruta, cuerpo, opciones);
+  // Segundos máximos por ejecución que acepta el servidor (240 en Vercel, 600 en local)
+  const topeTiempo = () => (SRV.info && SRV.info.tiempo_max_tope) || 600;
   const errorDeRed = e => !e.http && e.name !== 'AbortError';
 
   // Si el servidor no está, los métodos se muestran igual (sin poder ejecutarlos)
@@ -747,8 +751,9 @@
     const s = SRV.estado;
     if (s === 'conectado') {
       const i = SRV.info;
-      return `<span class="dev-pildora bien"><span class="dev-punto"></span>Servidor local conectado</span>
-        <span class="dev-pildora-nota">Python ${esc(i.python)} · ${i.ortools ? `OR-Tools ${esc(i.ortools)}` : 'sin OR-Tools'}</span>`;
+      const nombre = i.entorno === 'vercel' ? 'Solver en Vercel conectado' : 'Servidor local conectado';
+      return `<span class="dev-pildora bien"><span class="dev-punto"></span>${nombre}</span>
+        <span class="dev-pildora-nota">Python ${esc(i.python)} · ${i.ortools ? `OR-Tools ${esc(i.ortools)}` : 'sin OR-Tools'}${i.entorno === 'vercel' ? ` · máx. ${i.tiempo_max_tope} s por ejecución` : ''}</span>`;
     }
     if (s === 'sin-servidor') {
       return `<span class="dev-pildora mal"><span class="dev-punto"></span>Sin servidor local</span>
@@ -1098,12 +1103,12 @@
         ${esModelo ? `
           <label class="dev-campo"><span>Solver</span>
             <select class="dev-select" data-dev-campo="r" data-prop="solver" data-foco="r|solver">${solvers().map(s => `<option value="${s}"${s === R.solver ? ' selected' : ''}>${s === 'HIGHS' ? 'HiGHS' : s}${NOTA_SOLVER[s] ? ` · ${NOTA_SOLVER[s]}` : ''}</option>`).join('')}</select></label>
-          ${num('tiempo_max', 'Tiempo máximo (s)', R.tiempo_max, 'min="0.1" max="600" step="any"')}
+          ${num('tiempo_max', 'Tiempo máximo (s)', R.tiempo_max, `min="0.1" max="${topeTiempo()}" step="any"`)}
           ${num('peso_ventanas', 'Peso de las ventanas w<sub>V</sub>', R.peso_ventanas, 'min="0" step="any"', '0 = solo factibilidad (como las metaheurísticas)')}
           ${num('hilos', 'Hilos', R.hilos, 'min="1" max="64" placeholder="los del solver"', '1 hilo es comparable con las metaheurísticas')}`
         : `
           ${num('semilla', 'Semilla', R.semilla, 'min="0" step="1"')}
-          ${num('tiempo_max', 'Tiempo máximo (s)', R.tiempo_max, 'min="0.1" max="600" step="any"')}
+          ${num('tiempo_max', 'Tiempo máximo (s)', R.tiempo_max, `min="0.1" max="${topeTiempo()}" step="any"`)}
           ${num('max_pasos', 'Pasos máximos', R.max_pasos, 'min="1" step="1"')}`}
       </div>
       ${propios.length ? `
@@ -1120,15 +1125,28 @@
   function avisoServidor() {
     if (SRV.estado === 'conectado') return '';
     const archivo = location.protocol === 'file:';
+    // Página publicada (Vercel u otro hosting): solo sirve archivos estáticos, así que el solver
+    // corre en el computador de quien la usa y servidor.py debe aceptar este origen
+    const publicada = !archivo && !['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+    const comando = publicada
+      ? `python "Prototipos/Prototipo 2/servidor.py" --origen ${location.origin}`
+      : 'python "Prototipos/Prototipo 2/servidor.py" --abrir';
+    const despues = publicada
+      ? `Esta página está publicada en <b>${esc(location.host)}</b> y su solver en línea (<code>/api</code>) no respondió: revisa que el
+         despliegue use la raíz del repositorio con <code>vercel.json</code> (ver el README del prototipo). Mientras tanto, el comando de arriba
+         abre el solver en tu computador: con él corriendo, pulsa Reintentar y, si el navegador pregunta si la página puede acceder a los
+         dispositivos de tu red local, acepta (Chrome, Edge o Firefox; Safari no lo permite desde una página https).`
+      : archivo
+        ? `Luego abre la página desde <code>http://localhost:${PUERTO}</code> (o vuelve aquí y pulsa Reintentar).`
+        : 'Luego pulsa Reintentar.';
     return `
       <div class="dev-aviso">
         ${ICONOS.alerta}
         <div>
           <b>${SRV.estado === 'conectando' || SRV.estado === 'inicial' ? 'Buscando el servidor local…' : 'El solver necesita el servidor local'}</b>
           <p>Los métodos corren en Python con el mismo motor del proyecto. En una terminal, desde la carpeta del repositorio:</p>
-          <pre><code>python "Prototipos/Prototipo 2/servidor.py" --abrir</code></pre>
-          <p>${archivo ? `Luego abre la página desde <code>http://localhost:${PUERTO}</code> (o vuelve aquí y pulsa Reintentar). La edición funciona igual sin servidor y se guarda en este navegador.`
-            : 'La edición funciona igual sin servidor y se guarda en este navegador.'}</p>
+          <pre><code>${esc(comando)}</code></pre>
+          <p>${despues} La edición funciona igual sin servidor y se guarda en este navegador.</p>
           <button type="button" class="boton" data-dev="reconectar">Reintentar</button>
         </div>
       </div>`;
@@ -1403,7 +1421,7 @@
             <div class="dev-campos">
               <label class="dev-campo"><span>Semilla desde</span><input class="dev-input" type="number" min="0" step="1" value="${esc(C.desde)}" data-dev-campo="c" data-prop="desde" data-foco="c|desde"${C.ejecutando ? ' disabled' : ''}></label>
               <label class="dev-campo"><span>hasta</span><input class="dev-input" type="number" min="0" step="1" value="${esc(C.hasta)}" data-dev-campo="c" data-prop="hasta" data-foco="c|hasta"${C.ejecutando ? ' disabled' : ''}></label>
-              <label class="dev-campo"><span>Tiempo máximo por ejecución (s)</span><input class="dev-input" type="number" min="0.1" max="600" step="any" value="${esc(C.tiempo_max)}" data-dev-campo="c" data-prop="tiempo_max" data-foco="c|tiempo_max"${C.ejecutando ? ' disabled' : ''}></label>
+              <label class="dev-campo"><span>Tiempo máximo por ejecución (s)</span><input class="dev-input" type="number" min="0.1" max="${topeTiempo()}" step="any" value="${esc(C.tiempo_max)}" data-dev-campo="c" data-prop="tiempo_max" data-foco="c|tiempo_max"${C.ejecutando ? ' disabled' : ''}></label>
               <label class="dev-campo"><span>Pasos máximos</span><input class="dev-input" type="number" min="1" step="1" value="${esc(C.max_pasos)}" data-dev-campo="c" data-prop="max_pasos" data-foco="c|max_pasos"${C.ejecutando ? ' disabled' : ''}></label>
             </div>
           </fieldset>

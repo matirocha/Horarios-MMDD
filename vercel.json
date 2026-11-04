@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "rm -rf public && mkdir -p public && cp -R 'Prototipos/Prototipo 2/.' public/ && rm -rf public/*.py public/__pycache__ public/README.md",
+  "outputDirectory": "public",
+  "functions": {
+    "api/*.py": {
+      "maxDuration": 300,
+      "includeFiles": "{notebooks/*.py,notebooks/horarios/**,Prototipos/Prototipo 2/*.py}",
+      "excludeFiles": "{data/**,documents/**,papers/**,Actas/**,Presentacion de avance/**,Presentacion de Investigacion/**,Prototipos/Prototipo 1/**,Prototipos/Prototipo 2/datos/**,Prototipos/Prototipo 2/assets/**,notebooks/Outputs Excel/**,public/**,.claude/**,**/__pycache__/**,*.pdf}"
+    }
+  }
+}

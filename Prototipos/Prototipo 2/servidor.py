@@ -20,10 +20,15 @@ desarrollador): dotación docente, asignación profesor-curso y electivos.
 La instancia editada se aplica sobre DatosColegio solo mientras dura cada resolución
 (y una a la vez), así que el motor, el validador y el exportador trabajan sin cambios.
 
+La misma API se publica en Vercel con las funciones de la carpeta api/ de la raíz del
+repositorio (ver vercel.json): usan ManejadorVercel, definido aquí.
+
 Uso:
     python "Prototipos/Prototipo 2/servidor.py"              # http://localhost:8765
     python "Prototipos/Prototipo 2/servidor.py" --abrir      # y abre el navegador
     python "Prototipos/Prototipo 2/servidor.py" --puerto 9000
+    python "Prototipos/Prototipo 2/servidor.py" --origen https://mi-app.vercel.app
+        # además acepta a esa página publicada (si su solver en línea no está disponible)
 
 Requiere lo mismo que el motor; el modelo matemático, además, OR-Tools (pip install ortools).
 """
@@ -39,7 +44,7 @@ import threading
 import time
 import webbrowser
 from contextlib import contextmanager
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -53,7 +58,10 @@ from horarios import (DatosColegio as D, METAHEURISTICAS, MetodoMejora, MotorHor
 
 PUERTO = 8765
 MAX_CUERPO = 2 * 1024 * 1024        # bytes de una petición
-TIEMPO_MAX_TOPE = 600               # segundos máximos que acepta una resolución
+EN_VERCEL = bool(os.environ.get('VERCEL'))   # funciones de api/ desplegadas en Vercel (ver vercel.json)
+# Segundos máximos que acepta una resolución. En Vercel la función se corta a los 300 s
+# (plan Hobby), así que se deja margen para armar el modelo y enviar la respuesta.
+TIEMPO_MAX_TOPE = 240 if EN_VERCEL else 600
 CANDADO = threading.Lock()          # una resolución a la vez (DatosColegio es global)
 
 # -----------------------------------------------------------------------------
@@ -132,7 +140,8 @@ def estado_api():
         metodos.append({**m, 'parametros': parametros_de(clase) if clase else [],
                         'defecto': m['id'] == 'min_conflicts_tabu'})
     return {'ok': True, 'version': 1, 'metodos': metodos, **solvers_disponibles(),
-            'python': sys.version.split()[0]}
+            'python': sys.version.split()[0], 'entorno': 'vercel' if EN_VERCEL else 'local',
+            'tiempo_max_tope': TIEMPO_MAX_TOPE}
 
 
 # -----------------------------------------------------------------------------
@@ -457,18 +466,26 @@ def resolver(cuerpo):
 # -----------------------------------------------------------------------------
 # Servidor HTTP
 # -----------------------------------------------------------------------------
-class Manejador(SimpleHTTPRequestHandler):
-    """Archivos estáticos del prototipo + API JSON en /api/."""
+class APIMixin:
+    """
+    La API JSON (/api/estado, /api/instancia, /api/resolver), común al servidor local
+    (Manejador, abajo) y a las funciones de Vercel (ManejadorVercel y la carpeta api/).
+    """
 
-    permitidos = set()
+    permitidos = set()   # orígenes de otras páginas que pueden usar la API (CORS)
+    ruta_fija = None     # en Vercel cada archivo de api/ atiende una sola ruta
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=AQUI, **kwargs)
+    def _ruta(self):
+        return self.ruta_fija or urlsplit(self.path).path
 
-    # El origen 'null' es la página abierta con doble clic (file://)
     def _origen_valido(self):
+        # Sin Origin (GET del mismo sitio), la propia página (mismo host) o un origen permitido.
+        # El origen 'null' es la página abierta con doble clic (file://)
         origen = self.headers.get('Origin')
-        return origen is None or origen in self.permitidos
+        if origen is None or origen in self.permitidos:
+            return True
+        host = self.headers.get('X-Forwarded-Host') or self.headers.get('Host')
+        return bool(host) and urlsplit(origen).netloc == host
 
     def _cors(self):
         origen = self.headers.get('Origin')
@@ -501,11 +518,8 @@ class Manejador(SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Max-Age', '600')
         self.end_headers()
 
-    def do_GET(self):
-        ruta = urlsplit(self.path).path
-        if not ruta.startswith('/api/'):
-            super().do_GET()
-            return
+    def api_get(self):
+        ruta = self._ruta()
         if not self._origen_valido():
             self._json(403, {'ok': False, 'error': 'Origen no permitido'})
         elif ruta == '/api/estado':
@@ -516,7 +530,7 @@ class Manejador(SimpleHTTPRequestHandler):
             self._json(404, {'ok': False, 'error': 'Ruta desconocida'})
 
     def do_POST(self):
-        ruta = urlsplit(self.path).path
+        ruta = self._ruta()
         if not self._origen_valido():
             self._json(403, {'ok': False, 'error': 'Origen no permitido'})
             return
@@ -547,9 +561,32 @@ class Manejador(SimpleHTTPRequestHandler):
             self._json(500, {'ok': False, 'error': f'{type(error).__name__}: {error}'})
             raise
 
+
+class Manejador(APIMixin, SimpleHTTPRequestHandler):
+    """Servidor local: archivos estáticos del prototipo + API JSON en /api/."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=AQUI, **kwargs)
+
+    def do_GET(self):
+        if urlsplit(self.path).path.startswith('/api/'):
+            self.api_get()
+        else:
+            super().do_GET()
+
     def log_message(self, formato, *args):
         if '/api/' in self.path and self.command != 'POST':
             super().log_message(formato, *args)
+
+
+class ManejadorVercel(APIMixin, BaseHTTPRequestHandler):
+    """
+    Base de las funciones de Vercel (api/estado.py, api/instancia.py, api/resolver.py):
+    cada una define 'ruta_fija'. La página se sirve como archivos estáticos (vercel.json).
+    """
+
+    def do_GET(self):
+        self.api_get()
 
 
 def main():
@@ -561,9 +598,18 @@ def main():
     parser = argparse.ArgumentParser(description='Servidor local del modo desarrollador (Prototipo 2)')
     parser.add_argument('--puerto', type=int, default=PUERTO, help=f'Puerto (default: {PUERTO})')
     parser.add_argument('--abrir', action='store_true', help='Abre la página en el navegador')
+    parser.add_argument('--origen', action='append', default=[], metavar='URL',
+                        help='Página publicada que puede usar este servidor, p. ej. https://mi-app.vercel.app '
+                             '(se puede repetir). Sin esto solo responde a la página local o abierta con doble clic.')
     args = parser.parse_args()
 
-    Manejador.permitidos = {'null', f'http://localhost:{args.puerto}', f'http://127.0.0.1:{args.puerto}'}
+    publicadas = set()
+    for origen in args.origen:
+        partes = urlsplit(origen.strip())
+        if partes.scheme not in ('http', 'https') or not partes.netloc:
+            raise SystemExit(f'--origen debe ser una dirección como https://mi-app.vercel.app (recibí "{origen}")')
+        publicadas.add(f'{partes.scheme}://{partes.netloc}')   # el navegador envía el origen sin ruta ni "/" final
+    Manejador.permitidos = {'null', f'http://localhost:{args.puerto}', f'http://127.0.0.1:{args.puerto}'} | publicadas
     try:
         servidor = ThreadingHTTPServer(('127.0.0.1', args.puerto), Manejador)
     except OSError as error:
@@ -573,6 +619,8 @@ def main():
     s = solvers_disponibles()
     print('Servidor del modo desarrollador · Horarios MMDD (Prototipo 2)')
     print(f'  Página:    {url}')
+    for origen in sorted(publicadas):
+        print(f'  Acepta:    {origen} (página publicada; el navegador puede pedir permiso de red local)')
     print(f"  OR-Tools:  {s['ortools'] or 'no instalado (el modelo matemático no estará disponible)'}"
           + (f" · solvers: {', '.join(s['solvers'])}" if s['solvers'] else ''))
     print('  Ctrl + C para detener.\n')

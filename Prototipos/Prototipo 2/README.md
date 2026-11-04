@@ -112,6 +112,39 @@ aplica la instancia editada sobre `DatosColegio` mientras dura cada resolución 
 (docentes existentes, co-docencia con dos docentes distintos, un docente por electivo en cada franja).
 GUROBI no se ofrece: en algunos equipos OR-Tools cierra el proceso al intentar crearlo.
 
+### Publicación en Vercel (con el solver en línea)
+
+Vercel solo entrega archivos, así que el solver se publica como funciones de Python. Todo está en la
+**raíz del repositorio**:
+
+| Archivo | Para qué |
+| :--- | :--- |
+| `vercel.json` | Copia este prototipo a `public/` (lo único que queda publicado como página) y configura las funciones (300 s máximo, sin los Excel, actas ni documentos). |
+| `api/estado.py`, `api/instancia.py`, `api/resolver.py` | Las tres rutas de la API, con la misma lógica de `servidor.py` (`ManejadorVercel`). |
+| `requirements.txt` | OR-Tools para el modelo matemático (el motor solo usa la biblioteca estándar). |
+
+Configuración del proyecto en Vercel (*Settings → Build and Deployment*), una sola vez:
+
+1. **Root Directory**: vacío (la raíz del repositorio). Si dice `Prototipos/Prototipo 2`, bórralo.
+2. **Framework Preset**: *Other*, sin sobrescribir Build Command ni Output Directory (los fija `vercel.json`).
+3. En *Settings → Functions*, **Fluid Compute** activado (permite funciones de hasta 300 s en el plan Hobby).
+4. Vuelve a desplegar y abre `https://<tu-proyecto>.vercel.app/api/estado`: debe mostrar un JSON con
+   `"entorno":"vercel"`. La pestaña Edición indicará *Solver en Vercel conectado*.
+
+En Vercel cada ejecución se limita a 240 s, la primera llamada tarda unos segundos (arranque en frío) y
+los tiempos son los de los servidores de Vercel, más lentos que un computador personal: para comparar
+métodos, compáralos en el mismo entorno. La API acepta solo peticiones de la misma página.
+
+Si el solver en línea no está disponible, la página publicada también puede usar el servidor de tu
+computador, aceptando su dirección de forma explícita:
+
+```bash
+python "Prototipos/Prototipo 2/servidor.py" --origen https://<tu-proyecto>.vercel.app
+```
+
+El navegador pedirá permiso para que la página acceda a la red local (Chrome, Edge o Firefox; Safari
+no lo permite desde una página https).
+
 ## Archivos
 
 ```text
@@ -127,6 +160,8 @@ Prototipo 2/
 ├── assets/escudo.png        # Escudo del colegio
 ├── exportar_datos.py        # Lee el Excel 2026, ejecuta el motor (2027) y exporta los datos
 └── servidor.py              # Servidor local del modo desarrollador (página + API del solver)
+
+../../vercel.json, ../../api/, ../../requirements.txt   # Publicación en Vercel con el solver en línea
 ```
 
 Las animaciones usan [GSAP](https://gsap.com) desde cdnjs. Sin conexión a internet la página
