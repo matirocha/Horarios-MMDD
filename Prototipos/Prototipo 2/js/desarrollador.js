@@ -1132,8 +1132,8 @@
       ? `python "Prototipos/Prototipo 2/servidor.py" --origen ${location.origin}`
       : 'python "Prototipos/Prototipo 2/servidor.py" --abrir';
     const despues = publicada
-      ? `Esta página está publicada en <b>${esc(location.host)}</b> y su solver en línea (<code>/api</code>) no respondió: revisa que el
-         despliegue use la raíz del repositorio con <code>vercel.json</code> (ver el README del prototipo). Mientras tanto, el comando de arriba
+      ? `Esta página está publicada en <b>${esc(location.host)}</b> y su solver en línea (<code>/api</code>) no respondió: revisa el
+         log del despliegue en Vercel (ver "Publicación en Vercel" en el README del prototipo). Mientras tanto, el comando de arriba
          abre el solver en tu computador: con él corriendo, pulsa Reintentar y, si el navegador pregunta si la página puede acceder a los
          dispositivos de tu red local, acepta (Chrome, Edge o Firefox; Safari no lo permite desde una página https).`
       : archivo

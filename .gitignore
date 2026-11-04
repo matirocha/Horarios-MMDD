@@ -2,6 +2,9 @@
 __pycache__/
 *.pyc
 ~$*
-# Salida del build de Vercel (copia del Prototipo 2, ver vercel.json) y configuración local de Vercel
-/public/
+# Configuración local de Vercel y restos de instalar el motor como paquete (notebooks/pyproject.toml)
 .vercel/
+.venv/
+uv.lock
+*.egg-info/
+notebooks/build/

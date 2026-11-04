@@ -66,6 +66,7 @@ flowchart LR
 | `generador_horarios.py` | Punto de entrada: genera el horario, los Excel y la consola. | Usuario; los prototipos importan clases desde aquí. | **Sí.** Si se borra o renombra, los prototipos dejan de funcionar. |
 | `comparar_metaheuristicas.py` | Experimento para elegir el mejor método (tiempos, factibilidad, calidad). | Usuario. | **Sí.** |
 | `modelo_matematico.py` | Modelo exacto: valida que las metaheurísticas llegan al óptimo y sirve de referencia de tiempo y calidad. | Usuario. | **Sí.** |
+| `pyproject.toml` | Empaqueta el motor (`horarios`, `generador_horarios`, `modelo_matematico`) para instalarlo como dependencia. | Solver en línea del Prototipo 2 en Vercel. | **Sí.** Si se borra, el solver de la página publicada deja de funcionar; los scripts locales no lo necesitan. |
 | `Outputs Excel/*.xlsx` | Entregables para el colegio. Se regeneran en cada ejecución del generador. | Colegio / equipo. | **Sí**, como entregable. Si molesta que cambien en cada ejecución, se pueden sacar del repositorio y agregar a `.gitignore`. |
 | `horarios/__init__.py` | Expone las clases del paquete (`from horarios import ...`). | Todos los scripts. | **Sí.** |
 | `horarios/datos.py` | Parámetros 2026: bloques, jornadas, docentes, mallas, electivos, recintos y salas. | Todo el paquete. | **Sí.** Es la única fuente de datos del generador. |

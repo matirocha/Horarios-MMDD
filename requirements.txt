@@ -1,4 +1,0 @@
-# Dependencias de las funciones de Vercel (carpeta api/: solver del modo desarrollador del Prototipo 2).
-# El motor (notebooks/horarios) solo usa la biblioteca estándar; OR-Tools es para el modelo matemático.
-# Para trabajar en local también hacen falta openpyxl (Excel) y Pillow (escudo de exportar_datos.py).
-ortools==9.15.6755

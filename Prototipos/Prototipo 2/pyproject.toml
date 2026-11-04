@@ -1,0 +1,14 @@
+# Dependencias de las funciones de Vercel (carpeta api/: solver del modo desarrollador).
+# El proyecto de Vercel usa esta carpeta como Root Directory; el motor está en notebooks/, fuera
+# de ella, así que se instala como paquete desde esa ruta (siempre el código del mismo commit).
+[project]
+name = "horarios-mmdd-prototipo-2"
+version = "1.0.0"
+requires-python = "==3.12.*"
+dependencies = [
+    "horarios-mmdd",            # notebooks/ (ver [tool.uv.sources])
+    "ortools==9.15.6755",       # modelo matemático
+]
+
+[tool.uv.sources]
+horarios-mmdd = { path = "../../notebooks", editable = false }

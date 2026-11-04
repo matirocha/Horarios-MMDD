@@ -20,8 +20,9 @@ desarrollador): dotación docente, asignación profesor-curso y electivos.
 La instancia editada se aplica sobre DatosColegio solo mientras dura cada resolución
 (y una a la vez), así que el motor, el validador y el exportador trabajan sin cambios.
 
-La misma API se publica en Vercel con las funciones de la carpeta api/ de la raíz del
-repositorio (ver vercel.json): usan ManejadorVercel, definido aquí.
+La misma API se publica en Vercel con las funciones de api/ (en esta carpeta, que es el Root
+Directory del proyecto de Vercel): usan ManejadorVercel, definido aquí. Allí el motor no está en
+../../notebooks sino instalado como paquete (ver pyproject.toml y notebooks/pyproject.toml).
 
 Uso:
     python "Prototipos/Prototipo 2/servidor.py"              # http://localhost:8765

@@ -114,22 +114,30 @@ GUROBI no se ofrece: en algunos equipos OR-Tools cierra el proceso al intentar c
 
 ### Publicación en Vercel (con el solver en línea)
 
-Vercel solo entrega archivos, así que el solver se publica como funciones de Python. Todo está en la
-**raíz del repositorio**:
+Vercel solo entrega archivos, así que el solver se publica como funciones de Python. El proyecto de
+Vercel usa **esta carpeta** como *Root Directory* (`Prototipos/Prototipo 2`): la página se publica tal
+cual, sin paso de build, y las funciones viven en `api/`.
 
 | Archivo | Para qué |
 | :--- | :--- |
-| `vercel.json` | Configura el build y las funciones (300 s máximo, sin los Excel, actas ni documentos). |
-| `scripts/vercel_build.mjs` | Build: copia este prototipo a `public/`, lo único que queda publicado como página. Si falla, el log de Vercel dice en qué carpeta corrió y qué encontró. |
+| `vercel.json` | Configura las funciones (300 s máximo; sin datos ni archivos de la página en su paquete). |
 | `api/estado.py`, `api/instancia.py`, `api/resolver.py` | Las tres rutas de la API, con la misma lógica de `servidor.py` (`ManejadorVercel`). |
-| `requirements.txt` | OR-Tools para el modelo matemático (el motor solo usa la biblioteca estándar). |
+| `pyproject.toml` | Dependencias de las funciones: OR-Tools y el motor de `notebooks/`, instalado como paquete. |
+| `../../notebooks/pyproject.toml` | Empaqueta el motor (`horarios`, `generador_horarios`, `modelo_matematico`). |
 
-Configuración del proyecto en Vercel (*Settings → Build and Deployment*), una sola vez:
+**Por qué el motor va como paquete:** durante el build Vercel tiene todo el repositorio, pero el
+paquete de cada función solo incluye los archivos del Root Directory más las dependencias instaladas.
+Por eso `pyproject.toml` instala el motor desde `../../notebooks` (con `uv`, el instalador de Vercel):
+queda dentro de la función y siempre es el código del mismo commit. En local, `servidor.py` sigue
+usando `notebooks/` directamente.
 
-1. **Root Directory**: vacío (la raíz del repositorio). Si dice `Prototipos/Prototipo 2`, bórralo.
-2. **Framework Preset**: *Other*, sin sobrescribir Build Command ni Output Directory (los fija `vercel.json`).
-3. En *Settings → Functions*, **Fluid Compute** activado (permite funciones de hasta 300 s en el plan Hobby).
-4. Vuelve a desplegar y abre `https://<tu-proyecto>.vercel.app/api/estado`: debe mostrar un JSON con
+Configuración del proyecto en Vercel, una sola vez:
+
+1. *Settings → Build and Deployment*: **Root Directory** `Prototipos/Prototipo 2`, **Framework Preset**
+   *Other* y sin sobrescribir Build Command ni Output Directory. Mantén activada la opción *Include
+   files outside the Root Directory in the Build Step* (viene así por defecto): el build necesita `notebooks/`.
+2. *Settings → Functions*: **Fluid Compute** activado (permite funciones de hasta 300 s en el plan Hobby).
+3. Despliega y abre `https://<tu-proyecto>.vercel.app/api/estado`: debe mostrar un JSON con
    `"entorno":"vercel"`. La pestaña Edición indicará *Solver en Vercel conectado*.
 
 En Vercel cada ejecución se limita a 240 s, la primera llamada tarda unos segundos (arranque en frío) y
@@ -160,9 +168,10 @@ Prototipo 2/
 ├── datos/resumen_<año>.js   # Resumen de cada año para las tarjetas del menú
 ├── assets/escudo.png        # Escudo del colegio
 ├── exportar_datos.py        # Lee el Excel 2026, ejecuta el motor (2027) y exporta los datos
-└── servidor.py              # Servidor local del modo desarrollador (página + API del solver)
-
-../../vercel.json, ../../api/, ../../requirements.txt   # Publicación en Vercel con el solver en línea
+├── servidor.py              # Servidor local del modo desarrollador (página + API del solver)
+├── api/                     # Funciones de Vercel: estado, instancia y resolver
+├── pyproject.toml           # Dependencias de las funciones de Vercel (OR-Tools + motor)
+└── vercel.json              # Configuración de las funciones de Vercel
 ```
 
 Las animaciones usan [GSAP](https://gsap.com) desde cdnjs. Sin conexión a internet la página

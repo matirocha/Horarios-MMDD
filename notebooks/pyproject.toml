@@ -1,0 +1,21 @@
+# Empaqueta el motor de horarios para instalarlo como dependencia.
+# Lo usa el solver en línea del Prototipo 2 en Vercel (Prototipos/Prototipo 2/pyproject.toml lo
+# instala desde esta carpeta); los scripts de esta carpeta funcionan igual sin instalar nada.
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "horarios-mmdd"
+version = "1.0.0"
+description = "Motor del generador de horarios del Colegio Madres Dominicas (TGOP, Ingeniería Civil Industrial, UdeC)"
+requires-python = ">=3.10"
+dependencies = []   # el motor solo usa la biblioteca estándar
+
+[project.optional-dependencies]
+modelo = ["ortools"]     # modelo_matematico.py
+excel = ["openpyxl"]     # libros Excel de horarios/salidas/exportador_excel.py
+
+[tool.setuptools]
+packages = ["horarios", "horarios.heuristicas", "horarios.metaheuristicas", "horarios.salidas"]
+py-modules = ["generador_horarios", "modelo_matematico", "comparar_metaheuristicas"]
