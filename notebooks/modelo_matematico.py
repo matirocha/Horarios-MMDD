@@ -8,8 +8,8 @@ MODELO MATEMÁTICO DEL HORARIO ESCOLAR MMDD (programación lineal entera, PLE)
 Formulación exacta del mismo problema que resuelven las heurísticas y metaheurísticas
 de horarios/. Usa la misma instancia (ModeloHorario: datos 2026, sesiones dobles y
 simples, electivos fijos), así que sus resultados se pueden comparar directamente:
-una solución del modelo cumple todas las restricciones duras y su objetivo es el
-mismo costo blando que minimizan las metaheurísticas.
+una solución del modelo cumple todas las restricciones duras, igual que un horario
+con costo 0 de las metaheurísticas.
 
 CONJUNTOS
   C            cursos (24 regulares C_R y 3 de párvulos C_P).
@@ -26,23 +26,22 @@ PARÁMETROS
   n2_l, n1_l   sesiones dobles y simples de la lección l: n2 = floor(h/2), n1 = h mod 2
                (párvulos: n2 = 0, n1 = h).
   F_tdb        1 si el docente t dicta un electivo fijo en (d,b) (franjas de 3° y 4° medio).
-  w_P, w_V     pesos del uso del Patio Santo Domingo y de las ventanas docentes.
+  w_V          peso de las ventanas docentes (0 por defecto).
 
 VARIABLES
   y_lp ∈ {0,1}   la lección l tiene una sesión doble en el par p ∈ P_c(l).
   z_lx ∈ {0,1}   la lección l tiene una sesión simple en la celda x ∈ X_c(l).
-  u_gx ∈ {0,1}   el gimnasio g desborda un curso al Patio Santo Domingo en la celda x.
   a, e, v ≥ 0    (solo si w_V > 0) auxiliares de las ventanas docentes, ver (R7).
 
   Ocupación (expresión):  o_lx = Σ_{p ∈ P_c: x ∈ p} y_lp + z_lx
 
 FUNCIÓN OBJETIVO
-  min  w_P · Σ_{g,x} u_gx  +  w_V · Σ_{t,d,b} v_tdb
+  min  w_V · Σ_{t,d,b} v_tdb
 
-  Las restricciones duras van como restricciones (no como penalización). Por eso, si
-  el modelo tiene solución, su objetivo con w_V = 0 es la cota inferior del costo
-  f = 1000·(violaciones duras) + 1·(bloques en el patio) que minimizan las
-  metaheurísticas: si una metaheurística llega a f = 0, su horario es óptimo.
+  Las restricciones duras van como restricciones (no como penalización). Con w_V = 0
+  (por defecto) el objetivo es constante y el modelo solo busca un horario factible,
+  igual que las metaheurísticas, que minimizan f = 1000·(violaciones duras): f = 0
+  equivale a una solución del modelo. Con w_V > 0 minimiza además las ventanas.
 
 RESTRICCIONES
   (R1) Carga horaria:        Σ_p y_lp = n2_l   y   Σ_x z_lx = n1_l        ∀ l
@@ -52,8 +51,7 @@ RESTRICCIONES
                                                                           ∀ c, f, d
   (R4) Docente sin choques:  Σ_{l: t ∈ T_l} o_l(d,b) ≤ 1 − F_tdb          ∀ t, d, b
   (R5) Sala English skills:  Σ_{l ∈ L^EI} o_l(d,b) ≤ 1                    ∀ d, b
-  (R6) Recintos deportivos:  Σ_{l ∈ L^g} o_l(d,b) ≤ 1 + u_g(d,b)          ∀ g, d, b
-                             Σ_g u_g(d,b) ≤ 1  (el patio recibe un solo curso)
+  (R6) Recintos deportivos:  Σ_{l ∈ L^g} o_l(d,b) ≤ 1                    ∀ g, d, b
   (R7) Ventanas docentes (opcional): con x_tdb = Σ_{l: t ∈ T_l} o_l(d,b) + F_tdb,
                              a_tdb ≥ x_tdb,  a_tdb ≥ a_td(b-1)   (ya empezó su jornada)
                              e_tdb ≥ x_tdb,  e_tdb ≥ e_td(b+1)   (aún le quedan clases)
@@ -66,15 +64,15 @@ RESTRICCIONES
   los electivos fijos).
 
 USO (requiere: pip install ortools)
-  python notebooks/modelo_matematico.py                         # CP-SAT, minimiza el uso del patio
+  python notebooks/modelo_matematico.py                         # CP-SAT, busca un horario factible
   python notebooks/modelo_matematico.py --hilos 1               # 1 hilo: comparable con las metaheurísticas
   python notebooks/modelo_matematico.py --solver SCIP --tiempo-max 600     # solver MIP clásico
   python notebooks/modelo_matematico.py --peso-ventanas 1 --tiempo-max 120 # + ventanas docentes
   python notebooks/modelo_matematico.py --lp modelo.lp           # exporta el modelo en formato LP
   python notebooks/modelo_matematico.py --excel "Outputs Modelo"  # Excel del horario obtenido
 
-  Tiempos de referencia (4 núcleos, datos 2026, objetivo = patio): CP-SAT ≈ 0,4 s
-  (≈ 15 s con 1 hilo), HiGHS ≈ 90 s, SCIP ≈ 255 s; todos llegan al óptimo (objetivo 0).
+  Tiempos de referencia (4 núcleos, datos 2026, w_V = 0): CP-SAT ≈ 0,4 s
+  (≈ 0,8 s con 1 hilo), HiGHS ≈ 0,4 s, SCIP ≈ 46 s; todos encuentran un horario factible.
   Con --peso-ventanas 1, CP-SAT prueba en ≈ 20 s que el óptimo tiene 1 ventana docente.
 """
 
@@ -91,7 +89,7 @@ SOLVERS = ['CP-SAT', 'SCIP', 'CBC', 'HIGHS', 'GUROBI']
 class ModeloMatematico:
     """Construye el modelo de programación entera, lo resuelve y valida la solución."""
 
-    def __init__(self, solver='CP-SAT', peso_patio=ModeloHorario.PESO_PATIO, peso_ventanas=0):
+    def __init__(self, solver='CP-SAT', peso_ventanas=0):
         try:
             from ortools.linear_solver import pywraplp
         except ImportError as error:
@@ -102,7 +100,6 @@ class ModeloMatematico:
         if self.solver is None:
             raise SystemExit(f"El solver '{solver}' no está disponible en esta instalación de OR-Tools. "
                              f"Prueba con: {', '.join(SOLVERS[:4])}")
-        self.peso_patio = peso_patio
         self.peso_ventanas = peso_ventanas
 
         t0 = time.perf_counter()
@@ -173,9 +170,6 @@ class ModeloMatematico:
             if lec['zona']:
                 self.uso_zona[(lec['zona'], x)] += variables
 
-        self.u = {(g, x): sv.BoolVar(f'u_{g[-1]}_{DatosColegio.DIAS.index(x[0])}_{x[1]}')
-                  for (g, x), variables in self.uso_zona.items() if len(variables) > 1}
-
     # ------------------------------------------------------------------
     # Restricciones
     # ------------------------------------------------------------------
@@ -222,13 +216,8 @@ class ModeloMatematico:
         for (sala, x), variables in self.uso_recurso.items():
             sv.Add(suma(variables) <= DatosColegio.RECURSOS_CAPACIDAD[sala])
 
-        # (R6) Recintos deportivos: un curso por gimnasio y un desborde al patio
+        # (R6) Recintos deportivos: un curso por gimnasio
         for (g, x), variables in self.uso_zona.items():
-            sv.Add(suma(variables) <= 1 + self.u.get((g, x), 0))
-        por_celda = defaultdict(list)
-        for (g, x), var in self.u.items():
-            por_celda[x].append(var)
-        for variables in por_celda.values():
             if len(variables) > 1:
                 sv.Add(suma(variables) <= 1)
 
@@ -267,7 +256,7 @@ class ModeloMatematico:
 
     def _objetivo(self):
         sv = self.solver
-        sv.Minimize(self.peso_patio * sv.Sum(self.u.values()) + self.peso_ventanas * sv.Sum(self.v))
+        sv.Minimize(self.peso_ventanas * sv.Sum(self.v))
 
     # ------------------------------------------------------------------
     # Resolución
@@ -300,7 +289,6 @@ class ModeloMatematico:
             'objetivo': objetivo,
             'cota': cota,
             'gap': gap,
-            'patio': round(sum(v.solution_value() for v in self.u.values())) if con_solucion else None,
             'ventanas_modelo': round(sum(v.solution_value() for v in self.v)) if con_solucion and self.v else None,
             'variables': sv.NumVariables(),
             'restricciones': sv.NumConstraints(),
@@ -333,8 +321,6 @@ def main():
     parser = argparse.ArgumentParser(description="Modelo de programación entera del horario MMDD (OR-Tools)")
     parser.add_argument('--solver', default='CP-SAT', choices=SOLVERS, help="Solver de OR-Tools (default: CP-SAT)")
     parser.add_argument('--tiempo-max', type=float, default=300, help="Segundos máximos de resolución (default: 300)")
-    parser.add_argument('--peso-patio', type=float, default=ModeloHorario.PESO_PATIO,
-                        help="Peso del uso del Patio Santo Domingo (default: 1)")
     parser.add_argument('--peso-ventanas', type=float, default=0,
                         help="Peso de las ventanas docentes; 0 = no se modelan (default: 0)")
     parser.add_argument('--hilos', type=int, default=None, help="Hilos del solver (default: los del solver)")
@@ -343,7 +329,7 @@ def main():
     parser.add_argument('--excel', type=str, help="Carpeta donde exportar los Excel del horario obtenido")
     args = parser.parse_args()
 
-    modelo = ModeloMatematico(args.solver, args.peso_patio, args.peso_ventanas)
+    modelo = ModeloMatematico(args.solver, args.peso_ventanas)
     print(f"Modelo construido en {modelo.t_construccion:.2f} s: {modelo.solver.NumVariables()} variables, "
           f"{modelo.solver.NumConstraints()} restricciones, {len(modelo.lecciones)} lecciones.")
     if args.lp:
@@ -355,8 +341,7 @@ def main():
     print(f"\nEstado: {r['estado']}   tiempo de resolución: {r['t_resolucion']:.2f} s")
     if not r['con_solucion']:
         return
-    print(f"Objetivo: {r['objetivo']:g}   cota inferior: {r['cota']:g}   gap: {r['gap'] * 100:.2f}%")
-    print(f"Bloques en el Patio Santo Domingo: {r['patio']}"
+    print(f"Objetivo: {r['objetivo']:g}   cota inferior: {r['cota']:g}   gap: {r['gap'] * 100:.2f}%"
           + (f"   ventanas docentes: {r['ventanas_modelo']}" if r['ventanas_modelo'] is not None else ''))
 
     # Validación independiente: costo de la función objetivo de las metaheurísticas y auditoría
@@ -368,8 +353,7 @@ def main():
           f"({instancia.duras} violaciones duras)")
     print(f"Auditoría: {'VÁLIDO' if auditoria['valido'] else 'CON ERRORES'} · "
           f"{m['total_bloques_asignados']}/{m['total_bloques_esperados']} bloques · "
-          f"ventanas docentes {m['total_ventanas_docentes']} · bloques dobles {m['porcentaje_bloques_dobles']}% · "
-          f"patio {m['uso_patio']}")
+          f"ventanas docentes {m['total_ventanas_docentes']} · bloques dobles {m['porcentaje_bloques_dobles']}%")
     for error in auditoria['errores_duros'][:10]:
         print(f"  - {error}")
 

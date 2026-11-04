@@ -90,7 +90,7 @@ flowchart LR
 | `Outputs Excel/~$Horarios_Docentes_Colegio_MMDD.xlsx` | Archivo temporal de bloqueo que Excel crea mientras un libro está abierto; se subió por error. Ahora `.gitignore` ignora `~$*`. |
 | `horarios/metaheuristicas/base.py` | Solo definía una subclase vacía; la clase `Metaheuristica` quedó en `mejora.py`, junto a la base común. |
 | `HorarioEscolar.esta_disponible` y `HorarioEscolar.desasignar` | Restos de una versión anterior del algoritmo; nadie los usaba. |
-| `ExportadorExcel.exportar_horario` y `MotorHorarios.PESO_DURO` / `PESO_PATIO` | Alias sin uso. |
+| `ExportadorExcel.exportar_horario` y `MotorHorarios.PESO_DURO` / `PESO_PATIO` (el Patio Santo Domingo ya no es recinto deportivo) | Alias sin uso. |
 | Reexportaciones sobrantes en `generador_horarios.py` | Solo quedan las clases que importan los prototipos. |
 
 Además, `horario.py`, `validador.py`, `exportador_excel.py` y `menu.py` se agruparon en `horarios/salidas/`. Los horarios generados y los datos que exporta el Prototipo 2 no cambian.

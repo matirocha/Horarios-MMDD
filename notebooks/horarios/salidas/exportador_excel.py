@@ -244,7 +244,7 @@ class ExportadorExcel:
         """
         Crea el libro de cursos con la estructura y el diseño de HORARIO CURSOS 2026.xlsx:
         - Hoja 'SALAS ELECTIVOS' (English skills, electivos, artes, música y pastoral).
-        - Hoja 'GIMNASIOS' (Gimnasio A, Gimnasio B y Patio Santo Domingo).
+        - Hoja 'GIMNASIOS' (Gimnasio A y Gimnasio B).
         - Hojas de párvulos (Ed. Física) y una hoja por cada uno de los 24 cursos.
         - Hoja 'AUDITORIA' con la verificación de restricciones.
         """
@@ -408,11 +408,9 @@ class ExportadorExcel:
     def _hoja_gimnasios(cls, ws, horario):
         cls._formato_hoja(ws)
         recintos = horario.asignar_recintos()
-        for rango in ('D1:E1', 'F1:H1', 'F2:H2', 'D3:E3', 'F3:H3', 'D19:E19', 'F18:H18', 'F19:H19',
-                      'D34:E34', 'F33:H33', 'F34:H34'):
+        for rango in ('D1:E1', 'F1:H1', 'F2:H2', 'D3:E3', 'F3:H3', 'D19:E19', 'F18:H18', 'F19:H19'):
             ws.merge_cells(rango)
-        for recinto, fila_titulo, fila_grilla in (('GIMNASIO A', 2, 5), ('GIMNASIO B', 18, 20),
-                                                  ('PATIO SANTO DOMINGO', 33, 35)):
+        for recinto, fila_titulo, fila_grilla in (('GIMNASIO A', 2, 5), ('GIMNASIO B', 18, 20)):
             cls._combinar(ws, fila_titulo, 4, fila_titulo, 5, recinto, negrita=True, tam=10, borde=False, v='center')
 
             def contenido(dia, b, recinto=recinto):
@@ -423,13 +421,12 @@ class ExportadorExcel:
                     return ' / '.join(DatosColegio.codigo_corto(c) for c in cursos), None
                 # Los pares libres de los gimnasios se marcan "GIMNASIO / DISPONIBLE", como en el Excel 2026
                 b1 = b if b % 2 else b - 1
-                if recinto != 'PATIO SANTO DOMINGO' and not recintos.get((recinto, dia, b1)) \
-                        and not recintos.get((recinto, dia, b1 + 1)):
+                if not recintos.get((recinto, dia, b1)) and not recintos.get((recinto, dia, b1 + 1)):
                     return ('GIMNASIO' if b % 2 else 'DISPONIBLE'), None
                 return None, None
 
             cls._grilla(ws, fila_grilla, 2, 8, contenido)
-        for fila, alto in {4: 5.25, 17: 8.25, 19: 1.5, 32: 6.75, 34: 2.25}.items():
+        for fila, alto in {4: 5.25, 17: 8.25, 19: 1.5}.items():
             ws.row_dimensions[fila].height = alto
 
     @classmethod
@@ -498,7 +495,6 @@ class ExportadorExcel:
             ('Troncales en bloques consecutivos', f"{m['core_no_consecutivo']} bloques separados", m['core_no_consecutivo']),
             ('Bloques dobles (90 min)', f"{m['porcentaje_bloques_dobles']}% de las horas", None),
             ('Ventanas docentes', f"{m['total_ventanas_docentes']} bloques de espera", None),
-            ('Uso del Patio Santo Domingo', f"{m['uso_patio']} bloques", None),
         ]
         for i, texto in enumerate(['MÉTRICA / CRITERIO', 'VALOR EVALUADO', 'ESTADO']):
             cls._escribir(ws, 5, 2 + i, texto, negrita=True, relleno=cls.AMARILLO)

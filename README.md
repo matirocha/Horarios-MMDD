@@ -250,10 +250,9 @@ Las 18 horas de electivos de cada nivel se organizan en **3 franjas instituciona
 
 ## 🏟️ Recintos Deportivos y Salas
 
-* **Recintos deportivos (un curso por bloque en cada uno):**
+* **Recintos deportivos (un curso por bloque en cada uno; no hay recinto de desborde):**
   * **Gimnasio A:** Educación Física de 5° básico a 4° medio.
   * **Gimnasio B:** Educación Física de 1° a 4° básico y párvulos.
-  * **Patio Santo Domingo:** recibe el desborde de cualquiera de los gimnasios; su uso se penaliza en la función objetivo (en los datos oficiales 2026 no se usa).
 * **Salas registradas (12):** *Electivo 1* (English skills, un curso por bloque), *Electivo 2*, *Electivo 3*, *Sala de Tecnología*, *Sala Padre Cueto*, *Sala Madre Pilar*, *Sala de Artes* (Artes de media), *Sala de Música* (Música de 5° básico a 4° medio) y las salas de *3°A, 3°B, 4°A y 4°B* para electivos.
 * **Bloqueos de pastoral:** Sala de Tecnología, Electivos 2 y 3, Sala Padre Cueto, Sala Madre Pilar, Sala de Artes y párvulos tienen franjas reservadas (principalmente colación y bloques 9-10 de martes y jueves; además martes 1-2 y jueves 1-4 en Madre Pilar y jueves 7-8 en Padre Cueto).
 
@@ -272,16 +271,15 @@ Deben cumplirse en el 100% de los casos para que un horario sea considerado fact
 4. **Cumplimiento Estricto de Cargas Horarias:** Las horas asignadas por asignatura coinciden exactamente con la malla (38 h en 1°–5° básico, 37 h en 6°–8° básico, 40 h en 1°–2° medio y 42 h en 3°–4° medio).
 5. **Orientación y Jefatura:** La Orientación (y el bloque `ORIEN/TEC.` de 1° a 4° básico) está a cargo del profesor/a jefe de cada curso.
 6. **Franjas de Electivos Sincronizadas (3° y 4° Medio):** Las 3 franjas de cada nivel ocupan bloques idénticos en las secciones A y B, sin choques con el plan común.
-7. **Recintos Deportivos:** Un curso por recinto y bloque; cada curso usa el gimnasio de su ciclo y solo el desborde va al Patio Santo Domingo.
+7. **Recintos Deportivos:** Un curso por gimnasio y bloque; cada curso usa el gimnasio de su ciclo (Gimnasio A o B).
 8. **English skills:** Se dicta con sus dos docentes simultáneos, en la sala *Electivo 1*, que admite un curso por bloque.
 9. **Una Sesión Diaria por Asignatura:** Ninguna asignatura se reparte en dos sesiones el mismo día (las English skills cuentan como Inglés).
 10. **Bloques Pedagógicos Dobles:** Las asignaturas se programan en pares de 90 minutos dentro de un par pedagógico; solo las horas impares (p. ej. 3 h de Ciencias Naturales o 7 h de Matemática) agregan un bloque simple en otro día. Las troncales (Matemática, Lenguaje y Ciencias) nunca quedan partidas en el mismo día.
 11. **Bloqueos de Pastoral:** Ninguna actividad programada ocupa una sala en una franja reservada para pastoral.
 
 ### 2. Restricciones Blandas / Criterios de Calidad (Soft Constraints)
-* **Uso del Patio Santo Domingo** *(implementado en la función objetivo)*: se penaliza cada bloque de Educación Física que no cabe en el gimnasio de su ciclo.
 * **Porcentaje de bloques dobles y ventanas docentes** *(medidos en la auditoría)*: proporción de horas en pares de 90 minutos y bloques libres intermedios en la jornada de cada docente.
-* **Pendiente de incorporar a la optimización:** minimizar las ventanas docentes, distribuir las asignaturas de alta carga cognitiva a lo largo de la semana y balancear la carga diaria de cada curso.
+* **Pendiente de incorporar a la optimización:** hoy la función objetivo no tiene términos blandos. Falta minimizar las ventanas docentes, distribuir las asignaturas de alta carga cognitiva a lo largo de la semana y balancear la carga diaria de cada curso.
 
 ---
 
@@ -371,7 +369,7 @@ Cada fase está en su propio módulo de `notebooks/horarios/`: el modelo de sesi
 2. **Construcción voraz:** se ubican primero las sesiones dobles y luego las simples, de la más restringida (co-docencia, docentes con mayor carga, Educación Física) a la menos restringida, en la posición de menor costo.
 3. **Método de mejora (por defecto, el híbrido `min_conflicts_tabu`):** se elige una restricción violada, una de sus sesiones y el mejor intercambio dentro del curso (par por par o bloque por bloque, lo que mantiene la jornada completa), con lista tabú, ruido aleatorio y reinicios desde la mejor solución encontrada.
 
-Con la semilla por defecto (`--seed 3`) el motor obtiene en menos de un segundo un horario con **936/936 bloques asignados, 0 violaciones duras, 92% de las horas en bloques dobles y sin uso del Patio Santo Domingo**.
+Con la semilla por defecto (`--seed 3`) el motor obtiene en menos de un segundo un horario con **936/936 bloques asignados, 0 violaciones duras, 92% de las horas en bloques dobles y 130 bloques de ventana docente**.
 
 #### Heurísticas y metaheurísticas identificadas
 
@@ -386,20 +384,19 @@ Con la semilla por defecto (`--seed 3`) el motor obtiene en menos de un segundo 
 #### Función objetivo
 Todos los métodos minimizan la misma función, calculada de forma incremental en `modelo.py`:
 
-$$f(x) = 1000 \cdot H(x) + 1 \cdot P(x)$$
+$$f(x) = 1000 \cdot H(x)$$
 
-* $H(x)$: violaciones duras (choques de docentes, asignatura repetida en el día, sala de English skills sobre su capacidad y cursos en Educación Física que no caben en los recintos).
-* $P(x)$: bloques en que un curso se desborda al Patio Santo Domingo (blanda). Como $P(x) \le 50$, una sola violación dura pesa más que todo el costo blando.
-* $f(x) = 0$ es el óptimo. Las demás restricciones (cargas, jornada completa, bloques dobles, electivos y jefaturas) se cumplen por construcción.
+* $H(x)$: violaciones duras (choques de docentes, asignatura repetida en el día, sala de English skills sobre su capacidad y más de un curso de Educación Física en el mismo gimnasio).
+* $f(x) = 0$ es un horario factible. No hay términos blandos: el peso 1000 deja espacio para agregarlos (p. ej. ventanas docentes) con un peso menor, de modo que una sola violación dura siga pesando más que todo el costo blando. Las demás restricciones (cargas, jornada completa, bloques dobles, electivos y jefaturas) se cumplen por construcción.
 
 #### Modelo matemático (`notebooks/modelo_matematico.py`)
-Formulación de programación lineal entera del mismo problema y con la misma instancia: variables binarias $y_{lp}$ (sesión doble de la lección $l$ en el par $p$) y $z_{lx}$ (sesión simple en la celda $x$), restricciones duras como restricciones y objetivo $\min\, w_P \sum u_{gx} + w_V \sum v_{tdb}$ (uso del patio y, opcionalmente, ventanas docentes). La formulación completa está en el encabezado del archivo. Se resuelve con OR-Tools; la solución se vuelve a evaluar con la función objetivo de las metaheurísticas y con `ValidadorRestricciones`.
+Formulación de programación lineal entera del mismo problema y con la misma instancia: variables binarias $y_{lp}$ (sesión doble de la lección $l$ en el par $p$) y $z_{lx}$ (sesión simple en la celda $x$), restricciones duras como restricciones y objetivo $\min\, w_V \sum v_{tdb}$ (ventanas docentes, opcional; con $w_V = 0$ solo busca un horario factible). La formulación completa está en el encabezado del archivo. Se resuelve con OR-Tools; la solución se vuelve a evaluar con la función objetivo de las metaheurísticas y con `ValidadorRestricciones`.
 
-| Solver (4 núcleos) | Objetivo: patio | Tiempo |
+| Solver (4 núcleos) | Resultado ($w_V = 0$) | Tiempo |
 | :--- | :---: | :---: |
-| CP-SAT (por defecto) | 0 (óptimo) | ≈ 0,4 s (≈ 15 s con `--hilos 1`) |
-| HiGHS | 0 (óptimo) | ≈ 90 s |
-| SCIP | 0 (óptimo) | ≈ 255 s |
+| CP-SAT (por defecto) | factible | ≈ 0,4 s (≈ 0,8 s con `--hilos 1`) |
+| HiGHS | factible | ≈ 0,4 s |
+| SCIP | factible | ≈ 46 s |
 
 Con `--peso-ventanas 1`, CP-SAT encuentra en ≈ 20 s un horario óptimo con **1 ventana docente**, contra ≈ 125 de los horarios de las metaheurísticas (que hoy no minimizan las ventanas).
 
@@ -442,7 +439,7 @@ python notebooks/comparar_metaheuristicas.py --semillas 1 2 3 4 5 --tiempo-max 1
 python notebooks/comparar_metaheuristicas.py --convergencia convergencia.csv   # curvas costo vs. tiempo
 ```
 
-Por ejecución informa si el horario quedó factible, el costo final $f(x)$, los pasos, el **tiempo de búsqueda**, el **tiempo hasta la primera solución factible**, el tiempo hasta la mejor solución y los indicadores de la auditoría (ventanas docentes, % de bloques dobles y uso del patio). El resumen ordena los métodos por % de ejecuciones factibles, costo final medio y mediana del tiempo hasta factible. El tiempo se mide en la clase base (`mejora.py`), igual para todos los métodos.
+Por ejecución informa si el horario quedó factible, el costo final $f(x)$, los pasos, el **tiempo de búsqueda**, el **tiempo hasta la primera solución factible**, el tiempo hasta la mejor solución y los indicadores de la auditoría (ventanas docentes y % de bloques dobles). El resumen ordena los métodos por % de ejecuciones factibles, costo final medio y mediana del tiempo hasta factible. El tiempo se mide en la clase base (`mejora.py`), igual para todos los métodos.
 
 Resultados de referencia (semillas 1 a 10, límite de 20 s, un núcleo):
 
@@ -466,7 +463,7 @@ Para agregar una metaheurística nueva: crear un archivo en `notebooks/horarios/
 
 ### Modelo matemático
 ```bash
-python notebooks/modelo_matematico.py                          # CP-SAT, minimiza el uso del patio
+python notebooks/modelo_matematico.py                          # CP-SAT, busca un horario factible
 python notebooks/modelo_matematico.py --hilos 1                # 1 hilo, comparable con las metaheurísticas
 python notebooks/modelo_matematico.py --solver SCIP --tiempo-max 600
 python notebooks/modelo_matematico.py --peso-ventanas 1        # minimiza además las ventanas docentes
@@ -477,7 +474,7 @@ Informa el estado (óptimo o factible), el objetivo, la cota inferior y el gap, 
 ### 1. `Horario_Cursos_MMDD.xlsx` (Horario por Cursos)
 Replica la estructura y el diseño de `HORARIO CURSOS 2026.xlsx`: fuente Cavolini, encabezados y recreos en amarillo, bloques y horarios en crema, bordes naranjos y el escudo del colegio.
 * **SALAS ELECTIVOS:** grilla de las 12 salas (English skills, electivos por sección, Artes y Música de media, bloqueos de pastoral).
-* **GIMNASIOS:** Gimnasio A, Gimnasio B y Patio Santo Domingo, con los pares libres marcados como *GIMNASIO / DISPONIBLE*.
+* **GIMNASIOS:** Gimnasio A y Gimnasio B, con los pares libres marcados como *GIMNASIO / DISPONIBLE*.
 * **PREKINDER A, KINDER A y KINDER B:** Educación Física de párvulos.
 * **24 hojas de cursos:** grilla semanal (English skills en amarillo) y tabla de horas por asignatura con el docente asignado y el profesor/a jefe.
 * **AUDITORIA:** verificación de todas las restricciones duras e indicadores de calidad.

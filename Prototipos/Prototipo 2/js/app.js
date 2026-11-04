@@ -977,7 +977,7 @@
   const capacidadEspacio = e => maxBloqueEspacio(e) * DIAS.length;
 
   function catEspacio(nombre) {
-    if (nombre.startsWith('GIMNASIO') || nombre.startsWith('PATIO')) return 'edfisica';
+    if (nombre.startsWith('GIMNASIO')) return 'edfisica';
     if (nombre === 'ELECTIVO 1') return 'ingles';
     if (nombre === 'SALA DE ARTES' || nombre === 'SALA DE MÚSICA') return 'artes';
     return 'electivo';
@@ -1045,9 +1045,7 @@
     const ocupacion = Math.round((e.usos.length / capacidad) * 100);
     const cursos = new Set(e.usos.flatMap(u => u.items.map(i => i.curso || i.texto)));
     const vacio = !e.usos.length
-      ? `<p class="nota">${e.nombre === 'PATIO SANTO DOMINGO'
-        ? `El horario ${OFICIAL ? 'oficial' : 'generado'} no necesita el Patio Santo Domingo: toda la Educación Física cabe en los gimnasios.`
-        : 'Esta sala no tiene clases programadas en el modelo; solo se muestran sus bloqueos de pastoral.'}</p>`
+      ? `<p class="nota">Esta sala no tiene clases programadas en el modelo; solo se muestran sus bloqueos de pastoral.</p>`
       : '';
 
     $('#panel-sala').innerHTML = `
@@ -1367,9 +1365,7 @@
 
       <div class="kpis">
         <div class="kpi"><span class="kpi-valor"><span data-contar="${m.total_bloques_asignados}">${m.total_bloques_asignados}</span><small>/ ${m.total_bloques_esperados}</small></span><span class="kpi-etiqueta">bloques asignados</span></div>
-        <div class="kpi"><span class="kpi-valor"><span data-contar="${m.porcentaje_bloques_dobles}" data-sufijo="%">${numero(m.porcentaje_bloques_dobles)}%</span></span><span class="kpi-etiqueta">de las horas en bloques dobles de 90 minutos</span></div>
-        <div class="kpi"><span class="kpi-valor"><span data-contar="${m.total_ventanas_docentes}">${m.total_ventanas_docentes}</span></span><span class="kpi-etiqueta">bloques de ventana docente (a minimizar)</span></div>
-        <div class="kpi"><span class="kpi-valor"><span data-contar="${m.uso_patio}">${m.uso_patio}</span></span><span class="kpi-etiqueta">bloques en el Patio Santo Domingo</span></div>
+        <div class="kpi"><span class="kpi-valor"><span data-contar="${m.total_ventanas_docentes}">${m.total_ventanas_docentes}</span></span><span class="kpi-etiqueta">bloques de ventana docente (libres entre dos clases del mismo día; menos es mejor)</span></div>
       </div>
 
       <section class="seccion">

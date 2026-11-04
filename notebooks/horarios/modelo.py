@@ -11,18 +11,18 @@ Las franjas de electivos son sesiones fijas compartidas por las secciones A y B.
 
 FUNCIÓN OBJETIVO (se minimiza; el valor actual está en self.costo)
 
-    f(x) = PESO_DURO · H(x) + PESO_PATIO · P(x) = 1000 · H(x) + 1 · P(x)
+    f(x) = PESO_DURO · H(x) = 1000 · H(x)
 
   H(x) = número de violaciones duras (self.duras), suma de:
     'D' docente:  por cada (docente, día, bloque), grupos que atiende a la vez − 1.
     'F' familia:  por cada (curso, día, asignatura), sesiones ese día − 1.
     'R' sala:     por cada (sala, día, bloque), cursos sobre su capacidad (English skills: 1).
-    'G' recintos: por cada (día, bloque), cursos en Ed. Física que no caben en los dos
-                  gimnasios ni en el Patio Santo Domingo.
-  P(x) = bloques en que un curso se desborda al Patio Santo Domingo (restricción blanda).
+    'G' recintos: por cada (día, bloque) y gimnasio, cursos en Ed. Física sobre uno
+                  (cada curso usa el gimnasio de su ciclo, ver DatosColegio.zona_deportiva).
 
-  Como P(x) nunca supera 50 bloques, una sola violación dura (1000) pesa más que todo el
-  costo blando: el método prioriza la factibilidad. f(x) = 0 es el óptimo.
+  f(x) = 0 es un horario factible. Hoy no hay criterios blandos: modelo.blandos queda
+  vacío, pero se mantiene para agregarlos con un peso menor que PESO_DURO, de modo que
+  una sola violación dura siga pesando más que todo el costo blando.
   Las demás reglas (carga horaria, jornada completa, bloques dobles en pares, electivos
   sincronizados, jefaturas) se cumplen por construcción de la representación.
 
@@ -42,7 +42,6 @@ class ModeloHorario:
     """Sesiones, celdas movibles de cada curso y costo incremental de las restricciones."""
 
     PESO_DURO = 1000   # Costo de cada violación dura
-    PESO_PATIO = 1     # Costo blando por bloque de Ed. Física desbordado al Patio Santo Domingo
 
     def __init__(self):
         malla = DatosColegio.get_malla_curricular()
@@ -141,12 +140,10 @@ class ModeloHorario:
         if tipo == 'R':
             n = max(0, len(s) - DatosColegio.RECURSOS_CAPACIDAD[k[1]])
             return n * self.PESO_DURO, n, 0
-        # tipo 'G': un curso por gimnasio y uno más en el Patio Santo Domingo
+        # tipo 'G': un curso por gimnasio (A y B)
         zona_b = sum(1 for i in s if self.ses[i]['zona'] == 'GIMNASIO B')
-        exceso = max(0, zona_b - 1) + max(0, len(s) - zona_b - 1)
-        dura = max(0, exceso - 1)
-        blando = min(exceso, 1) * self.PESO_PATIO
-        return dura * self.PESO_DURO + blando, dura, blando
+        n = max(0, zona_b - 1) + max(0, len(s) - zona_b - 1)
+        return n * self.PESO_DURO, n, 0
 
     def claves_sesion(self, sid, celdas):
         """Claves de restricción que toca la sesión 'sid' si ocupa 'celdas'."""

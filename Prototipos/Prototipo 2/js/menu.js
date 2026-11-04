@@ -121,7 +121,7 @@
           <span><b data-contar="${r.cursos}">${r.cursos}</b> cursos</span>
           <span><b data-contar="${r.docentes}">${r.docentes}</b> docentes</span>
           <span><b data-contar="${r.bloques}">${r.bloques}</b> bloques</span>
-          <span><b data-contar="${r.dobles}" data-sufijo="%">${numero(r.dobles)}%</b> dobles</span>
+          <span><b data-contar="${r.ventanas}">${r.ventanas}</b> ventanas</span>
         </span>
         ${auditoria}
         <span class="tarjeta-accion">${actual ? 'Seguir viendo' : `Ver horario ${anio}`}${FLECHA}</span>

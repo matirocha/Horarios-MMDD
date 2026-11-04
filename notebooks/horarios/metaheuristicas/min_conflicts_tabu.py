@@ -41,7 +41,7 @@ class MinConflictosTabu(Metaheuristica):
         for paso in range(self.max_pasos):
             motivo = self.parada_comun(modelo, seg)
             if motivo is None and modelo.duras == 0 and sin_mejora > self.parada_factible:
-                motivo = 'factible_sin_mejora'   # factible y sin mejoras en el uso del patio
+                motivo = 'factible_sin_mejora'   # factible y sin mejoras en el costo blando
             if motivo:
                 return {'pasos': paso, 'motivo_parada': motivo, 'reinicios': reinicios}
             sid, motivo = elegir_sesion_en_conflicto(modelo, rng)

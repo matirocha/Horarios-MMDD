@@ -53,7 +53,7 @@ completo), `datos/resumen_<año>.js` (lo que muestra la tarjeta del menú) y `as
 | **Docentes** | Grilla de los 37 docentes con sus ventanas, carga por día y distribución horaria. |
 | **Salas y gimnasios** | Ocupación de los 3 recintos deportivos y las 12 salas, incluidos los bloqueos de pastoral. |
 | **Por bloque** | Todo el colegio en un momento de la semana: qué tiene cada curso, docentes sin clase y salas en uso. El botón *Recorrer la semana* avanza bloque a bloque. |
-| **Auditoría** | Estado de las restricciones duras, indicadores (bloques dobles, ventanas, uso del patio), horas por docente y mapa de docentes en clase. |
+| **Auditoría** | Estado de las restricciones duras, indicadores (bloques asignados y ventanas docentes), horas por docente y mapa de docentes en clase. |
 
 ## Uso rápido
 

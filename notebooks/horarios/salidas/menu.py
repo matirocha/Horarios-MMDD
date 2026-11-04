@@ -157,7 +157,7 @@ class MenuInteractivo:
         print(f"  • Errores de carga o jornada:      {m['errores_carga']}")
         print(f"  • Jefaturas inconsistentes:        {m['errores_jefatura']}")
         print(f"  • Electivos desincronizados:       {m['errores_electivos']}")
-        print(f"  • Recintos deportivos excedidos:   {m['errores_recintos']} (bloques en el patio: {m['uso_patio']})")
+        print(f"  • Recintos deportivos excedidos:   {m['errores_recintos']}")
         print(f"  • Conflictos de salas/pastoral:    {m['errores_salas']}")
         print(f"  • Repeticiones diarias:            {m['mismo_dia_violaciones']}")
         print(f"  • Troncales no consecutivas:       {m['core_no_consecutivo']}")

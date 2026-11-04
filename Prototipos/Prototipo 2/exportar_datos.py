@@ -64,7 +64,6 @@ CICLOS = [
 ESPACIOS = [
     ('GIMNASIO A', 'recinto', 'Educación Física de 5° básico a 4° medio'),
     ('GIMNASIO B', 'recinto', 'Educación Física de 1° a 4° básico y párvulos'),
-    ('PATIO SANTO DOMINGO', 'recinto', 'Recibe el desborde de los gimnasios'),
     ('ELECTIVO 1', 'sala', 'Inglés · English skills (un curso por bloque)'),
     ('ELECTIVO 2', 'sala', 'Asignaturas de profundización'),
     ('ELECTIVO 3', 'sala', 'Asignaturas de profundización'),
@@ -437,15 +436,12 @@ def leer_horario_oficial(ruta=None):
                 horario.asignar(curso, dia, b, asignatura, docentes, espacio)
         jornadas[curso] = D.JORNADAS[curso] if D.es_parvulo(curso) else tuple(ultimo)
 
-    # Recintos deportivos según la hoja GIMNASIOS; si un bloque no aparece ahí, se usa la regla del motor
+    # Recintos deportivos según la hoja GIMNASIOS; si un bloque no aparece ahí, va al gimnasio de su ciclo
     def asignar_recintos():
         recintos = defaultdict(list)
         for (dia, b), cursos in horario.gimnasio_ocupado.items():
             for curso in cursos:
-                destino = recintos_reales.get((curso, dia, b))
-                if destino is None:
-                    zona = D.zona_deportiva(curso)
-                    destino = zona if not recintos[(zona, dia, b)] else 'PATIO SANTO DOMINGO'
+                destino = recintos_reales.get((curso, dia, b)) or D.zona_deportiva(curso)
                 recintos[(destino, dia, b)].append(curso)
         return recintos
 
@@ -527,9 +523,7 @@ def escribir_datos(datos):
         'totalErrores': a['totalErrores'],
         'bloques': m['total_bloques_asignados'],
         'bloquesEsperados': m['total_bloques_esperados'],
-        'dobles': m['porcentaje_bloques_dobles'],
         'ventanas': m['total_ventanas_docentes'],
-        'patio': m['uso_patio'],
         'muestra': muestra,
     }
     with open(os.path.join(carpeta, f'resumen_{anio}.js'), 'w', encoding='utf-8') as f:
@@ -542,7 +536,7 @@ def escribir_datos(datos):
     print(f"Horario {anio} ({origen}) exportado en {os.path.relpath(destino, RAIZ)}")
     print(f"  {len(datos['cursos'])} cursos · {len(datos['docentes'])} docentes · {len(datos['espacios'])} espacios")
     print(f"  Auditoría: {estado} ({m['total_bloques_asignados']}/{m['total_bloques_esperados']} bloques, "
-          f"{m['porcentaje_bloques_dobles']}% en bloques dobles)")
+          f"{m['total_ventanas_docentes']} ventanas docentes)")
 
 
 def meta_base(anio, fuente, **extra):

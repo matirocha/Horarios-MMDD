@@ -55,14 +55,12 @@ class HorarioEscolar:
 
     def asignar_recintos(self):
         """
-        Distribuye los cursos en Ed. Física de cada bloque entre los recintos deportivos:
-        el primero de cada zona usa su gimnasio y el desborde va al Patio Santo Domingo.
+        Distribuye los cursos en Ed. Física de cada bloque en el gimnasio de su ciclo.
+        Si un gimnasio recibe más de un curso, el validador lo informa como sobrecupo.
         Retorna {(recinto, dia, bloque): [cursos]}.
         """
         recintos = defaultdict(list)
         for (dia, bloque), cursos in self.gimnasio_ocupado.items():
             for curso in cursos:
-                zona = DatosColegio.zona_deportiva(curso)
-                destino = zona if not recintos[(zona, dia, bloque)] else 'PATIO SANTO DOMINGO'
-                recintos[(destino, dia, bloque)].append(curso)
+                recintos[(DatosColegio.zona_deportiva(curso), dia, bloque)].append(curso)
         return recintos

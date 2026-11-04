@@ -174,9 +174,8 @@ class DatosColegio:
     # Salas con capacidad limitada (un curso por bloque)
     RECURSOS_CAPACIDAD = {'Sala English skills': 1}
 
-    # Recintos deportivos: cada uno admite un curso por bloque. El Patio Santo Domingo
-    # recibe el desborde de cualquiera de los dos gimnasios (uso penalizado).
-    RECINTOS_DEPORTIVOS = ['GIMNASIO A', 'GIMNASIO B', 'PATIO SANTO DOMINGO']
+    # Recintos deportivos: cada uno admite un curso por bloque (ver zona_deportiva)
+    RECINTOS_DEPORTIVOS = ['GIMNASIO A', 'GIMNASIO B']
 
     # Franjas institucionales de electivos (formación diferenciada), fijas según la grilla 2026.
     # Cada franja dura 6 horas: 3 periodos dobles en los que 3° (o 4°) A y B se mezclan.
@@ -318,7 +317,7 @@ class DatosColegio:
 
     @classmethod
     def zona_deportiva(cls, curso):
-        """Gimnasio preferente: B para párvulos y 1° a 4° básico; A para 5° básico a 4° medio."""
+        """Gimnasio del curso: B para párvulos y 1° a 4° básico; A para 5° básico a 4° medio."""
         if cls.es_parvulo(curso) or ('BÁSICO' in curso and curso[0] in '1234'):
             return 'GIMNASIO B'
         return 'GIMNASIO A'

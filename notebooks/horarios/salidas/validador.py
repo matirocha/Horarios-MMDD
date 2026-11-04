@@ -91,11 +91,8 @@ class ValidadorRestricciones:
                 errores.append(f"Desincronización de electivos en {nivel}: {sorted(ocupacion[0] ^ ocupacion[1])}")
                 conteo['electivos'] += 1
 
-        # HC 7: Recintos deportivos (Gimnasio A, Gimnasio B y Patio Santo Domingo, un curso cada uno)
-        uso_patio = 0
+        # HC 7: Recintos deportivos (Gimnasio A y Gimnasio B, un curso cada uno)
         for (recinto, dia, bloque), cursos in horario.asignar_recintos().items():
-            if recinto == 'PATIO SANTO DOMINGO':
-                uso_patio += 1
             if len(cursos) > 1:
                 errores.append(f"Capacidad de {recinto} excedida el {dia} bloque {bloque}: {cursos}")
                 conteo['recintos'] += 1
@@ -170,8 +167,6 @@ class ValidadorRestricciones:
                     i += 1
 
         pct_dobles = (bloques_dobles_logrados / total_sesiones * 100) if total_sesiones > 0 else 0
-        if uso_patio:
-            reporte['advertencias'].append(f"Se usa el Patio Santo Domingo en {uso_patio} bloques de Ed. Física")
 
         reporte['valido'] = len(errores) == 0
         reporte['metricas'] = {
@@ -187,7 +182,6 @@ class ValidadorRestricciones:
             'errores_electivos': conteo['electivos'],
             'errores_recintos': conteo['recintos'],
             'errores_salas': conteo['salas'] + conteo['pastoral'],
-            'uso_patio': uso_patio,
             'mismo_dia_violaciones': same_day_violations,
             'core_no_consecutivo': core_non_consecutive
         }

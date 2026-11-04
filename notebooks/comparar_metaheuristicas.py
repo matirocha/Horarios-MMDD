@@ -13,12 +13,12 @@ Diseño del experimento (para que la comparación sea justa):
 
 Por ejecución se mide:
   factible          0 violaciones duras al final (y lo confirma ValidadorRestricciones).
-  costo_final       función objetivo final: 1000·(violaciones duras) + 1·(bloques en el patio).
+  costo_final       función objetivo final: 1000·(violaciones duras).
   t_busqueda_ms     tiempo de la fase de mejora.
   t_factible_ms     tiempo hasta la primera solución sin violaciones duras (vacío si no llegó).
   t_mejor_ms        tiempo hasta la mejor solución encontrada.
   pasos, pasos_por_s  iteraciones realizadas y velocidad.
-  ventanas_docentes, pct_dobles, uso_patio  indicadores de calidad de la auditoría.
+  ventanas_docentes, pct_dobles  indicadores de calidad de la auditoría.
 
 Uso:
     python notebooks/comparar_metaheuristicas.py
@@ -36,7 +36,7 @@ from horarios import METAHEURISTICAS, MotorHorarios, ValidadorRestricciones
 COLUMNAS = ['metaheuristica', 'tipo', 'semilla', 'factible', 'costo_construccion', 'duras_construccion',
             'costo_final', 'duras_finales', 'pasos', 'motivo_parada', 'pasos_por_s',
             't_construccion_ms', 't_busqueda_ms', 't_factible_ms', 't_mejor_ms', 't_total_ms',
-            'ventanas_docentes', 'pct_dobles', 'uso_patio']
+            'ventanas_docentes', 'pct_dobles']
 
 
 def ms(segundos):
@@ -69,7 +69,6 @@ def ejecutar(nombre, semilla, max_pasos, tiempo_max):
         't_total_ms': ms(t['total']),
         'ventanas_docentes': m['total_ventanas_docentes'],
         'pct_dobles': m['porcentaje_bloques_dobles'],
-        'uso_patio': m['uso_patio'],
     }
     return fila, e['historial']
 
