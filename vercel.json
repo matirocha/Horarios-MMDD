@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "rm -rf public && mkdir -p public && cp -R 'Prototipos/Prototipo 2/.' public/ && rm -rf public/*.py public/__pycache__ public/README.md",
+  "buildCommand": "node scripts/vercel_build.mjs",
   "outputDirectory": "public",
   "functions": {
     "api/*.py": {

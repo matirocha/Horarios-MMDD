@@ -119,7 +119,8 @@ Vercel solo entrega archivos, así que el solver se publica como funciones de Py
 
 | Archivo | Para qué |
 | :--- | :--- |
-| `vercel.json` | Copia este prototipo a `public/` (lo único que queda publicado como página) y configura las funciones (300 s máximo, sin los Excel, actas ni documentos). |
+| `vercel.json` | Configura el build y las funciones (300 s máximo, sin los Excel, actas ni documentos). |
+| `scripts/vercel_build.mjs` | Build: copia este prototipo a `public/`, lo único que queda publicado como página. Si falla, el log de Vercel dice en qué carpeta corrió y qué encontró. |
 | `api/estado.py`, `api/instancia.py`, `api/resolver.py` | Las tres rutas de la API, con la misma lógica de `servidor.py` (`ManejadorVercel`). |
 | `requirements.txt` | OR-Tools para el modelo matemático (el motor solo usa la biblioteca estándar). |
 
