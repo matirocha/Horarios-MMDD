@@ -63,8 +63,22 @@ RESTRICCIONES
   sincronizadas en A y B (fijas, fuera de X_c) y los bloqueos de pastoral (salas de
   los electivos fijos).
 
-USO (requiere: pip install ortools)
+MODO ELÁSTICO (--elastico)
+  Agrega una holgura entera s ≥ 0 a (R3), (R4), (R5) y (R6) y minimiza 1000 · Σ s, que es la
+  misma función objetivo f(x) de las metaheurísticas. El óptimo es la menor cantidad de
+  violaciones duras posible: 0 si la instancia es factible y, si no, cuántas son inevitables y
+  dónde (holguras positivas). Lo usa el Prototipo 2 para avisar cuándo una edición de los datos
+  impide armar un horario factible.
+
+GUROBI
+  --solver GUROBI usa gurobipy directamente (no a través de OR-Tools, que en algunos equipos no
+  carga la biblioteca de Gurobi 13). La licencia es la del equipo (gurobi.lic) o, en un servidor,
+  una licencia WLS en las variables de entorno GRB_WLSACCESSID, GRB_WLSSECRET y GRB_LICENSEID.
+
+USO (requiere: pip install ortools; para Gurobi, pip install gurobipy)
   python notebooks/modelo_matematico.py                         # CP-SAT, busca un horario factible
+  python notebooks/modelo_matematico.py --solver GUROBI         # Gurobi (gurobipy)
+  python notebooks/modelo_matematico.py --elastico              # menor cantidad de violaciones duras
   python notebooks/modelo_matematico.py --hilos 1               # 1 hilo: comparable con las metaheurísticas
   python notebooks/modelo_matematico.py --solver SCIP --tiempo-max 600     # solver MIP clásico
   python notebooks/modelo_matematico.py --peso-ventanas 1 --tiempo-max 120 # + ventanas docentes
@@ -78,6 +92,7 @@ USO (requiere: pip install ortools)
 
 import argparse
 import os
+import tempfile
 import time
 from collections import defaultdict
 
@@ -85,22 +100,142 @@ from horarios import DatosColegio, ExportadorExcel, ModeloHorario, ValidadorRest
 
 SOLVERS = ['CP-SAT', 'SCIP', 'CBC', 'HIGHS', 'GUROBI']
 
+_entorno_gurobi = None   # un solo entorno (y una sola sesión de licencia) por proceso
+
+
+def entorno_gurobi():
+    """
+    Entorno de Gurobi, creado una vez. Usa la licencia del equipo (gurobi.lic) o, si están
+    definidas, las credenciales WLS de las variables GRB_WLSACCESSID, GRB_WLSSECRET y
+    GRB_LICENSEID (así se configura en un servidor como Vercel, sin subir el archivo de licencia).
+    """
+    global _entorno_gurobi
+    if _entorno_gurobi is None:
+        import gurobipy as gp
+        env = gp.Env(empty=True)
+        env.setParam('OutputFlag', 0)
+        wls = {clave: os.environ.get(f'GRB_{clave}') for clave in ('WLSACCESSID', 'WLSSECRET', 'LICENSEID')}
+        if all(wls.values()):
+            env.setParam('WLSACCESSID', wls['WLSACCESSID'])
+            env.setParam('WLSSECRET', wls['WLSSECRET'])
+            env.setParam('LICENSEID', int(wls['LICENSEID']))
+        env.start()
+        _entorno_gurobi = env
+    return _entorno_gurobi
+
+
+class SolverGurobi:
+    """
+    Gurobi (gurobipy) con la misma interfaz de pywraplp que usa este archivo, para que el
+    modelo se escriba una sola vez. Los estados tienen los mismos valores que pywraplp.
+    """
+
+    OPTIMAL, FEASIBLE, INFEASIBLE, UNBOUNDED, ABNORMAL, NOT_SOLVED = 0, 1, 2, 3, 4, 6
+
+    def __init__(self):
+        try:
+            import gurobipy as gp
+        except ImportError as error:
+            raise SystemExit("Falta gurobipy. Instálalo con:  pip install gurobipy") from error
+        self.gp, self.GRB = gp, gp.GRB
+        try:
+            self.m = gp.Model('horario_mmdd', env=entorno_gurobi())
+        except gp.GurobiError as error:
+            raise SystemExit(f"Gurobi no pudo iniciar su licencia: {error}") from error
+
+    def BoolVar(self, nombre):
+        return self.m.addVar(vtype=self.GRB.BINARY, name=nombre)
+
+    def IntVar(self, lb, ub, nombre):
+        return self.m.addVar(lb=lb, ub=ub, vtype=self.GRB.INTEGER, name=nombre)
+
+    def NumVar(self, lb, ub, nombre):
+        return self.m.addVar(lb=lb, ub=ub, name=nombre)
+
+    def Sum(self, terminos):
+        return self.gp.quicksum(terminos)
+
+    def Add(self, restriccion):
+        return self.m.addConstr(restriccion)
+
+    def Minimize(self, expresion):
+        self.m.setObjective(expresion, self.GRB.MINIMIZE)
+
+    def SetTimeLimit(self, milisegundos):
+        self.m.Params.TimeLimit = milisegundos / 1000
+
+    def EnableOutput(self):
+        self.m.Params.OutputFlag = 1
+
+    def SetNumThreads(self, hilos):
+        self.m.Params.Threads = hilos
+
+    def NumVariables(self):
+        self.m.update()
+        return self.m.NumVars
+
+    def NumConstraints(self):
+        self.m.update()
+        return self.m.NumConstrs
+
+    def Solve(self):
+        try:
+            self.m.optimize()
+        except self.gp.GurobiError as error:   # p. ej. licencia limitada (modelo demasiado grande)
+            raise SystemExit(f"Gurobi no pudo resolver: {error}") from error
+        estado, GRB = self.m.Status, self.GRB
+        if estado == GRB.OPTIMAL:
+            return self.OPTIMAL
+        if self.m.SolCount > 0:
+            return self.FEASIBLE
+        if estado in (GRB.INFEASIBLE, GRB.INF_OR_UNBD):
+            return self.INFEASIBLE
+        if estado == GRB.UNBOUNDED:
+            return self.UNBOUNDED
+        if estado in (GRB.TIME_LIMIT, GRB.INTERRUPTED, GRB.NODE_LIMIT, GRB.SOLUTION_LIMIT):
+            return self.NOT_SOLVED
+        return self.ABNORMAL
+
+    def Objective(self):
+        m = self.m
+
+        class _Objetivo:
+            Value = staticmethod(lambda: m.ObjVal)
+            BestBound = staticmethod(lambda: m.ObjBound)
+        return _Objetivo
+
+    def ExportModelAsLpFormat(self, _obfuscado=False):
+        with tempfile.TemporaryDirectory() as carpeta:
+            ruta = os.path.join(carpeta, 'modelo.lp')
+            self.m.write(ruta)
+            with open(ruta, encoding='utf-8') as archivo:
+                return archivo.read()
+
+
+def valor(variable):
+    """Valor de una variable en la solución (OR-Tools o Gurobi)."""
+    return variable.solution_value() if hasattr(variable, 'solution_value') else variable.X
+
 
 class ModeloMatematico:
     """Construye el modelo de programación entera, lo resuelve y valida la solución."""
 
-    def __init__(self, solver='CP-SAT', peso_ventanas=0):
-        try:
-            from ortools.linear_solver import pywraplp
-        except ImportError as error:
-            raise SystemExit("Falta OR-Tools. Instálalo con:  pip install ortools") from error
-        self.pywraplp = pywraplp
+    def __init__(self, solver='CP-SAT', peso_ventanas=0, elastico=False):
         self.nombre_solver = solver.upper()
-        self.solver = pywraplp.Solver.CreateSolver(self.nombre_solver)
-        if self.solver is None:
-            raise SystemExit(f"El solver '{solver}' no está disponible en esta instalación de OR-Tools. "
-                             f"Prueba con: {', '.join(SOLVERS[:4])}")
+        if self.nombre_solver == 'GUROBI':
+            self.solver = SolverGurobi()
+        else:
+            try:
+                from ortools.linear_solver import pywraplp
+            except ImportError as error:
+                raise SystemExit("Falta OR-Tools. Instálalo con:  pip install ortools") from error
+            self.solver = pywraplp.Solver.CreateSolver(self.nombre_solver)
+            if self.solver is None:
+                raise SystemExit(f"El solver '{solver}' no está disponible en esta instalación de OR-Tools. "
+                                 f"Prueba con: {', '.join(SOLVERS[:4])}")
         self.peso_ventanas = peso_ventanas
+        self.elastico = elastico
+        self.holguras = []   # modo elástico: (restricción, clave, variable de holgura)
 
         t0 = time.perf_counter()
         self.instancia = ModeloHorario()   # mismos datos y sesiones que usan las metaheurísticas
@@ -206,20 +341,22 @@ class ModeloMatematico:
                     sesiones_dia = [self.y[(l, p)] for l in ls for p in inst.pares[c] if (l, p) in self.y and p[0][0] == d]
                     sesiones_dia += [self.z[(l, x)] for l in ls for x in inst.celda[c] if (l, x) in self.z and x[0] == d]
                     if len(sesiones_dia) > 1:
-                        sv.Add(suma(sesiones_dia) <= 1)
+                        sv.Add(suma(sesiones_dia) <= 1 + self._holgura('R3', (c, fam, d), len(sesiones_dia)))
 
         # (R4) Docente sin choques (descontando sus electivos fijos)
         for (t, x), variables in self.uso_docente.items():
-            sv.Add(suma(variables) <= 1 - self.fijo[(t, x)])
+            sv.Add(suma(variables) <= 1 - self.fijo[(t, x)]
+                   + self._holgura('R4', (t, x), len(variables) + self.fijo[(t, x)]))
 
         # (R5) Salas de capacidad limitada (English skills)
         for (sala, x), variables in self.uso_recurso.items():
-            sv.Add(suma(variables) <= DatosColegio.RECURSOS_CAPACIDAD[sala])
+            sv.Add(suma(variables) <= DatosColegio.RECURSOS_CAPACIDAD[sala]
+                   + self._holgura('R5', (sala, x), len(variables)))
 
         # (R6) Recintos deportivos: un curso por gimnasio
         for (g, x), variables in self.uso_zona.items():
             if len(variables) > 1:
-                sv.Add(suma(variables) <= 1)
+                sv.Add(suma(variables) <= 1 + self._holgura('R6', (g, x), len(variables)))
 
         # (R7) Ventanas docentes (solo si se ponderan en el objetivo)
         self.v = []
@@ -254,16 +391,31 @@ class ModeloMatematico:
                         sv.Add(v >= a[b] + e[b] - 1 - x[b])
                         self.v.append(v)
 
+    def _holgura(self, restriccion, clave, tope):
+        """Modo elástico: holgura entera de una restricción dura (0 en el modo normal)."""
+        if not self.elastico:
+            return 0
+        s = self.solver.IntVar(0, tope, f's_{restriccion}_{len(self.holguras)}')
+        self.holguras.append((restriccion, clave, s))
+        return s
+
     def _objetivo(self):
         sv = self.solver
-        sv.Minimize(self.peso_ventanas * sv.Sum(self.v))
+        objetivo = self.peso_ventanas * sv.Sum(self.v)
+        if self.elastico:   # f(x) de las metaheurísticas: 1000 por cada violación dura
+            objetivo = objetivo + ModeloHorario.PESO_DURO * sv.Sum(s for _, _, s in self.holguras)
+        sv.Minimize(objetivo)
+
+    def holguras_activas(self):
+        """Modo elástico: [(restricción, clave, violaciones)] de la solución encontrada."""
+        return [(r, clave, round(valor(s))) for r, clave, s in self.holguras if valor(s) > 0.5]
 
     # ------------------------------------------------------------------
     # Resolución
     # ------------------------------------------------------------------
     def resolver(self, tiempo_max=None, mostrar_log=False, hilos=None):
         """Resuelve el modelo y retorna un diccionario con estado, objetivo, cota, gap y tiempos."""
-        sv, pw = self.solver, self.pywraplp
+        sv = self.solver
         if tiempo_max:
             sv.SetTimeLimit(int(tiempo_max * 1000))
         if mostrar_log:
@@ -273,10 +425,11 @@ class ModeloMatematico:
         t0 = time.perf_counter()
         estado = sv.Solve()
         t_resolucion = time.perf_counter() - t0
-        nombres = {pw.Solver.OPTIMAL: 'óptimo', pw.Solver.FEASIBLE: 'factible (sin probar optimalidad)',
-                   pw.Solver.INFEASIBLE: 'infactible', pw.Solver.UNBOUNDED: 'no acotado',
-                   pw.Solver.ABNORMAL: 'error del solver', pw.Solver.NOT_SOLVED: 'sin solución en el tiempo dado'}
-        con_solucion = estado in (pw.Solver.OPTIMAL, pw.Solver.FEASIBLE)
+        # Los estados son atributos del solver (pywraplp.Solver o SolverGurobi, con los mismos valores)
+        nombres = {sv.OPTIMAL: 'óptimo', sv.FEASIBLE: 'factible (sin probar optimalidad)',
+                   sv.INFEASIBLE: 'infactible', sv.UNBOUNDED: 'no acotado',
+                   sv.ABNORMAL: 'error del solver', sv.NOT_SOLVED: 'sin solución en el tiempo dado'}
+        con_solucion = estado in (sv.OPTIMAL, sv.FEASIBLE)
         objetivo = sv.Objective().Value() if con_solucion else None
         cota = sv.Objective().BestBound() if con_solucion else None
         gap = None
@@ -289,7 +442,9 @@ class ModeloMatematico:
             'objetivo': objetivo,
             'cota': cota,
             'gap': gap,
-            'ventanas_modelo': round(sum(v.solution_value() for v in self.v)) if con_solucion and self.v else None,
+            'ventanas_modelo': round(sum(valor(v) for v in self.v)) if con_solucion and self.v else None,
+            'violaciones_minimas': round(sum(valor(s) for _, _, s in self.holguras)) if con_solucion and self.elastico else None,
+            'infactible': estado == sv.INFEASIBLE,
             'variables': sv.NumVariables(),
             'restricciones': sv.NumConstraints(),
             't_construccion': self.t_construccion,
@@ -303,8 +458,8 @@ class ModeloMatematico:
         pos = {sid: inst.pos[sid] for sid, s in enumerate(inst.ses) if s['fijo']}
         for l, lec in enumerate(self.lecciones):
             c = lec['curso']
-            dobles = [p for p in inst.pares[c] if (l, p) in self.y and self.y[(l, p)].solution_value() > 0.5]
-            simples = [(x,) for x in inst.celda[c] if (l, x) in self.z and self.z[(l, x)].solution_value() > 0.5]
+            dobles = [p for p in inst.pares[c] if (l, p) in self.y and valor(self.y[(l, p)]) > 0.5]
+            simples = [(x,) for x in inst.celda[c] if (l, x) in self.z and valor(self.z[(l, x)]) > 0.5]
             for sid, celdas in zip(lec['dobles'], dobles):
                 pos[sid] = celdas
             for sid, celdas in zip(lec['simples'], simples):
@@ -318,8 +473,11 @@ class ModeloMatematico:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Modelo de programación entera del horario MMDD (OR-Tools)")
-    parser.add_argument('--solver', default='CP-SAT', choices=SOLVERS, help="Solver de OR-Tools (default: CP-SAT)")
+    parser = argparse.ArgumentParser(description="Modelo de programación entera del horario MMDD (OR-Tools o Gurobi)")
+    parser.add_argument('--solver', default='CP-SAT', choices=SOLVERS,
+                        help="Solver (default: CP-SAT); GUROBI usa gurobipy directamente")
+    parser.add_argument('--elastico', action='store_true',
+                        help="Minimiza las violaciones duras en vez de exigir que no haya ninguna")
     parser.add_argument('--tiempo-max', type=float, default=300, help="Segundos máximos de resolución (default: 300)")
     parser.add_argument('--peso-ventanas', type=float, default=0,
                         help="Peso de las ventanas docentes; 0 = no se modelan (default: 0)")
@@ -329,7 +487,7 @@ def main():
     parser.add_argument('--excel', type=str, help="Carpeta donde exportar los Excel del horario obtenido")
     args = parser.parse_args()
 
-    modelo = ModeloMatematico(args.solver, args.peso_ventanas)
+    modelo = ModeloMatematico(args.solver, args.peso_ventanas, args.elastico)
     print(f"Modelo construido en {modelo.t_construccion:.2f} s: {modelo.solver.NumVariables()} variables, "
           f"{modelo.solver.NumConstraints()} restricciones, {len(modelo.lecciones)} lecciones.")
     if args.lp:
@@ -343,6 +501,10 @@ def main():
         return
     print(f"Objetivo: {r['objetivo']:g}   cota inferior: {r['cota']:g}   gap: {r['gap'] * 100:.2f}%"
           + (f"   ventanas docentes: {r['ventanas_modelo']}" if r['ventanas_modelo'] is not None else ''))
+    if args.elastico:
+        print(f"Menor cantidad de violaciones duras encontrada: {r['violaciones_minimas']}")
+        for restriccion, clave, n in modelo.holguras_activas()[:20]:
+            print(f"  - {restriccion} {clave}: {n}")
 
     # Validación independiente: costo de la función objetivo de las metaheurísticas y auditoría
     instancia = modelo.a_modelo_horario()

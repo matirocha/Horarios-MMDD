@@ -10,7 +10,7 @@ Aquí está todo el código Python del proyecto: el generador de horarios (heur�
 | :--- | :--- | :--- |
 | `generador_horarios.py` | Genera el horario, escribe los Excel en `Outputs Excel/` y abre la consola de consulta. | `python notebooks/generador_horarios.py` |
 | `comparar_metaheuristicas.py` | Compara los métodos de mejora: factibilidad, costo, tiempo de ejecución y calidad, con varias semillas. | `python notebooks/comparar_metaheuristicas.py` |
-| `modelo_matematico.py` | Resuelve el problema con un modelo de programación entera (requiere `pip install ortools`). | `python notebooks/modelo_matematico.py` |
+| `modelo_matematico.py` | Resuelve el problema con un modelo de programación entera (requiere `pip install ortools`; con `--solver GUROBI`, `pip install gurobipy` y licencia). Con `--elastico` calcula la menor cantidad de violaciones duras posible. | `python notebooks/modelo_matematico.py --solver GUROBI` |
 
 Las opciones de cada script se ven con `--help`.
 

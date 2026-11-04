@@ -7,7 +7,8 @@ version = "1.0.0"
 requires-python = "==3.12.*"
 dependencies = [
     "horarios-mmdd",            # notebooks/ (ver [tool.uv.sources])
-    "ortools==9.15.6755",       # modelo matemático
+    "ortools==9.15.6755",       # modelo matemático (CP-SAT, HiGHS, SCIP, CBC)
+    "gurobipy==13.0.3",         # modelo matemático con Gurobi (licencia WLS en variables de entorno)
 ]
 
 [tool.uv.sources]

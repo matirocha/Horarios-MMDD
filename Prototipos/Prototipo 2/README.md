@@ -89,17 +89,30 @@ entre visitas). Con el modo activo:
 | :--- | :--- |
 | **Docentes** | Agregar, renombrar, cambiar de departamento y quitar docentes. Al quitar uno se elige quién se queda con sus clases, jefaturas y electivos. Muestra la carga en grilla de cada docente frente a los 42 bloques de la semana. |
 | **Asignación** | Por curso, quién dicta cada asignatura (dos docentes en la co-docencia) y el profesor/a jefe; la Orientación sigue a la jefatura. Las horas y jornadas no se editan. |
-| **Electivos** | Nombre, sección, docente y sala de cada electivo de las 3 franjas de 3° y 4° medio; agregar o quitar electivos. Avisa si un docente queda en dos electivos de la misma franja o si una sala se repite o tiene bloqueo de pastoral. |
-| **Resolver** | Resuelve la instancia editada con el método elegido: construcción voraz, Min-Conflicts, búsqueda tabú, búsqueda local iterada, Min-Conflicts + tabú (con sus parámetros) o el modelo matemático (CP-SAT, HiGHS, SCIP o CBC). Muestra f(x) inicial y final, tiempos por fase, convergencia y la auditoría, y permite **ver el resultado en el visualizador** (solo en esa pestaña del navegador) o descargarlo con el formato de `datos/horarios_<año>.js`. |
+| **Electivos** | Nombre, sección, docente y sala de cada electivo de las 3 franjas de 3° y 4° medio; agregar o quitar electivos. Explica qué es una franja (bloques fijos en que A y B se mezclan; el solver no los mueve, pero sus docentes quedan ocupados ahí) y no deja poner a un docente en dos electivos de la misma franja. |
+| **Resolver** | Resuelve la instancia base o la editada con el método elegido: construcción voraz, Min-Conflicts, búsqueda tabú, búsqueda local iterada, Min-Conflicts + tabú (con sus parámetros) o el modelo matemático (**Gurobi** por defecto; también CP-SAT, HiGHS, SCIP o CBC). Explica qué hace cada método. Muestra f(x) inicial y final, tiempos por fase, convergencia y la auditoría, y permite **ver el resultado en el visualizador** (solo en esa pestaña del navegador) o descargarlo con el formato de `datos/horarios_<año>.js`. |
 | **Comparar** | Ejecuta los métodos elegidos con varias semillas y el mismo presupuesto (el modelo se repite tantas veces como semillas) y compara factibilidad, f(x) inicial y final, tiempo de ejecución (mediana, media ± desviación, hasta factible), pasos, ventanas y % de bloques dobles. Incluye gráficos de tiempos, función objetivo y convergencia, y descarga en CSV. |
 
-La instancia editada se guarda en el navegador (se puede exportar e importar como JSON y volver a la
-original con *Restablecer*). Editar no cambia los archivos de `datos/` ni los de `notebooks/`.
+Los docentes, departamentos, salas y cursos se eligen con un selector emergente (fichas agrupadas,
+búsqueda y teclado), como el menú *Horario de* de Cursos.
+
+**Instancia base y cambios.** La instancia base es la de los datos 2026 con que se generó el horario
+2027, y nunca se modifica: los cambios quedan aparte, guardados en el navegador. *Deshacer* revierte el
+último cambio, *Volver a la base* descarta todos (también se puede deshacer) y Resolver y Comparar
+permiten elegir **Base 2027** o **Editada** sin perder los cambios. La instancia editada se puede exportar
+e importar como JSON. Editar no cambia los archivos de `datos/` ni los de `notebooks/`.
+
+**Aviso de factibilidad.** Después de cada cambio, la página pregunta al solver (`/api/factibilidad`)
+si todavía existe un horario sin violaciones duras. Si no existe, muestra el aviso *Con estos cambios no
+se puede armar un horario factible*, cuántas violaciones son inevitables (f(x) mínima) y por qué: por
+ejemplo, un docente con más bloques de clase que bloques libres en sus cursos, o los choques que no se
+pueden evitar. Para eso usa el modelo matemático en modo elástico (`--elastico` en
+`notebooks/modelo_matematico.py`), que tarda alrededor de 1 a 2 s.
 
 ### Servidor local del solver
 
-Resolver y Comparar ejecutan el motor Python de `notebooks/horarios` (y OR-Tools para el modelo), así
-que necesitan el servidor local. Desde la carpeta del repositorio:
+Resolver y Comparar ejecutan el motor Python de `notebooks/horarios` (y Gurobi u OR-Tools para el
+modelo), así que necesitan el servidor local o el de Vercel. Desde la carpeta del repositorio:
 
 ```bash
 python "Prototipos/Prototipo 2/servidor.py" --abrir
@@ -110,7 +123,12 @@ clic, siempre que el servidor esté corriendo (si el navegador bloquea la conexi
 del servidor). `--puerto 9000` cambia el puerto. El servidor solo acepta conexiones del propio equipo,
 aplica la instancia editada sobre `DatosColegio` mientras dura cada resolución y la valida antes
 (docentes existentes, co-docencia con dos docentes distintos, un docente por electivo en cada franja).
-GUROBI no se ofrece: en algunos equipos OR-Tools cierra el proceso al intentar crearlo.
+
+**Gurobi** se usa con `gurobipy` directamente (no a través de OR-Tools, que en algunos equipos cierra el
+proceso al cargar Gurobi 13) y queda como solver por defecto cuando hay una licencia completa: la del
+equipo (`gurobi.lic`) o una licencia WLS en variables de entorno (ver Vercel, abajo). Con solo la licencia
+gratuita de `gurobipy` (hasta 2000 variables) no alcanza para el modelo, que tiene unas 7000, y la página
+usa CP-SAT.
 
 ### Publicación en Vercel (con el solver en línea)
 
@@ -121,8 +139,8 @@ cual, sin paso de build, y las funciones viven en `api/`.
 | Archivo | Para qué |
 | :--- | :--- |
 | `vercel.json` | Configura las funciones (300 s máximo; sin datos ni archivos de la página en su paquete). |
-| `api/estado.py`, `api/instancia.py`, `api/resolver.py` | Las tres rutas de la API, con la misma lógica de `servidor.py` (`ManejadorVercel`). |
-| `pyproject.toml` | Dependencias de las funciones: OR-Tools y el motor de `notebooks/`, instalado como paquete. |
+| `api/estado.py`, `api/instancia.py`, `api/resolver.py`, `api/factibilidad.py` | Las rutas de la API, con la misma lógica de `servidor.py` (`ManejadorVercel`). |
+| `pyproject.toml` | Dependencias de las funciones: OR-Tools, gurobipy y el motor de `notebooks/`, instalado como paquete. |
 | `../../notebooks/pyproject.toml` | Empaqueta el motor (`horarios`, `generador_horarios`, `modelo_matematico`). |
 
 **Por qué el motor va como paquete:** durante el build Vercel tiene todo el repositorio, pero el
@@ -137,8 +155,13 @@ Configuración del proyecto en Vercel, una sola vez:
    *Other* y sin sobrescribir Build Command ni Output Directory. Mantén activada la opción *Include
    files outside the Root Directory in the Build Step* (viene así por defecto): el build necesita `notebooks/`.
 2. *Settings → Functions*: **Fluid Compute** activado (permite funciones de hasta 300 s en el plan Hobby).
-3. Despliega y abre `https://<tu-proyecto>.vercel.app/api/estado`: debe mostrar un JSON con
-   `"entorno":"vercel"`. La pestaña Edición indicará *Solver en Vercel conectado*.
+3. Para usar **Gurobi** en Vercel, en *Settings → Environment Variables* agrega las tres credenciales de
+   tu licencia WLS (están en tu `gurobi.lic`, o en el portal de Gurobi → *Licenses*):
+   `GRB_WLSACCESSID`, `GRB_WLSSECRET` y `GRB_LICENSEID`. Son privadas: van solo en Vercel, nunca en el
+   repositorio. Sin ellas, la página usa CP-SAT.
+4. Despliega y abre `https://<tu-proyecto>.vercel.app/api/estado`: debe mostrar un JSON con
+   `"entorno":"vercel"` y, con la licencia, `"solver_defecto":"GUROBI"`. La pestaña Edición indicará
+   *Solver en Vercel conectado* y la versión de Gurobi.
 
 En Vercel cada ejecución se limita a 240 s, la primera llamada tarda unos segundos (arranque en frío) y
 los tiempos son los de los servidores de Vercel, más lentos que un computador personal: para comparar

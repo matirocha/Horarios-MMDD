@@ -1,0 +1,16 @@
+# -*- coding: utf-8 -*-
+"""Función de Vercel: POST /api/factibilidad (¿la instancia editada admite un horario factible?).
+
+La lógica está en servidor.py (carpeta de arriba), la misma que usa el servidor local.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from servidor import ManejadorVercel  # noqa: E402
+
+
+class handler(ManejadorVercel):  # noqa: N801 — Vercel busca una clase llamada 'handler'
+    ruta_fija = '/api/factibilidad'

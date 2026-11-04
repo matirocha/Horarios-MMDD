@@ -44,6 +44,7 @@ import sys
 import threading
 import time
 import webbrowser
+from collections import defaultdict
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
@@ -92,7 +93,7 @@ METODOS = [
     {'id': 'min_conflicts_tabu', 'nombre': 'Min-Conflicts + tabú', 'tipo': 'metaheurística',
      'descripcion': 'Híbrido del proyecto (método por defecto): tabú, ruido aleatorio y reinicios ILS.'},
     {'id': 'modelo', 'nombre': 'Modelo matemático', 'tipo': 'modelo exacto',
-     'descripcion': 'Programación lineal entera con OR-Tools: las restricciones duras van como restricciones.'},
+     'descripcion': 'Programación lineal entera (Gurobi u OR-Tools): las restricciones duras van como restricciones.'},
 ]
 IDS_METODOS = {m['id'] for m in METODOS}
 
@@ -107,9 +108,12 @@ AYUDA_PARAMETROS = {
     'reinicio': 'Pasos sin mejora antes de volver a la mejor solución y perturbarla',
 }
 
-# GUROBI no se ofrece: con una licencia o DLL incompatible, OR-Tools aborta el proceso al crearlo
-SOLVERS = ['CP-SAT', 'HIGHS', 'SCIP', 'CBC']
+# GUROBI se usa con gurobipy (modelo_matematico.SolverGurobi), nunca a través de OR-Tools: con una
+# DLL de Gurobi incompatible, OR-Tools aborta el proceso al crearlo
+SOLVERS = ['GUROBI', 'CP-SAT', 'HIGHS', 'SCIP', 'CBC']
+SOLVERS_ORTOOLS = ['CP-SAT', 'HIGHS', 'SCIP', 'CBC']
 _solvers_disponibles = None
+_gurobi = None
 
 
 def parametros_de(clase):
@@ -120,17 +124,55 @@ def parametros_de(clase):
             if n not in ('self', 'max_pasos', 'tiempo_max') and p.default is not inspect.Parameter.empty]
 
 
+def estado_gurobi():
+    """
+    Gurobi (gurobipy) y su licencia, revisados una vez. La licencia gratuita que trae gurobipy
+    solo admite modelos de hasta 2000 variables y el del horario tiene unas 7000, así que se
+    prueba con un modelo de 2100 variables: 'completa' (licencia del equipo o WLS), 'limitada'
+    o 'sin licencia'.
+    """
+    global _gurobi
+    if _gurobi is None:
+        try:
+            import gurobipy as gp
+        except ImportError:
+            _gurobi = {'version': None, 'licencia': None, 'detalle': 'gurobipy no está instalado'}
+            return _gurobi
+        version = '.'.join(str(n) for n in gp.gurobi.version())
+        wls = all(os.environ.get(f'GRB_{k}') for k in ('WLSACCESSID', 'WLSSECRET', 'LICENSEID'))
+        try:
+            from modelo_matematico import entorno_gurobi
+            prueba = gp.Model(env=entorno_gurobi())
+            x = prueba.addVars(2100, vtype=gp.GRB.BINARY)
+            prueba.addConstr(x.sum() >= 1)
+            prueba.optimize()
+            prueba.dispose()
+            _gurobi = {'version': version, 'licencia': 'completa', 'wls': wls, 'detalle': ''}
+        except gp.GurobiError as error:
+            limitada = getattr(error, 'errno', None) == 10010
+            _gurobi = {'version': version, 'licencia': 'limitada' if limitada else 'sin licencia', 'wls': wls,
+                       'detalle': ('Solo está la licencia gratuita de gurobipy (hasta 2000 variables) y el modelo '
+                                   'tiene unas 7000: configura una licencia WLS en GRB_WLSACCESSID, GRB_WLSSECRET '
+                                   'y GRB_LICENSEID') if limitada else str(error)}
+    return _gurobi
+
+
 def solvers_disponibles():
-    """Solvers de OR-Tools que se pueden crear en esta instalación (se calcula una vez)."""
+    """Solvers del modelo matemático que se pueden usar en esta instalación (se calcula una vez)."""
     global _solvers_disponibles
     if _solvers_disponibles is None:
         try:
             from ortools.linear_solver import pywraplp
             import ortools
-            disponibles = [s for s in SOLVERS if pywraplp.Solver.CreateSolver(s) is not None]
-            _solvers_disponibles = {'ortools': getattr(ortools, '__version__', 'instalado'), 'solvers': disponibles}
+            disponibles = [s for s in SOLVERS_ORTOOLS if pywraplp.Solver.CreateSolver(s) is not None]
+            version = getattr(ortools, '__version__', 'instalado')
         except ImportError:
-            _solvers_disponibles = {'ortools': None, 'solvers': []}
+            disponibles, version = [], None
+        gurobi = estado_gurobi()
+        if gurobi['licencia'] == 'completa':
+            disponibles.insert(0, 'GUROBI')
+        _solvers_disponibles = {'ortools': version, 'solvers': disponibles, 'gurobi': gurobi,
+                                'solver_defecto': 'GUROBI' if 'GUROBI' in disponibles else 'CP-SAT'}
     return _solvers_disponibles
 
 
@@ -140,7 +182,7 @@ def estado_api():
         clase = METAHEURISTICAS.get(m['id'])
         metodos.append({**m, 'parametros': parametros_de(clase) if clase else [],
                         'defecto': m['id'] == 'min_conflicts_tabu'})
-    return {'ok': True, 'version': 1, 'metodos': metodos, **solvers_disponibles(),
+    return {'ok': True, 'version': 2, 'metodos': metodos, **solvers_disponibles(),
             'python': sys.version.split()[0], 'entorno': 'vercel' if EN_VERCEL else 'local',
             'tiempo_max_tope': TIEMPO_MAX_TOPE}
 
@@ -465,6 +507,135 @@ def resolver(cuerpo):
 
 
 # -----------------------------------------------------------------------------
+# Factibilidad de una instancia editada
+# -----------------------------------------------------------------------------
+def _lista(textos):
+    return textos[0] if len(textos) == 1 else f"{', '.join(textos[:-1])} y {textos[-1]}"
+
+
+def _cuando(celdas):
+    """[('Lunes', 3), ('Lunes', 4), ('Martes', 5)] -> 'lunes bloques 3 y 4; martes bloque 5'."""
+    por_dia = defaultdict(list)
+    for dia, b in celdas:
+        por_dia[dia].append(b)
+    partes = []
+    for dia in sorted(por_dia, key=D.DIAS.index):
+        bloques = sorted(por_dia[dia])
+        partes.append(f"{dia.lower()} bloque{'s' if len(bloques) > 1 else ''} {_lista([str(b) for b in bloques])}")
+    return '; '.join(partes)
+
+
+def condiciones_necesarias():
+    """
+    Revisión rápida, sin solver, de la carga de cada docente: sus clases solo pueden ir en
+    bloques de la jornada de sus cursos en que no tenga un electivo fijo, y no puede estar en
+    dos a la vez. Si necesita más bloques que esos, ningún horario es factible.
+    """
+    from horarios import ModeloHorario
+    inst = ModeloHorario()
+    carga, cursos, fijas = defaultdict(int), defaultdict(set), defaultdict(set)
+    for sid, s in enumerate(inst.ses):
+        for t in s['docs']:
+            if s['fijo']:
+                fijas[t].update(inst.pos[sid])
+            else:
+                carga[t] += s['largo']
+                cursos[t].add(s['curso'])
+    razones = []
+    for t, bloques in carga.items():
+        libres = set().union(*(inst.celda[c].keys() for c in cursos[t])) - fijas[t]
+        if bloques > len(libres):
+            razones.append({
+                'tipo': 'carga', 'docente': t,
+                'texto': f'{t} debe dictar {bloques} bloques de clase, pero sus cursos solo tienen {len(libres)} '
+                         f'bloques de jornada en que está libre{" (descontando sus electivos)" if fijas[t] else ""}: '
+                         f'le sobran {bloques - len(libres)}.',
+            })
+    return razones
+
+
+def explicar_holguras(mm):
+    """Convierte las holguras positivas del modelo elástico en razones legibles."""
+    inst = mm.instancia
+    choques = defaultdict(list)
+    otras = []
+    for restriccion, clave, n in mm.holguras_activas():
+        if restriccion == 'R4':
+            t, celda = clave
+            choques[t].append((celda, n, mm.fijo[(t, celda)] > 0))
+        elif restriccion == 'R3':
+            c, fam, dia = clave
+            otras.append({'tipo': 'dia', 'curso': c,
+                          'texto': f'{c}: {fam} quedaría con {n + 1} sesiones el {dia.lower()} (debe ser una por día).'})
+        elif restriccion == 'R5':
+            sala, (dia, b) = clave
+            otras.append({'tipo': 'sala',
+                          'texto': f'{sala}: {n + 1} cursos a la vez el {dia.lower()} bloque {b} (capacidad 1).'})
+        elif restriccion == 'R6':
+            g, (dia, b) = clave
+            otras.append({'tipo': 'gimnasio',
+                          'texto': f'{g.capitalize()}: {n + 1} cursos de Ed. Física a la vez el {dia.lower()} bloque {b}.'})
+    razones = []
+    for t, lista in sorted(choques.items(), key=lambda kv: -sum(n for _, n, _ in kv[1])):
+        total = sum(n for _, n, _ in lista)
+        con_electivo = any(fijo for _, _, fijo in lista)
+        razones.append({
+            'tipo': 'docente', 'docente': t,
+            'texto': f'{t}: {total} choque{"s" if total > 1 else ""} inevitable{"s" if total > 1 else ""} '
+                     f'(dos clases a la vez{", contando sus electivos" if con_electivo else ""}); por ejemplo, el '
+                     f'{_cuando([c for c, _, _ in lista[:6]])}.',
+        })
+    del inst
+    return razones + otras
+
+
+def verificar_factibilidad(cuerpo):
+    """
+    ¿Existe algún horario sin violaciones duras para la instancia? Primero la revisión rápida de
+    cargas y después el modelo matemático en modo elástico, que calcula la menor cantidad de
+    violaciones duras posible (0 = factible) y dónde quedan si no se pueden evitar.
+    """
+    tiempo_max = _numero(cuerpo.get('tiempo_max'), 20, 1, 60)
+    solver = str(cuerpo.get('solver') or 'CP-SAT').upper()
+    if solver not in SOLVERS:
+        raise ErrorInstancia(f'Solver desconocido: {solver}')
+    t0 = time.perf_counter()
+    with instancia_aplicada(cuerpo.get('instancia')):
+        razones = condiciones_necesarias()
+        try:
+            from modelo_matematico import ModeloMatematico
+            mm = ModeloMatematico(solver, 0, elastico=True)
+        except SystemExit as error:
+            raise ErrorInstancia(str(error))
+        r = mm.resolver(tiempo_max)
+        minimo = r['violaciones_minimas'] if r['con_solucion'] else None
+        cota = max(0, round(r['cota'] / 1000 - 1e-6 + 0.4999)) if r['con_solucion'] and r['cota'] is not None else None
+        probado = r['estado'] == 'óptimo'
+        if minimo == 0:
+            factible = True
+        elif razones or (cota is not None and cota > 0):
+            factible = False
+        else:
+            factible = None   # no se alcanzó a probar en el tiempo dado
+        if factible is False and r['con_solucion']:
+            # Un docente con exceso de carga ya está explicado: no se repiten sus choques
+            con_carga = {x['docente'] for x in razones}
+            razones += [x for x in explicar_holguras(mm) if x.get('docente') not in con_carga]
+    return {
+        'ok': True,
+        'factible': factible,
+        'violaciones_minimas': minimo if probado else (cota if factible is False else None),
+        'violaciones_encontradas': minimo,
+        'probado': probado,
+        'razones': razones[:12],
+        'total_razones': len(razones),
+        'solver': solver,
+        'tiempo_ms': ms(time.perf_counter() - t0),
+        'editada': cuerpo.get('instancia') is not None,
+    }
+
+
+# -----------------------------------------------------------------------------
 # Servidor HTTP
 # -----------------------------------------------------------------------------
 class APIMixin:
@@ -535,7 +706,7 @@ class APIMixin:
         if not self._origen_valido():
             self._json(403, {'ok': False, 'error': 'Origen no permitido'})
             return
-        if ruta != '/api/resolver':
+        if ruta not in ('/api/resolver', '/api/factibilidad'):
             self._json(404, {'ok': False, 'error': 'Ruta desconocida'})
             return
         # Exigir JSON obliga a los sitios de otro origen a pasar por la verificación CORS
@@ -549,10 +720,15 @@ class APIMixin:
         try:
             cuerpo = json.loads(self.rfile.read(largo) or b'{}')
             t0 = time.perf_counter()
-            respuesta = resolver(cuerpo)
-            r = respuesta['resultado']
-            print(f"  {r['nombre']:<34} semilla {str(r['semilla']):>5}  f(x)={r['costo_final']}  "
-                  f"{r['tiempos_ms']['total']} ms  ({(time.perf_counter() - t0):.2f} s con la respuesta)", flush=True)
+            if ruta == '/api/factibilidad':
+                respuesta = verificar_factibilidad(cuerpo)
+                print(f"  Factibilidad ({respuesta['solver']}): {respuesta['factible']}  "
+                      f"mín. {respuesta['violaciones_minimas']} violaciones  {respuesta['tiempo_ms']} ms", flush=True)
+            else:
+                respuesta = resolver(cuerpo)
+                r = respuesta['resultado']
+                print(f"  {r['nombre']:<34} semilla {str(r['semilla']):>5}  f(x)={r['costo_final']}  "
+                      f"{r['tiempos_ms']['total']} ms  ({(time.perf_counter() - t0):.2f} s con la respuesta)", flush=True)
             self._json(200, respuesta)
         except (ErrorInstancia, json.JSONDecodeError) as error:
             self._json(400, {'ok': False, 'error': str(error)})

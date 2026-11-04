@@ -126,8 +126,19 @@
       } catch (e) { /* se prueba el siguiente */ }
     }
     if (SRV.estado !== 'conectado') { SRV.estado = 'sin-servidor'; SRV.info = null; }
+    if (SRV.info) ajustarSolvers();
     pintarServidor();
+    programarVerificacion(0);
     if (estado.vista === 'edicion' && ['resolver', 'comparar'].includes(estado.edicion)) refrescar();
+  }
+
+  // Si no se eligió un solver a mano, se usa el del servidor (Gurobi cuando tiene licencia completa)
+  function ajustarSolvers() {
+    const lista = SRV.info.solvers || [];
+    const defecto = SRV.info.solver_defecto || lista[0] || 'CP-SAT';
+    if (!R.solverElegido || !lista.includes(R.solver)) R.solver = defecto;
+    if (!C.solversElegidos) C.solvers = [defecto];
+    C.solvers = C.solvers.filter(s => lista.includes(s));
   }
 
   const api = (ruta, cuerpo, opciones) => pedir(SRV.base, ruta, cuerpo, opciones);
@@ -142,28 +153,39 @@
     { id: 'busqueda_tabu', nombre: 'Búsqueda tabú', tipo: 'metaheurística', descripcion: 'Aplica el mejor intercambio admisible aunque empeore, con lista tabú y criterio de aspiración.', parametros: [] },
     { id: 'busqueda_local_iterada', nombre: 'Búsqueda local iterada', tipo: 'metaheurística', descripcion: 'ILS: descenso Min-Conflicts y perturbaciones desde la mejor solución encontrada.', parametros: [] },
     { id: 'min_conflicts_tabu', nombre: 'Min-Conflicts + tabú', tipo: 'metaheurística', descripcion: 'Híbrido del proyecto (método por defecto): tabú, ruido aleatorio y reinicios ILS.', parametros: [] },
-    { id: 'modelo', nombre: 'Modelo matemático', tipo: 'modelo exacto', descripcion: 'Programación lineal entera con OR-Tools: las restricciones duras van como restricciones.', parametros: [] },
+    { id: 'modelo', nombre: 'Modelo matemático', tipo: 'modelo exacto', descripcion: 'Programación lineal entera (Gurobi u OR-Tools): las restricciones duras van como restricciones.', parametros: [] },
   ];
   const metodos = () => (SRV.info && SRV.info.metodos) || METODOS_LOCAL;
-  const solvers = () => (SRV.info ? SRV.info.solvers : ['CP-SAT', 'HIGHS', 'SCIP', 'CBC']);
-  const conModelo = () => !SRV.info || Boolean(SRV.info.ortools && SRV.info.solvers.length);
-  const NOTA_SOLVER = { 'CP-SAT': 'por defecto', HIGHS: '', SCIP: '≈ 45 s por ejecución', CBC: '' };
+  const solvers = () => (SRV.info ? SRV.info.solvers : ['GUROBI', 'CP-SAT', 'HIGHS', 'SCIP', 'CBC']);
+  const conModelo = () => !SRV.info || Boolean(SRV.info.solvers && SRV.info.solvers.length);
+  const NOMBRE_SOLVER = { GUROBI: 'Gurobi', 'CP-SAT': 'CP-SAT', HIGHS: 'HiGHS', SCIP: 'SCIP', CBC: 'CBC' };
+  const NOTA_SOLVER = { GUROBI: 'comercial · licencia académica', 'CP-SAT': 'Google OR-Tools', HIGHS: 'libre', SCIP: 'libre · ≈ 45 s por ejecución', CBC: 'libre' };
+
+  // Qué hace cada método, para la explicación de la sección Resolver
+  const EXPLICACION = [
+    ['voraz', 'Construcción voraz', 'Arma el horario de una sola pasada: ordena las sesiones de la más difícil a la más fácil (dobles, co-docencia, docentes con más carga, Ed. Física) y pone cada una en la posición libre que agrega menos conflictos. Nunca vuelve atrás, así que es muy rápida pero suele dejar 50 o más violaciones. Es el punto de partida de todos los demás métodos (salvo el modelo).'],
+    ['min_conflicts', 'Min-Conflicts', 'Parte del horario voraz y lo repara: elige al azar un conflicto, prueba todos los intercambios de esa sesión dentro de su curso y aplica el que deja menos conflictos, pero solo si no empeora. Por eso se estanca en un óptimo local: llega cerca de 0 pero a veces no lo alcanza.'],
+    ['busqueda_tabu', 'Búsqueda tabú', 'Igual que Min-Conflicts, pero acepta el mejor intercambio aunque empeore, para salir de los óptimos locales. Para no deshacer lo que acaba de hacer, prohíbe por unos pasos volver a la posición anterior (lista tabú), salvo que eso mejore la mejor solución encontrada (aspiración).'],
+    ['busqueda_local_iterada', 'Búsqueda local iterada (ILS)', 'Repite dos fases: un descenso Min-Conflicts hasta estancarse y una perturbación (varios intercambios al azar) aplicada a la mejor solución, para empezar el siguiente descenso desde otro lugar.'],
+    ['min_conflicts_tabu', 'Min-Conflicts + tabú (híbrido)', 'El método del proyecto: la regla de Min-Conflicts con la memoria tabú, un poco de ruido (a veces aplica un intercambio al azar) y reinicios desde la mejor solución con perturbación (como ILS) cuando lleva muchos pasos sin mejorar. Junta lo mejor de los anteriores.'],
+    ['modelo', 'Modelo matemático', 'No busca paso a paso: escribe el problema completo como programación lineal entera (variables 0/1 de qué sesión va en qué bloque) y un solver (Gurobi o los de OR-Tools) lo resuelve de forma exacta. Si existe un horario factible lo encuentra, y si no existe lo demuestra.'],
+  ];
 
   // Color fijo por método (sigue a la entidad, no al orden): --serie-1 … --serie-8 en estilos.css
   const SERIE = { min_conflicts: 1, busqueda_tabu: 2, busqueda_local_iterada: 3, min_conflicts_tabu: 4,
-    'modelo:CP-SAT': 5, 'modelo:HIGHS': 6, 'modelo:SCIP': 7, 'modelo:CBC': 8, voraz: 0 };
+    'modelo:GUROBI': 5, 'modelo:CP-SAT': 6, 'modelo:HIGHS': 7, 'modelo:SCIP': 8, 'modelo:CBC': 0, voraz: 0 };
   const colorDe = clave => `var(--serie-${SERIE[clave] ?? 0})`;
   const claveDe = r => (r.metodo === 'modelo' ? `modelo:${(r.parametros && r.parametros.solver) || 'CP-SAT'}` : r.metodo);
   const CORTO = { voraz: ['Construcción voraz', 'Voraz'], min_conflicts: ['Min-Conflicts', 'Min-Conf.'], busqueda_tabu: ['Búsqueda tabú', 'Tabú'],
     busqueda_local_iterada: ['Búsqueda local iterada', 'ILS'], min_conflicts_tabu: ['Min-Conflicts + tabú', 'MC + tabú'] };
   function nombreClave(clave, estrecho = false) {
     if (clave.startsWith('modelo:')) {
-      const s = clave.slice(7) === 'HIGHS' ? 'HiGHS' : clave.slice(7);
+      const s = NOMBRE_SOLVER[clave.slice(7)] || clave.slice(7);
       return estrecho ? `PLE ${s}` : `Modelo · ${s}`;
     }
     return (CORTO[clave] || [clave, clave])[estrecho ? 1 : 0];
   }
-  const ORDEN_CLAVES = ['voraz', 'min_conflicts', 'busqueda_tabu', 'busqueda_local_iterada', 'min_conflicts_tabu', 'modelo:CP-SAT', 'modelo:HIGHS', 'modelo:SCIP', 'modelo:CBC'];
+  const ORDEN_CLAVES = ['voraz', 'min_conflicts', 'busqueda_tabu', 'busqueda_local_iterada', 'min_conflicts_tabu', 'modelo:GUROBI', 'modelo:CP-SAT', 'modelo:HIGHS', 'modelo:SCIP', 'modelo:CBC'];
 
   const MOTIVOS = {
     costo_cero: 'llegó a f(x) = 0', tiempo_max: 'se agotó el tiempo máximo', max_pasos: 'se agotaron los pasos',
@@ -215,16 +237,21 @@
     }
   }
 
-  // Base = datos originales. Si en pantalla está un resultado del solver (instancia editada),
-  // se usa la base guardada la última vez que se abrió un horario normal
+  // Instancia base = los datos con que se generó el horario 2027 (DatosColegio). Nunca se edita:
+  // los cambios van en INST. Si en pantalla está un resultado del solver, la base viaja dentro de
+  // ese resultado (verResultado) o se toma la guardada al abrir un horario normal.
   const BASE = (() => {
     if (!DATOS.meta.desarrollador) {
       guardar(CLAVES.base, JSON.stringify(ESTRUCTURA));
       return ESTRUCTURA;
     }
+    const enResultado = DATOS.meta.desarrollador.base;
+    if (compatible(enResultado)) return enResultado;
     const guardada = leerJSON(CLAVES.base);
     return compatible(guardada) ? guardada : ESTRUCTURA;
   })();
+  Object.freeze(BASE);
+  const NOMBRE_BASE = 'instancia base 2027';   // DatosColegio.ANIO_HORARIO: la del horario generado
   const SALAS = BASE.salas;
   const DEPARTAMENTOS = BASE.departamentos;
   const NIVELES = Object.keys(BASE.franjas);
@@ -244,6 +271,13 @@
   function guardarInstancia() {
     guardar(CLAVES.instancia, JSON.stringify(INST));
     cache = null;
+  }
+
+  // Deshacer: copias de la instancia antes de cada cambio (solo en esta visita)
+  const HISTORIAL = [];
+  function recordar(copia) {
+    HISTORIAL.push(copia);
+    if (HISTORIAL.length > 40) HISTORIAL.shift();
   }
 
   // Cálculos que dependen de la instancia (se rehacen tras cada cambio)
@@ -466,12 +500,146 @@
   }
 
   function aplicar(operacion, ...args) {
+    const antes = JSON.stringify(INST);
     const error = OPERACIONES[operacion](...args);
-    if (error) { avisar(error, 'error'); refrescar(); return false; }
-    guardarInstancia();
+    if (error) {
+      INST = JSON.parse(antes);   // ninguna operación queda a medias
+      cache = null;
+      avisar(error, 'error');
+      refrescar();
+      return false;
+    }
+    if (JSON.stringify(INST) !== antes) {
+      recordar(JSON.parse(antes));
+      guardarInstancia();
+      programarVerificacion();
+    }
     avisar(null);
     refrescar();
     return true;
+  }
+
+  // Reemplaza la instancia completa (deshacer, volver a la base, importar) sin perder el historial
+  function cambiarInstancia(nueva, mensaje, { guardarEnHistorial = true } = {}) {
+    if (guardarEnHistorial) recordar(clonar(INST));
+    INST = nueva;
+    UI.quitando = null;
+    guardarInstancia();
+    avisar(mensaje);
+    refrescar();
+    programarVerificacion(0);
+  }
+
+  function deshacer() {
+    if (!HISTORIAL.length) return;
+    cambiarInstancia(HISTORIAL.pop(), 'Se deshizo el último cambio.', { guardarEnHistorial: false });
+  }
+
+  // ---------------------------------------------------------- factibilidad ---
+  // Tras cada cambio se pregunta al servidor si la instancia admite un horario factible
+  // (/api/factibilidad: revisión de cargas y modelo matemático en modo elástico). Si no, el
+  // aviso muestra cuántas violaciones duras son inevitables y por qué.
+  const FACT = { firma: null, estado: 'base', resultado: null, error: null, espera: null, control: null };
+  const RESULTADOS_FACT = new Map(sesion.leer('mmdd-dev-factibilidad') || []);
+
+  function huella(texto) {   // FNV-1a de 32 bits: identifica una instancia sin guardarla entera
+    let h = 0x811c9dc5;
+    for (let i = 0; i < texto.length; i++) { h ^= texto.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    return `${(h >>> 0).toString(16)}-${texto.length}`;
+  }
+  const estadoFact = r => (r.factible === true ? 'factible' : r.factible === false ? 'infactible' : 'desconocido');
+
+  function programarVerificacion(retardo = 900) {
+    clearTimeout(FACT.espera);
+    if (!hayCambios()) {
+      FACT.firma = null;
+      FACT.estado = 'base';
+      pintarFactibilidad();
+      return;
+    }
+    const firma = huella(JSON.stringify(INST));
+    FACT.firma = firma;
+    const previo = RESULTADOS_FACT.get(firma);
+    if (calc().validacion.errores.length) FACT.estado = 'invalida';
+    else if (previo) { FACT.resultado = previo; FACT.estado = estadoFact(previo); }
+    else if (SRV.estado !== 'conectado') FACT.estado = 'sin-servidor';
+    else {
+      FACT.estado = 'pendiente';
+      FACT.espera = setTimeout(() => verificarAhora(firma), retardo);
+    }
+    pintarFactibilidad();
+  }
+
+  async function verificarAhora(firma) {
+    if (FACT.control) FACT.control.abort();
+    const control = new AbortController();
+    FACT.control = control;
+    FACT.estado = 'verificando';
+    pintarFactibilidad();
+    try {
+      const r = await api('factibilidad', { instancia: INST }, { senal: control.signal });
+      RESULTADOS_FACT.set(firma, r);
+      sesion.guardar('mmdd-dev-factibilidad', [...RESULTADOS_FACT].slice(-20));
+      if (FACT.firma !== firma) return;   // la instancia cambió mientras se verificaba
+      FACT.resultado = r;
+      FACT.estado = estadoFact(r);
+    } catch (e) {
+      if (e.name === 'AbortError' || FACT.firma !== firma) return;
+      FACT.estado = 'error';
+      FACT.error = errorDeRed(e) ? 'Se perdió la conexión con el solver.' : e.message;
+    } finally {
+      if (FACT.control === control) FACT.control = null;
+      pintarFactibilidad();
+    }
+  }
+
+  function htmlFactibilidad() {
+    const r = FACT.resultado;
+    const seg = r ? fmtMs(r.tiempo_ms) : '';
+    switch (FACT.estado) {
+      case 'sin-servidor':
+        return `<div class="dev-fact">${ICONOS.alerta}<p>Conecta el solver para comprobar si estos cambios todavía permiten armar un horario factible.</p></div>`;
+      case 'pendiente':
+      case 'verificando':
+        return '<div class="dev-fact"><span class="dev-girando"></span><p>Comprobando si existe un horario factible con estos cambios…</p></div>';
+      case 'factible':
+        return `<div class="dev-fact bien">${ICONOS.ok}<p><b>Con estos cambios sí se puede armar un horario factible.</b> Lo comprobó el modelo exacto (${esc(NOMBRE_SOLVER[r.solver] || r.solver)}, ${seg}).</p></div>`;
+      case 'infactible': {
+        const n = r.violaciones_minimas;
+        const razones = r.razones.map(x => `<li>${esc(x.texto)}</li>`).join('');
+        return `
+          <div class="dev-fact mal" role="alert">
+            ${ICONOS.alerta}
+            <div>
+              <p><b>Con estos cambios no se puede armar un horario factible.</b>
+                ${n ? `Hasta el mejor horario posible tendría ${r.probado ? '' : 'al menos '}${fmt(n, 0)} violaci${n > 1 ? 'ones' : 'ón'} dura${n > 1 ? 's' : ''} (f(x) ${r.probado ? '=' : '≥'} ${fmt(n * PESO_DURO, 0)}).` : ''} Por qué:</p>
+              <ul>${razones}</ul>
+              ${r.total_razones > r.razones.length ? `<p class="dev-tenue">… y ${r.total_razones - r.razones.length} más.</p>` : ''}
+              <p class="dev-tenue">Comprobado con el modelo exacto en ${seg}. Los métodos de Resolver no llegarán a f(x) = 0 con esta instancia.</p>
+              <div class="dev-acciones">
+                ${HISTORIAL.length ? `<button type="button" class="boton" data-dev="deshacer">${ICONOS.deshacer}Deshacer el último cambio</button>` : ''}
+                <button type="button" class="enlace" data-dev="restablecer">Volver a la ${esc(NOMBRE_BASE)}</button>
+              </div>
+            </div>
+          </div>`;
+      }
+      case 'desconocido':
+        return `<div class="dev-fact">${ICONOS.alerta}<p>No se alcanzó a comprobar la factibilidad en ${seg}${r.violaciones_encontradas ? `; el mejor horario encontrado tiene ${fmt(r.violaciones_encontradas, 0)} violaciones duras` : ''}.</p></div>`;
+      case 'error':
+        return `<div class="dev-fact">${ICONOS.alerta}<p>No se pudo comprobar la factibilidad: ${esc(FACT.error)}</p><button type="button" class="enlace" data-dev="verificar">Reintentar</button></div>`;
+      default:
+        return '';   // 'base' (factible por definición) o 'invalida' (los errores se muestran aparte)
+    }
+  }
+
+  function pintarFactibilidad() {
+    const el = $('#dev-factibilidad');
+    if (!el) return;
+    const html = htmlFactibilidad();
+    el.innerHTML = html;
+    el.hidden = !html;
+    const pildora = $('#dev-instancia');
+    if (pildora) pildora.innerHTML = htmlInstancia();
   }
 
   // ===========================================================================
@@ -701,25 +869,31 @@
   const UI = {
     curso: estado.curso,     // curso abierto en Asignación
     quitando: null,          // docente cuyo retiro se está confirmando
+    reemplazo: null,         // quién se queda con sus clases
+    nuevoDepto: null,        // departamento del docente que se va a agregar
     mensaje: null,           // { tipo: 'error' | 'ok', texto }
   };
 
   const R = Object.assign({
     metodo: 'min_conflicts_tabu', semilla: 3, tiempo_max: 20, max_pasos: 150000,
-    solver: 'CP-SAT', peso_ventanas: 0, hilos: '', parametros: {},
+    solver: 'GUROBI', peso_ventanas: 0, hilos: '', parametros: {}, usarBase: false, solverElegido: false,
   }, leerJSON(CLAVES.resolver) || {}, { ejecutando: false, resultado: null, datos: null, error: null, inicio: 0 });
   const guardarR = () => guardar(CLAVES.resolver, JSON.stringify({
     metodo: R.metodo, semilla: R.semilla, tiempo_max: R.tiempo_max, max_pasos: R.max_pasos,
     solver: R.solver, peso_ventanas: R.peso_ventanas, hilos: R.hilos, parametros: R.parametros,
+    usarBase: R.usarBase, solverElegido: R.solverElegido,
   }));
 
   const C = Object.assign({
     metodos: ['min_conflicts', 'busqueda_tabu', 'busqueda_local_iterada', 'min_conflicts_tabu'],
-    solvers: ['CP-SAT'], desde: 1, hasta: 5, tiempo_max: 10, max_pasos: 150000,
+    solvers: ['GUROBI'], desde: 1, hasta: 5, tiempo_max: 10, max_pasos: 150000, usarBase: false, solversElegidos: false,
   }, leerJSON(CLAVES.comparar) || {}, { ejecutando: false, detener: false, control: null, progreso: null, errores: [] });
   const guardarC = () => guardar(CLAVES.comparar, JSON.stringify({
     metodos: C.metodos, solvers: C.solvers, desde: C.desde, hasta: C.hasta, tiempo_max: C.tiempo_max, max_pasos: C.max_pasos,
+    usarBase: C.usarBase, solversElegidos: C.solversElegidos,
   }));
+  // ¿Se resuelve la instancia editada? (si no hay cambios, siempre es la base)
+  const usaEditada = op => hayCambios() && !op.usarBase;
 
   // Ejecuciones de esta sesión del navegador (Resolver y Comparar)
   let EJECUCIONES = sesion.leer(CLAVES.ejecuciones) || [];
@@ -752,8 +926,10 @@
     if (s === 'conectado') {
       const i = SRV.info;
       const nombre = i.entorno === 'vercel' ? 'Solver en Vercel conectado' : 'Servidor local conectado';
+      const g = i.gurobi || {};
+      const gurobi = g.licencia === 'completa' ? `Gurobi ${esc(g.version)}` : g.version ? `Gurobi ${esc(g.version)} sin licencia completa` : 'sin Gurobi';
       return `<span class="dev-pildora bien"><span class="dev-punto"></span>${nombre}</span>
-        <span class="dev-pildora-nota">Python ${esc(i.python)} · ${i.ortools ? `OR-Tools ${esc(i.ortools)}` : 'sin OR-Tools'}${i.entorno === 'vercel' ? ` · máx. ${i.tiempo_max_tope} s por ejecución` : ''}</span>`;
+        <span class="dev-pildora-nota">Python ${esc(i.python)} · ${gurobi} · ${i.ortools ? `OR-Tools ${esc(i.ortools)}` : 'sin OR-Tools'}${i.entorno === 'vercel' ? ` · máx. ${i.tiempo_max_tope} s por ejecución` : ''}</span>`;
     }
     if (s === 'sin-servidor') {
       return `<span class="dev-pildora mal"><span class="dev-punto"></span>Sin servidor local</span>
@@ -770,18 +946,20 @@
     const { cambios, validacion } = calc();
     const n = cambios.length;
     const errores = validacion.errores.length;
+    const factible = { factible: ['bien', 'factible'], infactible: ['mal', 'no factible'], verificando: ['', 'comprobando…'], pendiente: ['', 'comprobando…'] }[FACT.estado];
     const pildora = n
-      ? `<span class="dev-pildora acento"><span class="dev-punto"></span>Instancia editada · ${n} cambio${n > 1 ? 's' : ''}</span>`
-      : '<span class="dev-pildora"><span class="dev-punto"></span>Instancia original</span>';
+      ? `<span class="dev-pildora acento"><span class="dev-punto"></span>Instancia editada · ${n} cambio${n > 1 ? 's' : ''} respecto de la base</span>`
+      : `<span class="dev-pildora"><span class="dev-punto"></span>${esc(capitalizar(NOMBRE_BASE))} (sin cambios)</span>`;
     const lista = n ? `
       <details class="dev-cambios"><summary>Ver cambios</summary>
         <ul>${cambios.slice(0, 60).map(c => `<li><button type="button" class="enlace" data-dev="seccion" data-valor="${c.seccion}"${c.curso ? ` data-curso-dev="${esc(c.curso)}"` : ''}>${esc(c.texto)}</button></li>`).join('')}</ul>
       </details>` : '';
-    return `${pildora}${errores ? `<span class="dev-pildora mal">${ICONOS.alerta}${errores} error${errores > 1 ? 'es' : ''}</span>` : ''}${lista}
+    return `${pildora}${n && factible ? `<span class="dev-pildora ${factible[0]}">${factible[1]}</span>` : ''}${errores ? `<span class="dev-pildora mal">${ICONOS.alerta}${errores} error${errores > 1 ? 'es' : ''}</span>` : ''}${lista}
       <span class="dev-acciones-mini">
+        ${HISTORIAL.length ? `<button type="button" class="enlace" data-dev="deshacer">Deshacer</button>` : ''}
         <button type="button" class="enlace" data-dev="exportar">Exportar</button>
         <button type="button" class="enlace" data-dev="importar">Importar</button>
-        ${n ? '<button type="button" class="enlace" data-dev="restablecer">Restablecer</button>' : ''}
+        ${n ? '<button type="button" class="enlace" data-dev="restablecer">Volver a la base</button>' : ''}
       </span>
       <input type="file" id="dev-archivo" accept="application/json,.json" hidden>`;
   }
@@ -800,9 +978,9 @@
     panel.innerHTML = `
       <header class="edicion-cabecera">
         <div class="edicion-titulo">
-          <span class="eyebrow"><span class="dev-sello">DEV</span>Modo desarrollador · datos del colegio 2026 (base de los dos horarios)</span>
+          <span class="eyebrow"><span class="dev-sello">DEV</span>Modo desarrollador · la instancia base es la del horario 2027</span>
           <h1>Edición y solver</h1>
-          <p>Cambia la dotación docente, quién dicta cada asignatura y los electivos de 3° y 4° medio; después resuelve la instancia con el método que prefieras y compara sus tiempos y su función objetivo.</p>
+          <p>Cambia la dotación docente, quién dicta cada asignatura y los electivos de 3° y 4° medio; después resuelve con el método que prefieras y compara sus tiempos y su función objetivo. La instancia base (con que se generó el horario 2027) nunca se modifica: los cambios quedan aparte y puedes volver a ella o resolverla cuando quieras.</p>
         </div>
         <div class="edicion-estado">
           <div class="dev-linea" id="dev-servidor">${htmlServidor()}</div>
@@ -815,9 +993,11 @@
           return `<button type="button" data-dev="seccion" data-valor="${id}" aria-pressed="${estado.edicion === id}">${nombre}${n != null ? ` <b>${n}</b>` : ''}</button>`;
         }).join('')}
       </nav>
+      <div class="dev-factibilidad" id="dev-factibilidad" aria-live="polite" hidden></div>
       <div class="dev-mensaje" id="dev-mensaje" role="status" aria-live="polite"></div>
       <div class="edicion-cuerpo" id="edicion-cuerpo">${cuerpo()}</div>`;
     pintarMensaje($('#dev-mensaje'));
+    pintarFactibilidad();
     despuesDibujar();
     if (animarEntrada) APP.animar.aparecer($$('#edicion-cuerpo > *', panel), { stagger: 0.06 });
   }
@@ -848,6 +1028,7 @@
     });
     $('#edicion-cuerpo', panel).innerHTML = cuerpo();
     abiertos.forEach(k => { const d = $(`details[data-recordar="${k}"]`, panel); if (d) d.open = true; });
+    pintarFactibilidad();
     despuesDibujar();
     window.scrollTo({ top: y });
     if (foco) {
@@ -856,18 +1037,214 @@
     }
   }
 
-  // ------------------------------------------------------- selects reusables ---
-  function opcionesDocentes(actual, { horas = true } = {}) {
-    const { carga } = calc();
-    return DEPARTAMENTOS.map(depto => {
-      const lista = INST.docentes.filter(d => d.departamento === depto);
-      if (!lista.length) return '';
-      return `<optgroup label="${esc(APP.nombreDepartamento(depto))}">${lista.map(d =>
-        `<option value="${esc(d.nombre)}"${d.nombre === actual ? ' selected' : ''}>${esc(d.nombre)}${horas ? ` · ${carga.get(d.nombre) || 0} h` : ''}</option>`).join('')}</optgroup>`;
+  // ------------------------------------------- selector emergente (picker) ---
+  // Reemplaza a los <select> nativos: un botón con el valor actual que abre un panel con las
+  // opciones agrupadas en fichas (como el menú "Horario de" de Cursos), con búsqueda y teclado.
+  // tipo: 'docente' | 'depto' | 'sala' | 'curso'. Al elegir se llama a cambiarCampo(campo, botón, valor).
+  // datos: atributos data-* extra; 'excluir' y 'notas' son listas [valor, motivo] en JSON.
+  function picker({ tipo, campo, valor, texto, sub = '', etiqueta, foco, datos = {}, deshabilitado = false, clase = '' }) {
+    const attrs = Object.entries(datos).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
+    const visible = texto ?? valor;
+    return `<button type="button" class="dev-picker${clase ? ` ${clase}` : ''}" data-dev-picker="${tipo}" data-dev-campo="${campo}"
+        data-actual="${esc(valor)}"${attrs} data-foco="${esc(foco)}" aria-haspopup="dialog" aria-expanded="false"
+        aria-label="${esc(etiqueta)}: ${esc(visible)}"${deshabilitado ? ' disabled' : ''}>
+        <span class="dev-picker-texto"><span class="dev-picker-valor">${esc(visible)}</span>${sub ? `<span class="dev-picker-sub">${esc(sub)}</span>` : ''}</span>
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>`;
+  }
+  const pickerDocente = op => picker({ tipo: 'docente', sub: `${calc().carga.get(op.valor) || 0} h`, ...op });
+  const grupoSala = s => (/PADRE|MADRE/.test(s) ? 'Salas pastorales' : /ARTES|MÚSICA/.test(s) ? 'Salas de especialidad'
+    : /^SALA DE [34]°/.test(s) ? 'Salas de 3° y 4° medio' : 'Salas de electivos');
+
+  // Opciones del panel según el tipo de selector
+  function configuracionPicker(b) {
+    const excluir = new Map(JSON.parse(b.dataset.excluir || '[]'));
+    const notas = new Map(JSON.parse(b.dataset.notas || '[]'));
+    switch (b.dataset.devPicker) {
+      case 'docente': {
+        const { carga } = calc();
+        return {
+          titulo: 'Elige un docente', buscar: 'Buscar por nombre o departamento',
+          grupos: DEPARTAMENTOS.map(depto => ({
+            titulo: APP.nombreDepartamento(depto),
+            opciones: INST.docentes.filter(d => d.departamento === depto)
+              .map(d => ({ valor: d.nombre, texto: d.nombre, sub: `${carga.get(d.nombre) || 0} h`, motivo: excluir.get(d.nombre) })),
+          })).filter(g => g.opciones.length),
+        };
+      }
+      case 'depto':
+        return { titulo: 'Elige un departamento', grupos: [{ opciones: DEPARTAMENTOS.map(d => ({ valor: d, texto: APP.nombreDepartamento(d) })) }] };
+      case 'sala': {
+        const grupos = new Map();
+        SALAS.forEach(s => {
+          const g = grupoSala(s);
+          if (!grupos.has(g)) grupos.set(g, []);
+          grupos.get(g).push({ valor: s, texto: nombreEspacio(s), sub: notas.get(s) });
+        });
+        return { titulo: 'Elige una sala', grupos: [...grupos].map(([titulo, opciones]) => ({ titulo, opciones })) };
+      }
+      default:
+        return { titulo: 'Elige un curso', cursos: true };
+    }
+  }
+
+  const POP = Object.assign(document.createElement('div'), { className: 'dev-pop', hidden: true });
+  POP.setAttribute('role', 'dialog');
+  document.body.appendChild(POP);
+  let disparador = null;
+
+  function htmlOpcion(o, actual, grupo = '') {
+    const bloqueada = o.motivo && o.valor !== actual;
+    return `<button type="button" class="dev-pop-opcion" data-opcion="${esc(o.valor)}" aria-pressed="${o.valor === actual}"
+        data-buscar="${esc(APP.normalizar(`${o.texto} ${grupo}`))}"${bloqueada ? ` disabled title="${esc(o.motivo)}"` : ''}>
+        <span class="dev-pop-opcion-texto">${esc(o.texto)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}${bloqueada ? `<small class="dev-pop-motivo">${esc(o.motivo)}</small>` : ''}
+      </button>`;
+  }
+
+  function htmlCursosPop(actual) {
+    return DATOS.ciclos.map(ciclo => {
+      const cursos = CURSOS.filter(c => c.ciclo === ciclo.id);
+      return `<div class="dev-pop-grupo"><span class="eyebrow">${esc(ciclo.nombre)}</span>${[...new Set(cursos.map(c => c.nivel))].map(nivel => `
+        <div class="dev-pop-fila"><span class="dev-pop-nivel">${esc(nombreNivel(nivel))}</span>
+          ${cursos.filter(c => c.nivel === nivel).map(c => `<button type="button" class="dev-pop-opcion ficha" data-opcion="${esc(c.id)}"
+            aria-pressed="${c.id === actual}" aria-label="${esc(c.nombre)}" data-buscar="${esc(APP.normalizar(c.nombre))}">${esc(c.seccion)}</button>`).join('')}
+        </div>`).join('')}</div>`;
     }).join('');
   }
-  const opcionesDepartamento = actual => DEPARTAMENTOS.map(d =>
-    `<option value="${esc(d)}"${d === actual ? ' selected' : ''}>${esc(APP.nombreDepartamento(d))}</option>`).join('');
+
+  function abrirPicker(b) {
+    cerrarPicker();
+    disparador = b;
+    const conf = configuracionPicker(b);
+    const actual = b.dataset.actual;
+    POP.dataset.tipo = b.dataset.devPicker;
+    POP.setAttribute('aria-label', conf.titulo);
+    POP.innerHTML = `
+      <div class="dev-pop-cabecera">
+        <span class="dev-pop-titulo">${esc(conf.titulo)}</span>
+        <button type="button" class="boton-icono" data-pop-cerrar aria-label="Cerrar">${ICONOS.mal}</button>
+      </div>
+      ${conf.buscar ? `<label class="dev-pop-buscar"><svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+        <input type="search" placeholder="${esc(conf.buscar)}" autocomplete="off" spellcheck="false" aria-label="${esc(conf.buscar)}"></label>` : ''}
+      <div class="dev-pop-cuerpo">
+        ${conf.cursos ? htmlCursosPop(actual) : conf.grupos.map(g => `
+          <div class="dev-pop-grupo">${g.titulo ? `<span class="eyebrow">${esc(g.titulo)}</span>` : ''}
+            <div class="dev-pop-opciones">${g.opciones.map(o => htmlOpcion(o, actual, g.titulo)).join('')}</div>
+          </div>`).join('')}
+        <p class="dev-pop-vacio" hidden>Sin coincidencias.</p>
+      </div>`;
+    POP.hidden = false;
+    b.setAttribute('aria-expanded', 'true');
+    posicionarPicker();
+    const elegida = $('.dev-pop-opcion[aria-pressed="true"]', POP);
+    if (elegida) elegida.scrollIntoView({ block: 'nearest' });
+    ($('input', POP) || elegida || $('.dev-pop-opcion:not(:disabled)', POP)).focus({ preventScroll: true });
+    APP.animar.aparecer([POP], { y: -4, duracion: 0.16 });
+  }
+
+  function cerrarPicker(devolverFoco = false) {
+    if (POP.hidden) return;
+    POP.hidden = true;
+    POP.innerHTML = '';
+    if (disparador) {
+      disparador.setAttribute('aria-expanded', 'false');
+      if (devolverFoco && document.contains(disparador)) disparador.focus({ preventScroll: true });
+    }
+    disparador = null;
+  }
+
+  function posicionarPicker() {
+    if (POP.hidden || !disparador) return;
+    if (!document.contains(disparador)) { cerrarPicker(); return; }
+    const r = disparador.getBoundingClientRect();
+    const movil = window.innerWidth < 720;
+    POP.classList.toggle('hoja', movil);
+    if (movil) { POP.style.left = POP.style.top = POP.style.maxHeight = ''; return; }
+    if (r.bottom < 0 || r.top > window.innerHeight) { cerrarPicker(); return; }
+    POP.style.maxHeight = '';
+    const abajo = window.innerHeight - r.bottom - 12;
+    const arriba = r.top - 12;
+    const alto = POP.offsetHeight;
+    const haciaAbajo = alto <= abajo || abajo >= arriba;
+    const maximo = Math.max(180, haciaAbajo ? abajo : arriba);
+    POP.style.maxHeight = `${maximo}px`;
+    POP.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - POP.offsetWidth - 8))}px`;
+    POP.style.top = haciaAbajo ? `${r.bottom + 6}px` : `${Math.max(8, r.top - 6 - Math.min(alto, maximo))}px`;
+  }
+
+  function elegirOpcion(valor) {
+    const b = disparador;
+    cerrarPicker();
+    if (!b) return;
+    b.focus({ preventScroll: true });   // refrescar() devuelve el foco a este mismo selector
+    if (valor !== b.dataset.actual) cambiarCampo(b.dataset.devCampo, b, valor);
+  }
+
+  function filtrarPicker(texto) {
+    const terminos = APP.normalizar(texto.trim()).split(/\s+/).filter(Boolean);
+    let visibles = 0;
+    $$('.dev-pop-opcion', POP).forEach(o => {
+      const ok = terminos.every(t => o.dataset.buscar.includes(t));
+      o.hidden = !ok;
+      if (ok) visibles += 1;
+    });
+    $$('.dev-pop-fila, .dev-pop-grupo', POP).forEach(g => { g.hidden = !$('.dev-pop-opcion:not([hidden])', g); });
+    $('.dev-pop-vacio', POP).hidden = visibles > 0;
+  }
+
+  // Opción vecina en la dirección de la flecha, por su posición en pantalla
+  function opcionVecina(actual, tecla) {
+    const opciones = $$('.dev-pop-opcion:not([hidden]):not(:disabled)', POP);
+    if (!actual || !opciones.includes(actual)) return opciones[0];
+    const centro = el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+    const c0 = centro(actual);
+    const horizontal = tecla === 'ArrowLeft' || tecla === 'ArrowRight';
+    const signo = tecla === 'ArrowRight' || tecla === 'ArrowDown' ? 1 : -1;
+    let mejor = null;
+    let menor = Infinity;
+    opciones.forEach(el => {
+      if (el === actual) return;
+      const c = centro(el);
+      const avance = signo * (horizontal ? c.x - c0.x : c.y - c0.y);
+      if (avance <= 1) return;
+      const distancia = avance + 2 * Math.abs(horizontal ? c.y - c0.y : c.x - c0.x);
+      if (distancia < menor) { menor = distancia; mejor = el; }
+    });
+    return mejor;
+  }
+
+  POP.addEventListener('click', ev => {
+    if (ev.target.closest('[data-pop-cerrar]')) { cerrarPicker(true); return; }
+    const o = ev.target.closest('[data-opcion]');
+    if (o && !o.disabled) elegirOpcion(o.dataset.opcion);
+  });
+  POP.addEventListener('input', ev => { if (ev.target.matches('input')) filtrarPicker(ev.target.value); });
+  POP.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); cerrarPicker(true); return; }
+    const enBusqueda = ev.target.matches('input');
+    if (enBusqueda && (ev.key === 'ArrowDown' || ev.key === 'Enter')) {
+      ev.preventDefault();
+      const primera = $('.dev-pop-opcion:not([hidden]):not(:disabled)', POP);
+      if (primera) { if (ev.key === 'Enter') elegirOpcion(primera.dataset.opcion); else primera.focus(); }
+      return;
+    }
+    if (!enBusqueda && ev.key.startsWith('Arrow')) {
+      ev.preventDefault();
+      const destino = opcionVecina(ev.target.closest('.dev-pop-opcion'), ev.key);
+      if (destino) destino.focus();
+      else if (ev.key === 'ArrowUp' && $('input', POP)) $('input', POP).focus();
+    }
+  });
+  POP.addEventListener('focusout', ev => {
+    if (ev.relatedTarget && !POP.contains(ev.relatedTarget) && ev.relatedTarget !== disparador) cerrarPicker();
+  });
+  document.addEventListener('pointerdown', ev => {
+    if (!POP.hidden && !POP.contains(ev.target) && !(disparador && disparador.contains(ev.target))) cerrarPicker();
+  });
+  let marcoPicker = 0;
+  const reposicionar = () => { cancelAnimationFrame(marcoPicker); marcoPicker = requestAnimationFrame(posicionarPicker); };
+  window.addEventListener('scroll', reposicionar, { passive: true });
+  window.addEventListener('resize', reposicionar);
 
   // ===========================================================================
   // 6. DOCENTES
@@ -900,13 +1277,14 @@
     if (r.jefaturas.length) partes.push(`la jefatura de ${r.jefaturas.map(nombreCurso).join(', ')}`);
     const otros = INST.docentes.filter(x => x.nombre !== d.nombre);
     const sugerido = otros.find(x => x.departamento === d.departamento) || otros[0];
+    if (!otros.some(x => x.nombre === UI.reemplazo)) UI.reemplazo = sugerido ? sugerido.nombre : null;
     return `
       <tr class="dev-fila-quitar"><td colspan="6">
         <div class="dev-quitar">
           ${r.total
             ? `<p><b>${esc(d.nombre)}</b> tiene ${partes.join(', ')}. ¿Quién se queda con todo?</p>
-               <label class="dev-campo-linea"><span class="visualmente-oculto">Reemplazo</span>
-                 <select id="dev-reemplazo" data-foco="reemplazo">${opcionesDocentes(sugerido && sugerido.nombre).replace(`<option value="${esc(d.nombre)}"`, `<option disabled value="${esc(d.nombre)}"`)}</select></label>`
+               ${pickerDocente({ campo: 'reemplazo', valor: UI.reemplazo, etiqueta: `Reemplazo de ${d.nombre}`, foco: 'reemplazo',
+                 datos: { excluir: JSON.stringify([[d.nombre, 'es quien se quita']]) } })}`
             : `<p>¿Quitar a <b>${esc(d.nombre)}</b>? No tiene clases asignadas.</p>`}
           <button type="button" class="boton boton-peligro" data-dev="confirmar-quitar" data-docente-dev="${esc(d.nombre)}">${ICONOS.quitar}Quitar docente</button>
           <button type="button" class="enlace" data-dev="cancelar-quitar">Cancelar</button>
@@ -937,7 +1315,8 @@
             <td><div class="dev-celda-nombre">
               <input class="dev-input" type="text" value="${esc(d.nombre)}" maxlength="60" spellcheck="false"
                      data-dev-campo="nombre" data-docente-dev="${esc(d.nombre)}" data-foco="nombre|${esc(d.nombre)}" aria-label="Nombre de ${esc(d.nombre)}">${marca}</div></td>
-            <td><select class="dev-select" data-dev-campo="depto" data-docente-dev="${esc(d.nombre)}" data-foco="depto|${esc(d.nombre)}" aria-label="Departamento de ${esc(d.nombre)}">${opcionesDepartamento(d.departamento)}</select></td>
+            <td>${picker({ tipo: 'depto', campo: 'depto', valor: d.departamento, texto: APP.nombreDepartamento(d.departamento),
+              etiqueta: `Departamento de ${d.nombre}`, foco: `depto|${d.nombre}`, datos: { 'docente-dev': d.nombre } })}</td>
             <td>${(jefaturas.get(d.nombre) || []).map(c => `<button type="button" class="enlace" data-dev="ir-curso" data-curso-dev="${esc(c)}">${esc(nombreCurso(c))}</button>`).join(', ') || '<span class="dev-tenue">—</span>'}</td>
             <td class="num"><span class="dev-carga${exceso ? ' mal' : ''}" title="${h} de ${BLOQUES_SEMANA} bloques de la semana">
               <span class="dev-carga-pista"><span style="width:${Math.min(100, (h / BLOQUES_SEMANA) * 100)}%"></span></span>${h}</span></td>
@@ -953,14 +1332,15 @@
           <p>${INST.docentes.length} docentes · ${fmt(totalHoras)} horas en grilla · tope ${BLOQUES_SEMANA} bloques por docente</p></div>
         <form class="dev-agregar" data-dev-form="agregar-docente" autocomplete="off">
           <label class="dev-campo"><span>Nombre</span><input class="dev-input" name="nombre" type="text" maxlength="60" placeholder="p. ej. Lenguaje 6" data-foco="nuevo-nombre" required></label>
-          <label class="dev-campo"><span>Departamento</span><select class="dev-select" name="departamento" data-foco="nuevo-depto">${opcionesDepartamento(DEPARTAMENTOS[0])}</select></label>
+          <div class="dev-campo"><span>Departamento</span>${picker({ tipo: 'depto', campo: 'nuevo-depto', valor: UI.nuevoDepto || DEPARTAMENTOS[0],
+            texto: APP.nombreDepartamento(UI.nuevoDepto || DEPARTAMENTOS[0]), etiqueta: 'Departamento del nuevo docente', foco: 'nuevo-depto' })}</div>
           <button type="submit" class="boton boton-primario">${ICONOS.mas}Agregar docente</button>
         </form>
         <div class="tabla-marco"><table class="tabla dev-tabla dev-tabla-docentes">
           <thead><tr><th>Docente</th><th>Departamento</th><th>Jefatura</th><th class="num">Horas</th><th>Asignaciones</th><th><span class="visualmente-oculto">Acciones</span></th></tr></thead>
           <tbody>${filas}</tbody>
         </table></div>
-        ${quitados.length ? `<p class="nota">Quitados de la dotación original: ${quitados.map(q => esc(q.nombre)).join(', ')}. Usa <b>Restablecer</b> para volver a la dotación original.</p>` : ''}
+        ${quitados.length ? `<p class="nota">Quitados respecto de la ${esc(NOMBRE_BASE)}: ${quitados.map(q => esc(q.nombre)).join(', ')}. Usa <b>Deshacer</b> o <b>Volver a la base</b> si quieres recuperarlos.</p>` : ''}
         <p class="nota">Renombrar o quitar un docente actualiza todas sus clases, jefaturas y electivos. Un docente nuevo aparece en la planilla sin clases: asígnalas en <button type="button" class="enlace" data-dev="seccion" data-valor="asignacion">Asignación</button> o <button type="button" class="enlace" data-dev="seccion" data-valor="electivos">Electivos</button>.</p>
       </section>`;
   }
@@ -973,8 +1353,6 @@
     const curso = cursoPorId.get(UI.curso);
     const { mapa } = calc();
     const filas = INST.malla[curso.id];
-    const opcionesCurso = DATOS.ciclos.map(ciclo => `<optgroup label="${esc(ciclo.nombre)}">${CURSOS.filter(c => c.ciclo === ciclo.id)
-      .map(c => `<option value="${esc(c.id)}"${c.id === curso.id ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')}</optgroup>`).join('');
     const editadosCurso = new Set(calc().cambios.filter(c => c.curso).map(c => c.curso));
     const horas = filas.reduce((s, f) => s + f.horas, 0);
     const franjas = (INST.franjas[curso.nivel] || []);
@@ -983,9 +1361,10 @@
       const info = infoAsig(f.asignatura);
       const sigueJefe = ORIENTACION.includes(f.asignatura) && !curso.parvulo;
       const editada = filaEditada(curso.id, i, mapa);
-      const selects = f.docentes.map((d, s) => `
-        <select class="dev-select" data-dev-campo="asignar" data-curso-dev="${esc(curso.id)}" data-i="${i}" data-s="${s}"
-                data-foco="asignar|${i}|${s}" aria-label="${esc(info.nombre)}, docente ${s + 1}"${sigueJefe ? ' disabled' : ''}>${opcionesDocentes(d)}</select>`).join('');
+      const selects = f.docentes.map((d, s) => pickerDocente({
+        campo: 'asignar', valor: d, etiqueta: `${info.nombre}, docente ${s + 1}`, foco: `asignar|${i}|${s}`, deshabilitado: sigueJefe,
+        datos: { 'curso-dev': curso.id, i, s, excluir: JSON.stringify(f.docentes.filter((x, j) => j !== s).map(x => [x, 'ya está en esta co-docencia'])) },
+      })).join('');
       const original = BASE.malla[curso.id][i].docentes.join(' y ');
       return `
         <tr class="${editada ? 'dev-editado' : ''}">
@@ -1010,15 +1389,15 @@
     return `
       <section class="seccion">
         <div class="dev-barra-curso">
-          <label class="dev-campo"><span>Curso</span>
-            <select class="dev-select dev-select-grande" data-dev-campo="curso" data-foco="curso">${opcionesCurso}</select></label>
+          <div class="dev-campo"><span>Curso</span>
+            ${picker({ tipo: 'curso', campo: 'curso', valor: curso.id, texto: curso.nombre, etiqueta: 'Curso', foco: 'curso', clase: 'grande' })}</div>
           <div class="cabecera-acciones">
             <button type="button" class="boton-icono" data-dev="curso-paso" data-valor="-1" aria-label="Curso anterior">${ICONOS.izq}</button>
             <button type="button" class="boton-icono" data-dev="curso-paso" data-valor="1" aria-label="Curso siguiente">${ICONOS.der}</button>
           </div>
           ${curso.parvulo ? '' : `
-          <label class="dev-campo${jefeEditado ? ' dev-editado' : ''}"><span>Profesor/a jefe</span>
-            <select class="dev-select" data-dev-campo="jefe" data-curso-dev="${esc(curso.id)}" data-foco="jefe">${opcionesDocentes(INST.jefes[curso.id])}</select></label>`}
+          <div class="dev-campo${jefeEditado ? ' dev-editado' : ''}"><span>Profesor/a jefe</span>
+            ${pickerDocente({ campo: 'jefe', valor: INST.jefes[curso.id], etiqueta: 'Profesor/a jefe', foco: 'jefe', datos: { 'curso-dev': curso.id } })}</div>`}
         </div>
         <p class="cabecera-meta"><span><b>${horas + franjas.length * 6}</b> horas semanales</span>
           <span><b>${curso.jornada.reduce((s, j) => s + j, 0)}</b> bloques de jornada</span>
@@ -1027,7 +1406,7 @@
           <thead><tr><th>Asignatura</th><th class="num">Horas</th><th>Docente(s)</th><th>Espacio</th></tr></thead>
           <tbody>${cuerpoTabla}</tbody>
         </table></div>
-        <p class="nota">Las horas y la jornada de cada curso no se editan: así cada curso sigue cubriendo su malla completa. Al cambiar la jefatura, la Orientación del curso pasa al nuevo profesor/a jefe (lo exige la auditoría). Cada opción muestra las horas en grilla del docente.</p>
+        <p class="nota">Las horas y la jornada de cada curso no se editan: así cada curso sigue cubriendo su malla completa. Al cambiar la jefatura, la Orientación del curso pasa al nuevo profesor/a jefe (lo exige la auditoría). Cada docente muestra sus horas en grilla; después de cada cambio se comprueba si todavía existe un horario factible.</p>
       </section>`;
   }
 
@@ -1038,7 +1417,6 @@
     const { mapa } = calc();
     const nombresElectivos = [...new Set([...Object.values(BASE.franjas), ...Object.values(INST.franjas)]
       .flatMap(l => l.flatMap(f => f.grupos.map(g => titulo(g.asignatura)))))].sort();
-    const opcionesSala = actual => SALAS.map(s => `<option value="${esc(s)}"${s === actual ? ' selected' : ''}>${esc(nombreEspacio(s))}</option>`).join('');
     const { errores, avisos } = calc().validacion;
 
     const niveles = NIVELES.map(nivel => {
@@ -1046,17 +1424,25 @@
       const franjas = INST.franjas[nivel].map((f, k) => {
         const lugar = `${nombreNivel(nivel)}, franja ${k + 1}`;
         const problemas = [...errores.filter(e => e.startsWith(lugar)).map(e => ['error', e]), ...avisos.filter(e => e.startsWith(lugar)).map(e => ['aviso', e])];
+        // Bloques de la franja con bloqueo de pastoral, para avisar en el selector de salas
+        const conPastoral = SALAS.filter(s => f.periodos.some(p => (pastoral.get(s) || new Set()).has(`${p.dia}|${p.bloque}`)
+          || (pastoral.get(s) || new Set()).has(`${p.dia}|${p.bloque + 1}`)));
         const filas = f.grupos.map((g, i) => {
           const id = `${nivel}|${k}|${i}`;
           const editado = grupoEditado(nivel, k, g, mapa);
+          const otros = f.grupos.filter((x, j) => j !== i);
+          const ocupados = otros.map(x => [x.docente, `dicta ${titulo(x.asignatura)} en esta franja`]);
+          const notasSala = [...otros.map(x => [x.sala, `la usa ${titulo(x.asignatura)}`]), ...conPastoral.map(s => [s, 'bloqueo de pastoral en esta franja'])];
           return `
             <tr class="${editado ? 'dev-editado' : ''}">
               <td><input class="dev-input dev-input-largo" type="text" list="dev-lista-electivos" value="${esc(titulo(g.asignatura))}" maxlength="80"
                          data-dev-campo="grupo" data-prop="asignatura" data-id="${esc(id)}" data-foco="g|${esc(id)}|a" aria-label="Nombre del electivo"></td>
               <td><input class="dev-input dev-input-corto" type="text" value="${esc(g.seccion)}" maxlength="12"
                          data-dev-campo="grupo" data-prop="seccion" data-id="${esc(id)}" data-foco="g|${esc(id)}|s" aria-label="Sección de ${esc(titulo(g.asignatura))}"></td>
-              <td><select class="dev-select" data-dev-campo="grupo" data-prop="docente" data-id="${esc(id)}" data-foco="g|${esc(id)}|d" aria-label="Docente de ${esc(titulo(g.asignatura))}">${opcionesDocentes(g.docente)}</select></td>
-              <td><select class="dev-select" data-dev-campo="grupo" data-prop="sala" data-id="${esc(id)}" data-foco="g|${esc(id)}|r" aria-label="Sala de ${esc(titulo(g.asignatura))}">${opcionesSala(g.sala)}</select></td>
+              <td>${pickerDocente({ campo: 'grupo', valor: g.docente, etiqueta: `Docente de ${titulo(g.asignatura)}`, foco: `g|${id}|d`,
+                datos: { prop: 'docente', id, excluir: JSON.stringify(ocupados) } })}</td>
+              <td>${picker({ tipo: 'sala', campo: 'grupo', valor: g.sala, texto: nombreEspacio(g.sala), etiqueta: `Sala de ${titulo(g.asignatura)}`,
+                foco: `g|${id}|r`, datos: { prop: 'sala', id, notas: JSON.stringify(notasSala) } })}</td>
               <td class="dev-col-accion"><button type="button" class="boton-icono" data-dev="quitar-grupo" data-id="${esc(id)}" aria-label="Quitar ${esc(titulo(g.asignatura))}"${f.grupos.length <= 1 ? ' disabled' : ''}>${ICONOS.quitar}</button></td>
             </tr>`;
         }).join('');
@@ -1081,9 +1467,29 @@
           ${franjas}
         </section>`;
     }).join('');
-    return `${niveles}
+    return `
+      <section class="dev-explica">
+        <h2>¿Qué es una franja y qué hace el solver con ella?</h2>
+        <div class="dev-explica-columnas">
+          <div>
+            <p>En 3° y 4° medio, los cursos A y B se juntan en ciertos bloques y cada estudiante va al electivo que eligió. Cada <b>franja</b> es uno de
+              esos espacios: <b>6 horas a la semana</b> (3 bloques dobles) en que varios electivos se dictan <b>al mismo tiempo</b>. Por eso cada
+              estudiante toma un electivo por franja, 3 en total.</p>
+            <p>Ejemplo: en la franja 1 de 3° medio, mientras unos estudiantes están en Comprensión histórica, otros están en Lectura y escritura, Química o Economía.</p>
+          </div>
+          <div>
+            <p><b>Sí, el solver la considera, pero como algo fijo.</b> Los días y bloques de cada franja vienen del Excel 2026 y el solver no los mueve:</p>
+            <ul>
+              <li>En 3° y 4° medio A y B esos bloques ya están ocupados; el resto de las asignaturas va en los demás.</li>
+              <li>El <b>docente</b> de cada electivo queda ocupado en esos bloques: el solver no le puede poner otra clase ahí. Cambiar el docente sí cambia el resultado.</li>
+              <li>El <b>nombre</b> y la <b>sala</b> no afectan al solver: se muestran en el horario y la sala se revisa contra los bloqueos de pastoral.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+      ${niveles}
       <datalist id="dev-lista-electivos">${nombresElectivos.map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>
-      <p class="nota">Los periodos de cada franja son fijos (los mismos del Excel 2026). Un docente no puede dictar dos electivos de la misma franja; el solver ubica el resto de sus clases fuera de esos bloques.</p>`;
+      <p class="nota">Un docente no puede dictar dos electivos de la misma franja: el selector no lo deja elegir.</p>`;
   }
 
   // ===========================================================================
@@ -1101,8 +1507,12 @@
     return `
       <div class="dev-campos">
         ${esModelo ? `
-          <label class="dev-campo"><span>Solver</span>
-            <select class="dev-select" data-dev-campo="r" data-prop="solver" data-foco="r|solver">${solvers().map(s => `<option value="${s}"${s === R.solver ? ' selected' : ''}>${s === 'HIGHS' ? 'HiGHS' : s}${NOTA_SOLVER[s] ? ` · ${NOTA_SOLVER[s]}` : ''}</option>`).join('')}</select></label>
+          <div class="dev-campo dev-campo-ancho"><span>Solver</span>
+            <div class="segmentado dev-solvers" role="radiogroup" aria-label="Solver del modelo matemático">${solvers().map(s => `
+              <button type="button" role="radio" data-dev="solver" data-valor="${s}" aria-checked="${s === R.solver}" aria-pressed="${s === R.solver}"
+                data-foco="solver|${s}" title="${esc(NOTA_SOLVER[s] || '')}">${esc(NOMBRE_SOLVER[s] || s)}</button>`).join('')}
+            </div>
+            <small>${esc(NOTA_SOLVER[R.solver] || '')}${notaGurobi()}</small></div>
           ${num('tiempo_max', 'Tiempo máximo (s)', R.tiempo_max, `min="0.1" max="${topeTiempo()}" step="any"`)}
           ${num('peso_ventanas', 'Peso de las ventanas w<sub>V</sub>', R.peso_ventanas, 'min="0" step="any"', '0 = solo factibilidad (como las metaheurísticas)')}
           ${num('hilos', 'Hilos', R.hilos, 'min="1" max="64" placeholder="los del solver"', '1 hilo es comparable con las metaheurísticas')}`
@@ -1120,6 +1530,43 @@
               <small>${esc(p.ayuda || '')} · por defecto ${esc(p.defecto)}</small></label>`).join('')}
           </div>
         </details>` : ''}`;
+  }
+
+  // Por qué Gurobi no aparece entre los solvers (licencia del servidor)
+  function notaGurobi() {
+    const g = SRV.info && SRV.info.gurobi;
+    if (!g || g.licencia === 'completa') return '';
+    return g.version
+      ? ` · Gurobi ${g.version} no está disponible en este servidor: ${g.detalle}.`
+      : ' · Gurobi no está instalado en este servidor (pip install gurobipy).';
+  }
+
+  // Base 2027 o instancia editada: elegir una no borra la otra
+  function selectorInstancia(op, campo) {
+    const n = calc().cambios.length;
+    if (!n) return `<p class="dev-tenue">Se resuelve la ${esc(NOMBRE_BASE)} (no hay cambios).</p>`;
+    const estadoEditada = FACT.estado === 'infactible' ? ' · no factible' : FACT.estado === 'factible' ? ' · factible' : '';
+    return `
+      <div class="dev-campo dev-campo-ancho"><span>Instancia</span>
+        <div class="segmentado dev-instancias" role="radiogroup" aria-label="Instancia que se resuelve">
+          <button type="button" role="radio" data-dev="usar-instancia" data-campo="${campo}" data-valor="base" aria-checked="${op.usarBase}" aria-pressed="${op.usarBase}" data-foco="inst|${campo}|base">Base 2027</button>
+          <button type="button" role="radio" data-dev="usar-instancia" data-campo="${campo}" data-valor="editada" aria-checked="${!op.usarBase}" aria-pressed="${!op.usarBase}" data-foco="inst|${campo}|editada">Editada · ${n} cambio${n > 1 ? 's' : ''}${estadoEditada}</button>
+        </div>
+        <small>La base (con que se generó el horario 2027) nunca se modifica; puedes resolver una u otra sin perder tus cambios.</small>
+      </div>`;
+  }
+
+  function htmlExplicacion() {
+    return `
+      <details class="dev-explicacion" data-recordar="explicacion">
+        <summary>¿Qué hace cada método y en qué se diferencian?</summary>
+        <dl>${EXPLICACION.map(([id, nombre, texto]) => `
+          <div style="--c:${colorDe(id === 'modelo' ? 'modelo:GUROBI' : id)}"><dt><span class="dev-metodo-punto"></span>${esc(nombre)}</dt><dd>${esc(texto)}</dd></div>`).join('')}
+        </dl>
+        <p class="nota">En corto: la <b>voraz</b> construye, <b>Min-Conflicts</b> repara pero solo acepta mejoras (se estanca), <b>Min-Conflicts + tabú</b> repara aceptando también
+          empeoramientos controlados (tabú, ruido y reinicios) para salir de los estancamientos, y el <b>modelo</b> resuelve todo de una vez y además puede demostrar que no hay solución.
+          Todos minimizan la misma f(x) = 1000 · violaciones duras.</p>
+      </details>`;
   }
 
   function avisoServidor() {
@@ -1153,8 +1600,10 @@
   }
 
   function htmlResolver() {
-    const { validacion, cambios } = calc();
-    const listo = SRV.estado === 'conectado' && !validacion.errores.length && !R.ejecutando;
+    const { validacion } = calc();
+    const editada = usaEditada(R);
+    const bloqueada = editada && validacion.errores.length > 0;
+    const listo = SRV.estado === 'conectado' && !bloqueada && !R.ejecutando;
     const tarjetas = metodos().map(m => {
       const deshabilitado = m.id === 'modelo' && !conModelo();
       const clave = m.id === 'modelo' ? `modelo:${R.solver}` : m.id;
@@ -1163,26 +1612,29 @@
           <input type="radio" name="dev-metodo" value="${m.id}" data-dev-campo="metodo" data-foco="metodo|${m.id}"${R.metodo === m.id ? ' checked' : ''}${deshabilitado ? ' disabled' : ''}>
           <span class="dev-metodo-tipo"><span class="dev-metodo-punto"></span>${esc(m.tipo)}${m.defecto ? ' · por defecto' : ''}</span>
           <span class="dev-metodo-nombre">${esc(m.nombre)}</span>
-          <span class="dev-metodo-desc">${esc(deshabilitado ? 'Requiere OR-Tools: pip install ortools' : m.descripcion)}</span>
+          <span class="dev-metodo-desc">${esc(deshabilitado ? 'El servidor no tiene solvers para el modelo (pip install ortools o gurobipy)' : m.descripcion)}</span>
         </label>`;
     }).join('');
-    const instancia = cambios.length ? `instancia editada (${cambios.length} cambio${cambios.length > 1 ? 's' : ''})` : 'instancia original';
+    const nombreInstancia = editada ? 'instancia editada' : NOMBRE_BASE;
     return `
       <div class="dev-resolver">
         <section class="seccion">
           <div class="seccion-titulo"><h2>Método</h2><p>De la heurística constructiva al modelo exacto</p></div>
           <div class="dev-metodos" role="radiogroup" aria-label="Método de solución">${tarjetas}</div>
+          ${htmlExplicacion()}
         </section>
         <section class="seccion">
           <div class="seccion-titulo"><h2>Parámetros</h2><p>Todos parten de la misma construcción voraz (salvo el modelo)</p></div>
+          ${selectorInstancia(R, 'r')}
           ${camposParametros()}
           <div class="dev-ejecutar">
             <button type="button" class="boton boton-primario boton-grande" id="dev-resolver-boton" data-dev="resolver"${listo ? '' : ' disabled'}>
               ${R.ejecutando ? `<span class="dev-girando"></span>Resolviendo… <span class="dev-reloj">${fmtMs(performance.now() - R.inicio)}</span>` : `${ICONOS.play}Resolver`}</button>
-            <span class="dev-tenue">Con la ${instancia}${validacion.errores.length ? ` · <b class="dev-error-texto">corrige ${validacion.errores.length} error${validacion.errores.length > 1 ? 'es' : ''} primero</b>` : ''}</span>
+            <span class="dev-tenue">Con la ${esc(nombreInstancia)}${bloqueada ? ` · <b class="dev-error-texto">corrige ${validacion.errores.length} error${validacion.errores.length > 1 ? 'es' : ''} primero</b>` : ''}</span>
           </div>
-          ${validacion.errores.length ? `<ul class="dev-problemas">${validacion.errores.slice(0, 8).map(e => `<li class="error">${ICONOS.mal}${esc(e)}</li>`).join('')}</ul>` : ''}
-          ${validacion.avisos.length ? `<ul class="dev-problemas">${validacion.avisos.slice(0, 6).map(e => `<li class="aviso">${ICONOS.alerta}${esc(e)}</li>`).join('')}</ul>` : ''}
+          ${editada && FACT.estado === 'infactible' ? `<p class="dev-problemas"><span class="error">${ICONOS.alerta}Con la instancia editada ningún método puede llegar a f(x) = 0 (ver el aviso de arriba). Puedes resolverla igual para ver el mejor horario posible.</span></p>` : ''}
+          ${editada && validacion.errores.length ? `<ul class="dev-problemas">${validacion.errores.slice(0, 8).map(e => `<li class="error">${ICONOS.mal}${esc(e)}</li>`).join('')}</ul>` : ''}
+          ${editada && validacion.avisos.length ? `<ul class="dev-problemas">${validacion.avisos.slice(0, 6).map(e => `<li class="aviso">${ICONOS.alerta}${esc(e)}</li>`).join('')}</ul>` : ''}
           ${avisoServidor()}
         </section>
       </div>
@@ -1217,7 +1669,7 @@
         <div class="veredicto">
           <div class="veredicto-sello${r.factible ? '' : ' mal'}">${r.factible ? ICONOS.ok : ICONOS.mal}</div>
           <div>
-            <span class="eyebrow">Resultado · ${esc(r.nombre)}${r.semilla != null ? ` · semilla ${r.semilla}` : ''} · instancia ${r.editada ? 'editada' : 'original'}</span>
+            <span class="eyebrow">Resultado · ${esc(r.nombre)}${r.semilla != null ? ` · semilla ${r.semilla}` : ''} · ${r.editada ? 'instancia editada' : esc(NOMBRE_BASE)}</span>
             <h1>${esc(veredicto)}</h1>
             <p>Se detuvo porque ${esc(r.metodo === 'modelo' ? `el solver informó: ${r.motivo_parada}` : motivo(r.motivo_parada))}${r.pasos ? `, tras ${fmt(r.pasos, 0)} pasos (${fmt(r.pasos_por_s, 0)} por segundo)` : ''}.</p>
           </div>
@@ -1260,7 +1712,7 @@
         <td class="num">${fmt(r.costo_final)}</td>
         <td class="num">${fmtMs(r.tiempos_ms.total)}</td>
         <td class="num">${r.auditoria ? fmt(r.auditoria.metricas.total_ventanas_docentes) : '—'}</td>
-        <td>${r.lote ? 'Comparar' : 'Resolver'}${r.editada ? ' · editada' : ''}</td>
+        <td>${r.lote ? 'Comparar' : 'Resolver'} · ${r.editada ? 'editada' : 'base'}</td>
       </tr>`).join('');
     return `
       <section class="seccion">
@@ -1284,7 +1736,7 @@
       peso_ventanas: op.peso_ventanas,
       hilos: op.hilos === '' || op.hilos == null ? null : op.hilos,
       parametros,
-      instancia: hayCambios() ? INST : null,   // null = la original de DatosColegio
+      instancia: usaEditada(op) ? INST : null,   // null = la base (DatosColegio, horario 2027)
       anio: DATOS.meta.anio,
       ...extra,
     };
@@ -1292,7 +1744,7 @@
 
   async function resolverUno() {
     if (R.ejecutando || SRV.estado !== 'conectado') return;
-    if (calc().validacion.errores.length) return;
+    if (usaEditada(R) && calc().validacion.errores.length) return;
     R.ejecutando = true;
     R.error = null;
     R.inicio = performance.now();
@@ -1324,6 +1776,8 @@
 
   function verResultado() {
     if (!R.datos) return;
+    // El resultado lleva la instancia base: al verlo no se pierde la base aunque sea de una instancia editada
+    R.datos.meta.desarrollador = { ...R.datos.meta.desarrollador, base: BASE };
     if (!sesion.guardar(CLAVES.resultado, R.datos)) {
       window.alert('El navegador no tiene espacio para guardar el horario en esta pestaña. Usa "Descargar datos (.js)".');
       return;
@@ -1392,7 +1846,7 @@
 
   function htmlComparar() {
     const tareas = tareasComparacion();
-    const listo = SRV.estado === 'conectado' && !calc().validacion.errores.length && tareas.length > 0;
+    const listo = SRV.estado === 'conectado' && !(usaEditada(C) && calc().validacion.errores.length) && tareas.length > 0;
     const check = (grupo, valor, etiqueta, marcado, extra = '', nota = '') => `
       <label class="dev-check" style="--c:${colorDe(grupo === 'cmp-solver' ? `modelo:${valor}` : valor)}">
         <input type="checkbox" data-dev-campo="${grupo}" value="${esc(valor)}" data-foco="${grupo}|${esc(valor)}"${marcado ? ' checked' : ''}${C.ejecutando ? ' disabled' : ''} ${extra}>
@@ -1412,9 +1866,10 @@
           <fieldset class="dev-grupo-checks"><legend>Heurísticas y metaheurísticas</legend>
             ${ms.map(m => check('cmp-metodo', m.id, esc(m.nombre), C.metodos.includes(m.id), '', esc(m.tipo))).join('')}
           </fieldset>
-          <fieldset class="dev-grupo-checks"><legend>Modelo matemático (OR-Tools)</legend>
-            ${conModelo() ? solvers().map(s => check('cmp-solver', s, s === 'HIGHS' ? 'HiGHS' : s, C.solvers.includes(s), '', NOTA_SOLVER[s] || '')).join('')
-              : '<p class="nota">Requiere OR-Tools en el servidor: <code>pip install ortools</code>.</p>'}
+          <fieldset class="dev-grupo-checks"><legend>Modelo matemático</legend>
+            ${conModelo() ? solvers().map(s => check('cmp-solver', s, esc(NOMBRE_SOLVER[s] || s), C.solvers.includes(s), '', esc(NOTA_SOLVER[s] || ''))).join('')
+              : '<p class="nota">El servidor no tiene solvers: <code>pip install gurobipy ortools</code>.</p>'}
+            ${notaGurobi() ? `<p class="nota">${esc(notaGurobi().replace(/^ · /, ''))}</p>` : ''}
             <p class="nota">El modelo no usa semilla: se repite tantas veces como semillas haya, para medir la variación de su tiempo.</p>
           </fieldset>
           <fieldset class="dev-grupo-checks"><legend>Presupuesto</legend>
@@ -1426,11 +1881,12 @@
             </div>
           </fieldset>
         </div>
+        ${selectorInstancia(C, 'c')}
         <div class="dev-ejecutar">
           ${C.ejecutando
             ? `<button type="button" class="boton boton-grande" data-dev="detener">${ICONOS.stop}Detener</button>`
             : `<button type="button" class="boton boton-primario boton-grande" data-dev="comparar"${listo ? '' : ' disabled'}>${ICONOS.play}Ejecutar comparación · ${tareas.length} ejecuciones</button>`}
-          <span class="dev-tenue">Con la ${hayCambios() ? 'instancia editada' : 'instancia original'} · los parámetros propios de cada método son los de Resolver</span>
+          <span class="dev-tenue">Con la ${usaEditada(C) ? 'instancia editada' : esc(NOMBRE_BASE)} · los parámetros propios de cada método son los de Resolver</span>
         </div>
         ${progreso}
         ${C.errores.length ? `<ul class="dev-problemas">${C.errores.slice(-5).map(e => `<li class="error">${ICONOS.mal}${esc(e)}</li>`).join('')}</ul>` : ''}
@@ -1470,7 +1926,7 @@
     return `
       <section class="seccion">
         <div class="seccion-titulo"><h2>Resumen por método</h2>
-          <p>${runs.length} ejecuciones · orden: % factibles ↓, f(x) final media ↑, tiempo hasta factible ↑ · ${hayCambios() ? 'instancia editada' : 'instancia original'}</p></div>
+          <p>${runs.length} ejecuciones · orden: % factibles ↓, f(x) final media ↑, tiempo hasta factible ↑ · ${runs[0].editada ? 'instancia editada' : esc(NOMBRE_BASE)}</p></div>
         <div class="tabla-marco"><table class="tabla dev-tabla dev-tabla-resumen">
           <thead><tr><th>Método</th><th>Tipo</th><th class="num">Factibles</th><th class="num">f(x) inicial</th><th class="num">f(x) final</th>
             <th class="num">Tiempo (mediana)</th><th class="num">Media ± desv.</th><th class="num">Hasta factible</th><th class="num">Pasos</th><th class="num">Ventanas</th><th class="num">% dobles</th></tr></thead>
@@ -1517,7 +1973,7 @@
     LOTE = Date.now();
     C.progreso = { i: 0, n: tareas.length, texto: 'empezando…' };
     // La instancia se congela al empezar: editar mientras corre no cambia la comparación
-    const instancia = hayCambios() ? clonar(INST) : null;
+    const instancia = usaEditada(C) ? clonar(INST) : null;
     refrescar();
     for (let i = 0; i < tareas.length; i++) {
       if (C.detener) break;
@@ -1796,6 +2252,11 @@
   const idGrupo = id => { const [nivel, k, i] = id.split('|'); return [nivel, Number(k), Number(i)]; };
 
   panel.addEventListener('click', ev => {
+    const selector = ev.target.closest('[data-dev-picker]');
+    if (selector) {
+      if (!selector.disabled) { if (disparador === selector && !POP.hidden) cerrarPicker(); else abrirPicker(selector); }
+      return;
+    }
     const b = ev.target.closest('[data-dev]');
     if (!b || b.disabled) return;
     const accion = b.dataset.dev;
@@ -1810,20 +2271,30 @@
         descargar('instancia_mmdd.json', JSON.stringify(INST, null, 2), 'application/json');
         break;
       case 'importar': $('#dev-archivo').click(); break;
+      case 'deshacer': deshacer(); break;
+      case 'verificar': programarVerificacion(0); break;
       case 'restablecer':
-        if (window.confirm('¿Volver a la instancia original? Se pierden los cambios de docentes, asignación y electivos (puedes exportarlos antes).')) {
-          INST = clonar(BASE);
-          UI.quitando = null;
-          guardarInstancia();
-          avisar('Instancia restablecida a los datos originales.');
-          refrescar();
-        }
+        // La base no se toca; los cambios quedan en el historial (Deshacer los recupera)
+        cambiarInstancia(clonar(BASE), `Volviste a la ${NOMBRE_BASE}. Si fue sin querer, usa Deshacer.`);
         break;
-      case 'quitar': UI.quitando = b.dataset.docenteDev; refrescar(); break;
+      case 'solver':
+        R.solver = b.dataset.valor;
+        R.solverElegido = true;
+        guardarR();
+        refrescar();
+        break;
+      case 'usar-instancia': {
+        const op = b.dataset.campo === 'c' ? C : R;
+        op.usarBase = b.dataset.valor === 'base';
+        if (op === C) guardarC(); else guardarR();
+        refrescar();
+        break;
+      }
+      case 'quitar': UI.quitando = b.dataset.docenteDev; UI.reemplazo = null; refrescar(); break;
       case 'cancelar-quitar': UI.quitando = null; refrescar(); break;
       case 'confirmar-quitar': {
         const nombre = b.dataset.docenteDev;
-        const reemplazo = $('#dev-reemplazo') ? $('#dev-reemplazo').value : null;
+        const reemplazo = referencias(nombre).total ? UI.reemplazo : null;
         if (aplicar('quitar', nombre, reemplazo)) {
           UI.quitando = null;
           avisar(reemplazo ? `Se quitó a ${nombre}; sus clases pasaron a ${reemplazo}.` : `Se quitó a ${nombre}.`);
@@ -1871,29 +2342,27 @@
     return Number.isFinite(n) ? (entero ? Math.round(n) : n) : '';
   };
 
-  panel.addEventListener('change', ev => {
-    const el = ev.target;
-    if (el.id === 'dev-archivo') { importar(el.files && el.files[0]); return; }
-    const campo = el.dataset.devCampo;
-    if (!campo) return;
+  // Un campo cambió: 'el' es el control (input, casilla o selector) y 'valor' su nuevo valor
+  function cambiarCampo(campo, el, valor) {
     switch (campo) {
-      case 'nombre': aplicar('renombrar', el.dataset.docenteDev, el.value); break;
-      case 'depto': aplicar('departamento', el.dataset.docenteDev, el.value); break;
-      case 'jefe': aplicar('jefe', el.dataset.cursoDev, el.value); break;
-      case 'asignar': aplicar('asignar', el.dataset.cursoDev, Number(el.dataset.i), Number(el.dataset.s), el.value); break;
-      case 'curso': UI.curso = el.value; refrescar(); break;
-      case 'grupo': { const [nivel, k, i] = idGrupo(el.dataset.id); aplicar('grupo', nivel, k, i, el.dataset.prop, el.value); break; }
-      case 'metodo': R.metodo = el.value; guardarR(); refrescar(); break;
+      case 'nombre': aplicar('renombrar', el.dataset.docenteDev, valor); break;
+      case 'depto': aplicar('departamento', el.dataset.docenteDev, valor); break;
+      case 'nuevo-depto': UI.nuevoDepto = valor; refrescar(); break;
+      case 'reemplazo': UI.reemplazo = valor; refrescar(); break;
+      case 'jefe': aplicar('jefe', el.dataset.cursoDev, valor); break;
+      case 'asignar': aplicar('asignar', el.dataset.cursoDev, Number(el.dataset.i), Number(el.dataset.s), valor); break;
+      case 'curso': UI.curso = valor; refrescar(); break;
+      case 'grupo': { const [nivel, k, i] = idGrupo(el.dataset.id); aplicar('grupo', nivel, k, i, el.dataset.prop, valor); break; }
+      case 'metodo': R.metodo = valor; guardarR(); refrescar(); break;
       case 'r': {
         const p = el.dataset.prop;
-        R[p] = p === 'solver' ? el.value : numeroDe(el.value, ['semilla', 'max_pasos', 'hilos'].includes(p));
+        R[p] = numeroDe(valor, ['semilla', 'max_pasos', 'hilos'].includes(p));
         guardarR();
-        if (p === 'solver') refrescar();
         break;
       }
       case 'rp': {
         R.parametros[R.metodo] = R.parametros[R.metodo] || {};
-        const v = numeroDe(el.value, false);
+        const v = numeroDe(valor, false);
         if (v === '') delete R.parametros[R.metodo][el.dataset.prop];
         else R.parametros[R.metodo][el.dataset.prop] = v;
         guardarR();
@@ -1905,19 +2374,26 @@
         const i = lista.indexOf(el.value);
         if (el.checked && i < 0) lista.push(el.value);
         if (!el.checked && i >= 0) lista.splice(i, 1);
+        if (campo === 'cmp-solver') C.solversElegidos = true;
         guardarC();
         refrescar();
         break;
       }
       case 'c': {
         const p = el.dataset.prop;
-        C[p] = numeroDe(el.value, p !== 'tiempo_max');
+        C[p] = numeroDe(valor, p !== 'tiempo_max');
         guardarC();
         refrescar();
         break;
       }
       default: break;
     }
+  }
+
+  panel.addEventListener('change', ev => {
+    const el = ev.target;
+    if (el.id === 'dev-archivo') { importar(el.files && el.files[0]); return; }
+    if (el.dataset.devCampo) cambiarCampo(el.dataset.devCampo, el, el.value);
   });
 
   panel.addEventListener('submit', ev => {
@@ -1926,7 +2402,7 @@
     ev.preventDefault();
     if (form.dataset.devForm === 'agregar-docente') {
       const nombre = form.elements.nombre.value;
-      const depto = form.elements.departamento.value;
+      const depto = UI.nuevoDepto || DEPARTAMENTOS[0];
       if (aplicar('agregarDocente', nombre, depto)) avisar(`Se agregó a ${nombre.trim()} en ${APP.nombreDepartamento(depto)}.`);
     }
   });
@@ -1946,13 +2422,11 @@
       try {
         const inst = JSON.parse(lector.result);
         if (!compatible(inst)) throw new Error('incompatible');
-        INST = inst;
-        guardarInstancia();
-        avisar(`Instancia importada desde ${archivo.name}.`);
+        cambiarInstancia(inst, `Instancia importada desde ${archivo.name}. Si no era la que querías, usa Deshacer.`);
       } catch (e) {
         avisar('El archivo no es una instancia válida de este prototipo (exporta una desde aquí para ver el formato).', 'error');
+        refrescar();
       }
-      refrescar();
     };
     lector.readAsText(archivo);
   }
@@ -1961,4 +2435,5 @@
   // 13. INTERFAZ PARA app.js
   // ===========================================================================
   window.MMDD_DEV = { renderEdicion, despuesRender, detalleExtra };
+  programarVerificacion(0);   // con cambios guardados de otra visita, su estado se muestra al abrir Edición
 })();
