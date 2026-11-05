@@ -139,9 +139,9 @@ def estado_gurobi():
             _gurobi = {'version': None, 'licencia': None, 'detalle': 'gurobipy no está instalado'}
             return _gurobi
         version = '.'.join(str(n) for n in gp.gurobi.version())
-        wls = all(os.environ.get(f'GRB_{k}') for k in ('WLSACCESSID', 'WLSSECRET', 'LICENSEID'))
+        from modelo_matematico import credenciales_wls, entorno_gurobi
+        wls = credenciales_wls() is not None
         try:
-            from modelo_matematico import entorno_gurobi
             prueba = gp.Model(env=entorno_gurobi())
             x = prueba.addVars(2100, vtype=gp.GRB.BINARY)
             prueba.addConstr(x.sum() >= 1)
@@ -152,8 +152,8 @@ def estado_gurobi():
             limitada = getattr(error, 'errno', None) == 10010
             _gurobi = {'version': version, 'licencia': 'limitada' if limitada else 'sin licencia', 'wls': wls,
                        'detalle': ('Solo está la licencia gratuita de gurobipy (hasta 2000 variables) y el modelo '
-                                   'tiene unas 7000: configura una licencia WLS en GRB_WLSACCESSID, GRB_WLSSECRET '
-                                   'y GRB_LICENSEID') if limitada else str(error)}
+                                   'tiene unas 7000: pega el contenido de tu gurobi.lic (WLSACCESSID, WLSSECRET y '
+                                   'LICENSEID) en las variables de entorno del servidor') if limitada else str(error)}
     return _gurobi
 
 

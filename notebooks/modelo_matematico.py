@@ -103,19 +103,30 @@ SOLVERS = ['CP-SAT', 'SCIP', 'CBC', 'HIGHS', 'GUROBI']
 _entorno_gurobi = None   # un solo entorno (y una sola sesión de licencia) por proceso
 
 
+def credenciales_wls():
+    """
+    Credenciales WLS de Gurobi en variables de entorno, con los mismos nombres que tienen en
+    gurobi.lic (WLSACCESSID, WLSSECRET, LICENSEID) o con el prefijo GRB_. Así, en Vercel basta
+    con pegar el contenido de gurobi.lic en Environment Variables. None si falta alguna.
+    """
+    wls = {clave: (os.environ.get(f'GRB_{clave}') or os.environ.get(clave) or '').strip()
+           for clave in ('WLSACCESSID', 'WLSSECRET', 'LICENSEID')}
+    return wls if all(wls.values()) else None
+
+
 def entorno_gurobi():
     """
-    Entorno de Gurobi, creado una vez. Usa la licencia del equipo (gurobi.lic) o, si están
-    definidas, las credenciales WLS de las variables GRB_WLSACCESSID, GRB_WLSSECRET y
-    GRB_LICENSEID (así se configura en un servidor como Vercel, sin subir el archivo de licencia).
+    Entorno de Gurobi, creado una vez. Usa las credenciales WLS de las variables de entorno si
+    están (ver credenciales_wls; así se configura en un servidor como Vercel, sin subir el
+    archivo de licencia) o, si no, la licencia del equipo (gurobi.lic).
     """
     global _entorno_gurobi
     if _entorno_gurobi is None:
         import gurobipy as gp
         env = gp.Env(empty=True)
         env.setParam('OutputFlag', 0)
-        wls = {clave: os.environ.get(f'GRB_{clave}') for clave in ('WLSACCESSID', 'WLSSECRET', 'LICENSEID')}
-        if all(wls.values()):
+        wls = credenciales_wls()
+        if wls:
             env.setParam('WLSACCESSID', wls['WLSACCESSID'])
             env.setParam('WLSSECRET', wls['WLSSECRET'])
             env.setParam('LICENSEID', int(wls['LICENSEID']))

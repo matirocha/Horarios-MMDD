@@ -155,10 +155,12 @@ Configuración del proyecto en Vercel, una sola vez:
    *Other* y sin sobrescribir Build Command ni Output Directory. Mantén activada la opción *Include
    files outside the Root Directory in the Build Step* (viene así por defecto): el build necesita `notebooks/`.
 2. *Settings → Functions*: **Fluid Compute** activado (permite funciones de hasta 300 s en el plan Hobby).
-3. Para usar **Gurobi** en Vercel, en *Settings → Environment Variables* agrega las tres credenciales de
-   tu licencia WLS (están en tu `gurobi.lic`, o en el portal de Gurobi → *Licenses*):
-   `GRB_WLSACCESSID`, `GRB_WLSSECRET` y `GRB_LICENSEID`. Son privadas: van solo en Vercel, nunca en el
-   repositorio. Sin ellas, la página usa CP-SAT.
+3. Para usar **Gurobi** en Vercel: abre tu `gurobi.lic` (en Windows, `notepad $HOME\gurobi.lic`; también
+   se descarga desde el portal de Gurobi → *Licenses*), copia todo su contenido y pégalo en *Settings →
+   Environment Variables* → *Add New*, en el campo *Key*: Vercel lo separa en `WLSACCESSID`, `WLSSECRET`
+   y `LICENSEID` (las líneas con `#` se ignoran). También sirven con el prefijo `GRB_`. Son credenciales
+   privadas: van solo en Vercel, **nunca** como archivo en el repositorio (es público y además esta
+   carpeta se publica como sitio). Sin ellas, la página usa CP-SAT. Después de agregarlas, vuelve a desplegar.
 4. Despliega y abre `https://<tu-proyecto>.vercel.app/api/estado`: debe mostrar un JSON con
    `"entorno":"vercel"` y, con la licencia, `"solver_defecto":"GUROBI"`. La pestaña Edición indicará
    *Solver en Vercel conectado* y la versión de Gurobi.
