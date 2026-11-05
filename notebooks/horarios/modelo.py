@@ -7,7 +7,9 @@ Es el estado compartido sobre el que trabajan la solución inicial
 y metaheuristicas/). Cada curso se descompone en sesiones (bloques dobles de 90 min o
 simples de 45 min). Los dobles ocupan siempre un par pedagógico (1-2, 3-4, 5-6, 7-8, 9-10),
 por lo que nunca cruzan un recreo, y la jornada de cada curso queda completa sin huecos.
-Las franjas de electivos son sesiones fijas compartidas por las secciones A y B.
+Las franjas de electivos son sesiones compartidas por las secciones A y B: fijas en sus
+periodos del Excel 2026 o, si DatosColegio.FRANJAS_FIJAS es False, móviles (sesiones dobles
+cuyo 'curso' es la tupla (A, B), que se mueven en los dos cursos a la vez).
 
 FUNCIÓN OBJETIVO (se minimiza; el valor actual está en self.costo)
 
@@ -56,13 +58,22 @@ class ModeloHorario:
         self.blandos = set()                          # claves con costo blando
         self.costo = 0
         self.duras = 0
+        self.franjas_fijas = DatosColegio.FRANJAS_FIJAS
+        self.hay_compartidas = not self.franjas_fijas   # sesiones de dos cursos a la vez (franjas móviles)
 
-        # Franjas de electivos: sesiones fijas compartidas por A y B
+        # Franjas de electivos: sesiones compartidas por A y B. Fijas: en sus periodos del Excel.
+        # Móviles: sesiones dobles cuyo 'curso' es la tupla (A, B); se mueven en los dos cursos a la
+        # vez y su familia impide dos periodos de la misma franja el mismo día.
         fijas = defaultdict(set)
         for nivel, franjas in DatosColegio.FRANJAS_ELECTIVOS.items():
+            cursos_nivel = tuple(f'{nivel} {seccion}' for seccion in ('A', 'B'))
             for k, franja in enumerate(franjas, 1):
                 docentes = tuple(dict.fromkeys(g[2] for g in franja['grupos']))
                 for dia, b0 in franja['periodos']:
+                    if not self.franjas_fijas:
+                        self._nueva_sesion(cursos_nivel, DatosColegio.nombre_franja(k), docentes, 'Salas electivos',
+                                           2, clave=f'ELECTIVOS {nivel}', nivel=nivel, franja=k)
+                        continue
                     celdas = ((dia, b0), (dia, b0 + 1))
                     sid = self._nueva_sesion(None, DatosColegio.nombre_franja(k), docentes, 'Salas electivos',
                                              2, fijo=True, clave=f'ELECTIVOS {nivel}', nivel=nivel, franja=k)
@@ -119,8 +130,51 @@ class ModeloHorario:
         return len(self.ses) - 1
 
     def movibles(self):
-        """Ids de las sesiones que se pueden ubicar y mover (todas salvo los electivos)."""
+        """Ids de las sesiones que se pueden ubicar y mover (todas salvo los electivos fijos)."""
         return [i for i, s in enumerate(self.ses) if not s['fijo']]
+
+    @staticmethod
+    def como_tupla(c):
+        """Un curso o la tupla de cursos de una franja móvil, siempre como tupla."""
+        return c if isinstance(c, tuple) else (c,)
+
+    def cursos_de(self, sid):
+        """Cursos en que está la sesión 'sid' (dos para una franja móvil)."""
+        return self.como_tupla(self.ses[sid]['curso'])
+
+    def pares_de(self, c):
+        """Pares pedagógicos de un curso o, para una tupla de cursos, los que tienen todos."""
+        if not isinstance(c, tuple):
+            return self.pares[c]
+        resto = [set(self.pares[o]) for o in c[1:]]
+        return [p for p in self.pares[c[0]] if all(p in r for r in resto)]
+
+    def libre(self, c, celdas):
+        """Si las celdas están vacías en el curso (o en todos los cursos de la tupla)."""
+        return all(self.celda[o][x] is None for o in self.como_tupla(c) for x in celdas)
+
+    def _compartida(self, c, celdas):
+        """Si alguna de las celdas del curso la ocupa una franja móvil (no se puede mover sola)."""
+        cel = self.celda[c]
+        return any(cel[x] is not None and isinstance(self.ses[cel[x]]['curso'], tuple) for x in celdas)
+
+    def periodos_franjas(self):
+        """Celda inicial de cada periodo de las franjas en la solución: {nivel: [[(dia, b), ...] por franja]}."""
+        por_nivel = defaultdict(lambda: defaultdict(list))
+        for sid, s in enumerate(self.ses):
+            if 'nivel' in s:
+                por_nivel[s['nivel']][s['franja']].append(self.pos[sid][0])
+        orden = lambda x: (DatosColegio.DIAS.index(x[0]), x[1])   # noqa: E731
+        return {nivel: [sorted(franjas[k], key=orden) for k in sorted(franjas)] for nivel, franjas in por_nivel.items()}
+
+    def aplicar_periodos_franjas(self):
+        """
+        Con franjas móviles, copia a DatosColegio.FRANJAS_ELECTIVOS los periodos de la solución,
+        para que la auditoría (bloqueos de pastoral) y las salidas usen los bloques elegidos.
+        """
+        for nivel, franjas in self.periodos_franjas().items():
+            for k, periodos in enumerate(franjas):
+                DatosColegio.FRANJAS_ELECTIVOS[nivel][k]['periodos'] = list(periodos)
 
     # ------------------------------------------------------------------
     # Costos incrementales
@@ -157,7 +211,9 @@ class ModeloHorario:
             if s['recurso']:
                 claves.append(('R', s['recurso'], dia, b))
         if s['fam'] is not None:
-            claves.append(('F', s['curso'], celdas[0][0], s['fam']))
+            # Una franja móvil usa su clave de texto ('ELECTIVOS 3° MEDIO'): las claves se ordenan
+            curso = s['clave'] if isinstance(s['curso'], tuple) else s['curso']
+            claves.append(('F', curso, celdas[0][0], s['fam']))
         return claves
 
     def registrar(self, sid, celdas, signo):
@@ -185,28 +241,35 @@ class ModeloHorario:
 
     def ubicar(self, sid, celdas):
         """Ubica una sesión aún no ubicada en celdas libres de su curso y retorna la variación de costo."""
-        c = self.ses[sid]['curso']
-        for x in celdas:
-            self.celda[c][x] = sid
+        for c in self.cursos_de(sid):
+            for x in celdas:
+                self.celda[c][x] = sid
         self.pos[sid] = celdas
         return self.registrar(sid, celdas, +1)
 
     def mover(self, c, mapa):
-        """Permuta el contenido de las celdas de un curso según 'mapa' y retorna la variación de costo."""
-        cel = self.celda[c]
+        """
+        Permuta el contenido de las celdas de un curso según 'mapa' y retorna la variación de costo.
+        'c' puede ser una tupla de cursos (franja móvil): la misma permutación se aplica en todos.
+        """
+        cursos = self.como_tupla(c)
         sids = []
-        for x in mapa:
-            sid = cel[x]
-            if sid is not None and sid not in sids:
-                sids.append(sid)
+        for cur in cursos:
+            cel = self.celda[cur]
+            for x in mapa:
+                sid = cel[x]
+                if sid is not None and sid not in sids:
+                    sids.append(sid)
         delta = 0
         nuevas = {}
         for sid in sids:
             delta += self.registrar(sid, self.pos[sid], -1)
             nuevas[sid] = tuple(sorted(mapa[x] for x in self.pos[sid]))
-        contenido = {x: cel[x] for x in mapa}
-        for x, y in mapa.items():
-            cel[y] = contenido[x]
+        for cur in cursos:
+            cel = self.celda[cur]
+            contenido = {x: cel[x] for x in mapa}
+            for x, y in mapa.items():
+                cel[y] = contenido[x]
         for sid in sids:
             self.pos[sid] = nuevas[sid]
             delta += self.registrar(sid, nuevas[sid], +1)
@@ -216,16 +279,24 @@ class ModeloHorario:
     # Vecindario
     # ------------------------------------------------------------------
     def vecinos(self, sid):
-        """Intercambios válidos que mueven la sesión 'sid' dentro de su curso."""
+        """
+        Intercambios válidos que mueven la sesión 'sid' dentro de su curso. Una franja móvil
+        cambia de par pedagógico en sus dos cursos a la vez; las demás sesiones no pueden
+        intercambiarse con un par que ocupa una franja móvil (la desincronizarían).
+        """
         s = self.ses[sid]
         c = s['curso']
-        cel = self.celda[c]
         celdas = self.pos[sid]
+        if isinstance(c, tuple):
+            propio = tuple(celdas)
+            return [{propio[0]: otro[0], propio[1]: otro[1], otro[0]: propio[0], otro[1]: propio[1]}
+                    for otro in self.pares_de(c) if otro != propio]
+        cel = self.celda[c]
         movimientos = []
         propio = self.par_de[c].get(celdas[0])
         if propio is not None:
             for otro in self.pares[c]:
-                if otro != propio:
+                if otro != propio and not (self.hay_compartidas and self._compartida(c, otro)):
                     movimientos.append({propio[0]: otro[0], propio[1]: otro[1], otro[0]: propio[0], otro[1]: propio[1]})
         if s['largo'] == 1:
             u = celdas[0]
@@ -247,8 +318,9 @@ class ModeloHorario:
                 self.celda[c][x] = None
         for sid, s in enumerate(self.ses):
             if not s['fijo']:
-                for x in self.pos[sid]:
-                    self.celda[s['curso']][x] = sid
+                for c in self.cursos_de(sid):
+                    for x in self.pos[sid]:
+                        self.celda[c][x] = sid
             self.registrar(sid, self.pos[sid], +1)
 
     # ------------------------------------------------------------------
@@ -258,7 +330,7 @@ class ModeloHorario:
         """Convierte las posiciones de las sesiones en un HorarioEscolar."""
         horario = HorarioEscolar()
         for sid, s in enumerate(self.ses):
-            if not s['fijo']:
+            if 'nivel' not in s:   # sesión de un curso (las franjas, fijas o móviles, van abajo)
                 for dia, b in self.pos[sid]:
                     horario.asignar(s['curso'], dia, b, s['asig'], s['docs'], s['espacio'])
                 continue

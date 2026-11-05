@@ -253,6 +253,11 @@ class DatosColegio:
         ],
     }
 
+    # True: las franjas quedan en los 'periodos' de arriba (como en el Excel 2026).
+    # False: el motor elige los periodos de cada franja (3 bloques dobles en días distintos,
+    # los mismos para A y B). Lo cambia el modo desarrollador del Prototipo 2.
+    FRANJAS_FIJAS = True
+
     # Electivos ofrecidos por nivel (orden de la tabla de horas del Excel 2026)
     ELECTIVOS_OFERTA = {
         '3° MEDIO': [

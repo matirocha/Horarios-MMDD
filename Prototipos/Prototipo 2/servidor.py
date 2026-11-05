@@ -55,7 +55,7 @@ sys.path.insert(0, os.path.join(RAIZ, 'notebooks'))
 sys.path.insert(0, AQUI)
 
 import exportar_datos as EX  # noqa: E402  (también deja 'notebooks' en sys.path)
-from horarios import (DatosColegio as D, METAHEURISTICAS, MetodoMejora, MotorHorarios,  # noqa: E402
+from horarios import (DatosColegio as D, METAHEURISTICAS, MotorHorarios,  # noqa: E402
                       ValidadorRestricciones, crear_metaheuristica)
 
 PUERTO = 8765
@@ -71,21 +71,12 @@ CANDADO = threading.Lock()          # una resolución a la vez (DatosColegio es 
 # -----------------------------------------------------------------------------
 
 
-class SoloConstruccion(MetodoMejora):
-    """Sin fase de mejora: deja el horario de la construcción voraz tal cual."""
-
-    nombre = 'voraz'
-    tipo = 'heurística constructiva'
-
-    def _buscar(self, modelo, rng, seg):
-        return {'pasos': 0, 'motivo_parada': 'solo_construccion'}
-
-
+# La construcción voraz no aparece sola: es el primer paso de la heurística Voraz + Min-Conflicts
+# (y la solución inicial de las metaheurísticas)
 METODOS = [
-    {'id': 'voraz', 'nombre': 'Construcción voraz', 'tipo': 'heurística constructiva',
-     'descripcion': 'Solo la solución inicial: ubica cada sesión en la posición de menor costo y no la reconsidera.'},
-    {'id': 'min_conflicts', 'nombre': 'Min-Conflicts', 'tipo': 'heurística',
-     'descripcion': 'Búsqueda local de descenso: aplica el mejor intercambio si no empeora. Puede quedar en un óptimo local.'},
+    {'id': 'min_conflicts', 'nombre': 'Voraz + Min-Conflicts', 'tipo': 'heurística',
+     'descripcion': 'Arma el horario con la construcción voraz y lo repara con Min-Conflicts, aceptando solo '
+                    'intercambios que no empeoran. Puede quedar en un óptimo local.'},
     {'id': 'busqueda_tabu', 'nombre': 'Búsqueda tabú', 'tipo': 'metaheurística',
      'descripcion': 'Aplica el mejor intercambio admisible aunque empeore, con lista tabú y criterio de aspiración.'},
     {'id': 'busqueda_local_iterada', 'nombre': 'Búsqueda local iterada', 'tipo': 'metaheurística',
@@ -191,7 +182,7 @@ def estado_api():
 # Instancia editable
 # -----------------------------------------------------------------------------
 CAMPOS = ('DEPARTAMENTOS', 'PROFESORES_JEFES', 'FRANJAS_ELECTIVOS', 'ELECTIVOS_OFERTA',
-          'HORAS_NO_LECTIVAS', '_malla_cache')
+          'HORAS_NO_LECTIVAS', 'FRANJAS_FIJAS', '_malla_cache')
 D.get_malla_curricular()   # llena la caché para copiarla
 ORIGINAL = {k: copy.deepcopy(getattr(D, k)) for k in CAMPOS}
 SALAS = [nombre for nombre, tipo, _ in EX.ESPACIOS if tipo == 'sala']
@@ -218,6 +209,7 @@ def instancia_base():
                                         for a, s, doc, sala, et in f['grupos']]}
                             for f in franjas]
                     for nivel, franjas in ORIGINAL['FRANJAS_ELECTIVOS'].items()},
+        'franjas_fijas': ORIGINAL['FRANJAS_FIJAS'],
         'salas': SALAS,
     }
 
@@ -337,6 +329,8 @@ def convertir_instancia(inst):
         'FRANJAS_ELECTIVOS': franjas,
         'ELECTIVOS_OFERTA': oferta,
         'HORAS_NO_LECTIVAS': no_lectivas,
+        # False: el solver elige los periodos de cada franja (ver DatosColegio.FRANJAS_FIJAS)
+        'FRANJAS_FIJAS': inst.get('franjas_fijas', True) is not False,
         '_malla_cache': malla,
     }
 
@@ -396,21 +390,17 @@ def auditoria(horario):
 
 
 def resolver_heuristico(metodo, semilla, tiempo_max, max_pasos, parametros):
-    if metodo == 'voraz':
-        mejora = SoloConstruccion(max_pasos, tiempo_max)
-        parametros = {}
-    else:
-        validos = {p['nombre']: p['defecto'] for p in parametros_de(METAHEURISTICAS[metodo])}
-        extra = {}
-        for nombre, valor in (parametros or {}).items():
-            if nombre in validos:
-                extra[nombre] = _numero(valor, validos[nombre], 0, 10 ** 7, isinstance(validos[nombre], int))
-        mejora = crear_metaheuristica(metodo, max_pasos=max_pasos, tiempo_max=tiempo_max, **extra)
-        parametros = extra
+    validos = {p['nombre']: p['defecto'] for p in parametros_de(METAHEURISTICAS[metodo])}
+    extra = {}
+    for nombre, valor in (parametros or {}).items():
+        if nombre in validos:
+            extra[nombre] = _numero(valor, validos[nombre], 0, 10 ** 7, isinstance(validos[nombre], int))
+    mejora = crear_metaheuristica(metodo, max_pasos=max_pasos, tiempo_max=tiempo_max, **extra)
+    parametros = extra
     motor = MotorHorarios(seed=semilla, max_pasos=max_pasos, metaheuristica=mejora, tiempo_max=tiempo_max)
     horario = motor.generar()
     e, t = motor.estadisticas, motor.tiempos
-    return horario, {
+    return horario, motor.modelo, {
         'costo_inicial': e['costo_construccion'],
         'duras_iniciales': e['duras_construccion'],
         'costo_final': e['costo_final'],
@@ -443,7 +433,7 @@ def resolver_modelo(solver, tiempo_max, peso_ventanas, hilos):
     total = r['t_construccion'] + r['t_resolucion'] + t_salida
     costo = inst.costo if inst else None
     duras = inst.duras if inst else None
-    return horario, {
+    return horario, inst, {
         'costo_inicial': None,
         'duras_iniciales': None,
         'costo_final': costo,
@@ -480,10 +470,10 @@ def resolver(cuerpo):
                 raise ErrorInstancia(f'Solver desconocido: {solver}')
             peso = _numero(cuerpo.get('peso_ventanas'), 0, 0, 1000)
             hilos = _numero(cuerpo.get('hilos'), None, 1, 64, entero=True)
-            horario, r = resolver_modelo(solver, tiempo_max, peso, hilos)
+            horario, modelo, r = resolver_modelo(solver, tiempo_max, peso, hilos)
             nombre = f'{nombre} · {solver}'
         else:
-            horario, r = resolver_heuristico(metodo, semilla, tiempo_max, max_pasos, cuerpo.get('parametros'))
+            horario, modelo, r = resolver_heuristico(metodo, semilla, tiempo_max, max_pasos, cuerpo.get('parametros'))
 
         resultado = {
             'metodo': metodo, 'nombre': nombre,
@@ -491,8 +481,14 @@ def resolver(cuerpo):
             'semilla': None if metodo == 'modelo' else semilla,
             'tiempo_max': tiempo_max, 'max_pasos': max_pasos,
             'editada': cuerpo.get('instancia') is not None,
+            'franjas_fijas': D.FRANJAS_FIJAS,
             **r,
         }
+        if not D.FRANJAS_FIJAS and modelo is not None:
+            # Los bloques que eligió el método: los usan la auditoría, el visualizador y la página
+            modelo.aplicar_periodos_franjas()
+            resultado['franjas'] = {nivel: [[[dia, b] for dia, b in periodos] for periodos in franjas]
+                                    for nivel, franjas in modelo.periodos_franjas().items()}
         resultado['auditoria'] = auditoria(horario) if horario else None
         resultado['factible'] = bool(horario) and resultado['auditoria']['valido']
         respuesta = {'ok': True, 'resultado': resultado}
@@ -529,7 +525,8 @@ def condiciones_necesarias():
     """
     Revisión rápida, sin solver, de la carga de cada docente: sus clases solo pueden ir en
     bloques de la jornada de sus cursos en que no tenga un electivo fijo, y no puede estar en
-    dos a la vez. Si necesita más bloques que esos, ningún horario es factible.
+    dos a la vez. Si necesita más bloques que esos, ningún horario es factible. (Con franjas
+    móviles, sus electivos cuentan como carga en los bloques de 3° o 4° medio.)
     """
     from horarios import ModeloHorario
     inst = ModeloHorario()
@@ -540,7 +537,7 @@ def condiciones_necesarias():
                 fijas[t].update(inst.pos[sid])
             else:
                 carga[t] += s['largo']
-                cursos[t].add(s['curso'])
+                cursos[t].update(inst.cursos_de(sid))
     razones = []
     for t, bloques in carga.items():
         libres = set().union(*(inst.celda[c].keys() for c in cursos[t])) - fijas[t]
@@ -565,8 +562,12 @@ def explicar_holguras(mm):
             choques[t].append((celda, n, mm.fijo[(t, celda)] > 0))
         elif restriccion == 'R3':
             c, fam, dia = clave
-            otras.append({'tipo': 'dia', 'curso': c,
-                          'texto': f'{c}: {fam} quedaría con {n + 1} sesiones el {dia.lower()} (debe ser una por día).'})
+            if fam.startswith('Formación Diferenciada'):   # franja móvil de 3° o 4° medio (A y B)
+                texto = (f'{D.nivel(c)} A y B: la franja {fam.rsplit(" ", 1)[-1]} quedaría con {n + 1} periodos '
+                         f'el {dia.lower()} (debe ser uno por día).')
+            else:
+                texto = f'{c}: {fam} quedaría con {n + 1} sesiones el {dia.lower()} (debe ser una por día).'
+            otras.append({'tipo': 'dia', 'curso': c, 'texto': texto})
         elif restriccion == 'R5':
             sala, (dia, b) = clave
             otras.append({'tipo': 'sala',

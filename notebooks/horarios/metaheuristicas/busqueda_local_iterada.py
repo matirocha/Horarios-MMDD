@@ -22,9 +22,10 @@ def perturbar(modelo, rng, intensidad):
         c = rng.choice(modelo.cursos)
         sids_c = sorted({v for v in modelo.celda[c].values() if v is not None})
         if sids_c:
-            vecinos = modelo.vecinos(rng.choice(sids_c))
-            if vecinos:
-                modelo.mover(c, rng.choice(vecinos))
+            sid = rng.choice(sids_c)
+            vecinos = modelo.vecinos(sid)
+            if vecinos:   # una franja móvil se mueve en sus dos cursos ('curso' es una tupla)
+                modelo.mover(modelo.ses[sid]['curso'], rng.choice(vecinos))
 
 
 class BusquedaLocalIterada(Metaheuristica):

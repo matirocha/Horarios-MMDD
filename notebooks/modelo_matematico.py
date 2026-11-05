@@ -63,6 +63,11 @@ RESTRICCIONES
   sincronizadas en A y B (fijas, fuera de X_c) y los bloqueos de pastoral (salas de
   los electivos fijos).
 
+FRANJAS MÓVILES (--franjas-moviles, o DatosColegio.FRANJAS_FIJAS = False)
+  Cada franja de electivos pasa a ser una lección de 3 sesiones dobles compartida por A y B:
+  sus variables y_lp van sobre los pares comunes a ambos cursos, ocupa las celdas de los dos
+  en (R2), tiene una sesión por día en (R3) y sus docentes entran en (R4) (F_tdb = 0).
+
 MODO ELÁSTICO (--elastico)
   Agrega una holgura entera s ≥ 0 a (R3), (R4), (R5) y (R6) y minimiza 1000 · Σ s, que es la
   misma función objetivo f(x) de las metaheurísticas. El óptimo es la menor cantidad de
@@ -292,9 +297,9 @@ class ModeloMatematico:
         self.y, self.z = {}, {}
         self.ocupa = defaultdict(list)   # (l, celda) -> variables cuya suma es o_lx
         for l, lec in enumerate(self.lecciones):
-            c = lec['curso']
+            c = lec['curso']   # tupla (A, B) en una franja móvil: pares comunes a ambos cursos
             if lec['dobles']:
-                for k, par in enumerate(inst.pares[c]):
+                for k, par in enumerate(inst.pares_de(c)):
                     self.y[(l, par)] = sv.BoolVar(f'y_{l}_{k}')
                     for x in par:
                         self.ocupa[(l, x)].append(self.y[(l, par)])
@@ -327,23 +332,27 @@ class ModeloMatematico:
         for l, lec in enumerate(self.lecciones):
             c = lec['curso']
             if lec['dobles']:
-                sv.Add(suma(self.y[(l, p)] for p in inst.pares[c]) == len(lec['dobles']))
+                sv.Add(suma(self.y[(l, p)] for p in inst.pares_de(c)) == len(lec['dobles']))
             if lec['simples']:
                 sv.Add(suma(self.z[(l, x)] for x in inst.celda[c]) == len(lec['simples']))
 
-        # (R2) Jornada completa: una actividad en cada celda del curso
+        # (R2) Jornada completa: una actividad en cada celda del curso (una franja móvil cuenta en A y en B)
         lecciones_curso = defaultdict(list)
         for l, lec in enumerate(self.lecciones):
-            lecciones_curso[lec['curso']].append(l)
+            for c in ModeloHorario.como_tupla(lec['curso']):
+                lecciones_curso[c].append(l)
         for c in inst.cursos:
             for x in inst.celda[c]:
                 ocupacion = suma(v for l in lecciones_curso[c] for v in self.ocupa[(l, x)])
                 sv.Add(ocupacion <= 1 if DatosColegio.es_parvulo(c) else ocupacion == 1)
 
-        # (R3) Una sesión diaria por asignatura (familia)
+        # (R3) Una sesión diaria por asignatura (familia); una franja móvil, una vez (en su curso A)
         for c in inst.cursos:
             familias = defaultdict(list)
             for l in lecciones_curso[c]:
+                propio = self.lecciones[l]['curso']
+                if isinstance(propio, tuple) and c != propio[0]:
+                    continue
                 familias[self.lecciones[l]['fam']].append(l)
             for fam, ls in familias.items():
                 if sum(len(self.lecciones[l]['dobles']) + len(self.lecciones[l]['simples']) for l in ls) < 2:
@@ -469,8 +478,9 @@ class ModeloMatematico:
         pos = {sid: inst.pos[sid] for sid, s in enumerate(inst.ses) if s['fijo']}
         for l, lec in enumerate(self.lecciones):
             c = lec['curso']
-            dobles = [p for p in inst.pares[c] if (l, p) in self.y and valor(self.y[(l, p)]) > 0.5]
-            simples = [(x,) for x in inst.celda[c] if (l, x) in self.z and valor(self.z[(l, x)]) > 0.5]
+            dobles = [p for p in inst.pares_de(c) if (l, p) in self.y and valor(self.y[(l, p)]) > 0.5]
+            simples = ([(x,) for x in inst.celda[c] if (l, x) in self.z and valor(self.z[(l, x)]) > 0.5]
+                       if lec['simples'] else [])
             for sid, celdas in zip(lec['dobles'], dobles):
                 pos[sid] = celdas
             for sid, celdas in zip(lec['simples'], simples):
@@ -489,6 +499,8 @@ def main():
                         help="Solver (default: CP-SAT); GUROBI usa gurobipy directamente")
     parser.add_argument('--elastico', action='store_true',
                         help="Minimiza las violaciones duras en vez de exigir que no haya ninguna")
+    parser.add_argument('--franjas-moviles', action='store_true',
+                        help="El modelo elige los bloques de las franjas de electivos (por defecto quedan fijas)")
     parser.add_argument('--tiempo-max', type=float, default=300, help="Segundos máximos de resolución (default: 300)")
     parser.add_argument('--peso-ventanas', type=float, default=0,
                         help="Peso de las ventanas docentes; 0 = no se modelan (default: 0)")
@@ -498,6 +510,8 @@ def main():
     parser.add_argument('--excel', type=str, help="Carpeta donde exportar los Excel del horario obtenido")
     args = parser.parse_args()
 
+    if args.franjas_moviles:
+        DatosColegio.FRANJAS_FIJAS = False
     modelo = ModeloMatematico(args.solver, args.peso_ventanas, args.elastico)
     print(f"Modelo construido en {modelo.t_construccion:.2f} s: {modelo.solver.NumVariables()} variables, "
           f"{modelo.solver.NumConstraints()} restricciones, {len(modelo.lecciones)} lecciones.")
@@ -520,6 +534,11 @@ def main():
     # Validación independiente: costo de la función objetivo de las metaheurísticas y auditoría
     instancia = modelo.a_modelo_horario()
     horario = instancia.a_horario()
+    if args.franjas_moviles:   # la auditoría y los Excel usan los periodos que eligió el modelo
+        instancia.aplicar_periodos_franjas()
+        for nivel, franjas in instancia.periodos_franjas().items():
+            for k, periodos in enumerate(franjas, 1):
+                print(f"Franja {k} de {nivel}: " + ', '.join(f'{dia} {b}-{b + 1}' for dia, b in periodos))
     auditoria = ValidadorRestricciones.auditar(horario)
     m = auditoria['metricas']
     print(f"\nValidación con la función objetivo de las metaheurísticas: costo = {instancia.costo} "

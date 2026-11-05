@@ -148,8 +148,7 @@
 
   // Si el servidor no está, los métodos se muestran igual (sin poder ejecutarlos)
   const METODOS_LOCAL = [
-    { id: 'voraz', nombre: 'Construcción voraz', tipo: 'heurística constructiva', descripcion: 'Solo la solución inicial: ubica cada sesión en la posición de menor costo y no la reconsidera.', parametros: [] },
-    { id: 'min_conflicts', nombre: 'Min-Conflicts', tipo: 'heurística', descripcion: 'Búsqueda local de descenso: aplica el mejor intercambio si no empeora. Puede quedar en un óptimo local.', parametros: [] },
+    { id: 'min_conflicts', nombre: 'Voraz + Min-Conflicts', tipo: 'heurística', descripcion: 'Arma el horario con la construcción voraz y lo repara con Min-Conflicts, aceptando solo intercambios que no empeoran. Puede quedar en un óptimo local.', parametros: [] },
     { id: 'busqueda_tabu', nombre: 'Búsqueda tabú', tipo: 'metaheurística', descripcion: 'Aplica el mejor intercambio admisible aunque empeore, con lista tabú y criterio de aspiración.', parametros: [] },
     { id: 'busqueda_local_iterada', nombre: 'Búsqueda local iterada', tipo: 'metaheurística', descripcion: 'ILS: descenso Min-Conflicts y perturbaciones desde la mejor solución encontrada.', parametros: [] },
     { id: 'min_conflicts_tabu', nombre: 'Min-Conflicts + tabú', tipo: 'metaheurística', descripcion: 'Híbrido del proyecto (método por defecto): tabú, ruido aleatorio y reinicios ILS.', parametros: [] },
@@ -163,8 +162,7 @@
 
   // Qué hace cada método, para la explicación de la sección Resolver
   const EXPLICACION = [
-    ['voraz', 'Construcción voraz', 'Arma el horario de una sola pasada: ordena las sesiones de la más difícil a la más fácil (dobles, co-docencia, docentes con más carga, Ed. Física) y pone cada una en la posición libre que agrega menos conflictos. Nunca vuelve atrás, así que es muy rápida pero suele dejar 50 o más violaciones. Es el punto de partida de todos los demás métodos (salvo el modelo).'],
-    ['min_conflicts', 'Min-Conflicts', 'Parte del horario voraz y lo repara: elige al azar un conflicto, prueba todos los intercambios de esa sesión dentro de su curso y aplica el que deja menos conflictos, pero solo si no empeora. Por eso se estanca en un óptimo local: llega cerca de 0 pero a veces no lo alcanza.'],
+    ['min_conflicts', 'Voraz + Min-Conflicts (heurística)', 'Dos pasos, una sola heurística. Primero la construcción voraz arma el horario de una pasada: ordena las sesiones de la más difícil a la más fácil y pone cada una donde agrega menos conflictos (unas 50 violaciones). Después Min-Conflicts lo repara: elige un conflicto, prueba los intercambios de esa sesión dentro de su curso y aplica el mejor, solo si no empeora. Por eso se estanca en un óptimo local: llega cerca de 0, pero a veces no lo alcanza. La construcción voraz también es el punto de partida de las metaheurísticas.'],
     ['busqueda_tabu', 'Búsqueda tabú', 'Igual que Min-Conflicts, pero acepta el mejor intercambio aunque empeore, para salir de los óptimos locales. Para no deshacer lo que acaba de hacer, prohíbe por unos pasos volver a la posición anterior (lista tabú), salvo que eso mejore la mejor solución encontrada (aspiración).'],
     ['busqueda_local_iterada', 'Búsqueda local iterada (ILS)', 'Repite dos fases: un descenso Min-Conflicts hasta estancarse y una perturbación (varios intercambios al azar) aplicada a la mejor solución, para empezar el siguiente descenso desde otro lugar.'],
     ['min_conflicts_tabu', 'Min-Conflicts + tabú (híbrido)', 'El método del proyecto: la regla de Min-Conflicts con la memoria tabú, un poco de ruido (a veces aplica un intercambio al azar) y reinicios desde la mejor solución con perturbación (como ILS) cuando lleva muchos pasos sin mejorar. Junta lo mejor de los anteriores.'],
@@ -176,7 +174,8 @@
     'modelo:GUROBI': 5, 'modelo:CP-SAT': 6, 'modelo:HIGHS': 7, 'modelo:SCIP': 8, 'modelo:CBC': 0, voraz: 0 };
   const colorDe = clave => `var(--serie-${SERIE[clave] ?? 0})`;
   const claveDe = r => (r.metodo === 'modelo' ? `modelo:${(r.parametros && r.parametros.solver) || 'CP-SAT'}` : r.metodo);
-  const CORTO = { voraz: ['Construcción voraz', 'Voraz'], min_conflicts: ['Min-Conflicts', 'Min-Conf.'], busqueda_tabu: ['Búsqueda tabú', 'Tabú'],
+  // 'voraz' solo aparece en ejecuciones antiguas de esta sesión (ya no es un método aparte)
+  const CORTO = { voraz: ['Construcción voraz', 'Voraz'], min_conflicts: ['Voraz + Min-Conflicts', 'Voraz+MC'], busqueda_tabu: ['Búsqueda tabú', 'Tabú'],
     busqueda_local_iterada: ['Búsqueda local iterada', 'ILS'], min_conflicts_tabu: ['Min-Conflicts + tabú', 'MC + tabú'] };
   function nombreClave(clave, estrecho = false) {
     if (clave.startsWith('modelo:')) {
@@ -185,7 +184,7 @@
     }
     return (CORTO[clave] || [clave, clave])[estrecho ? 1 : 0];
   }
-  const ORDEN_CLAVES = ['voraz', 'min_conflicts', 'busqueda_tabu', 'busqueda_local_iterada', 'min_conflicts_tabu', 'modelo:GUROBI', 'modelo:CP-SAT', 'modelo:HIGHS', 'modelo:SCIP', 'modelo:CBC'];
+  const ORDEN_CLAVES = ['min_conflicts', 'busqueda_tabu', 'busqueda_local_iterada', 'min_conflicts_tabu', 'modelo:GUROBI', 'modelo:CP-SAT', 'modelo:HIGHS', 'modelo:SCIP', 'modelo:CBC'];
 
   const MOTIVOS = {
     costo_cero: 'llegó a f(x) = 0', tiempo_max: 'se agotó el tiempo máximo', max_pasos: 'se agotaron los pasos',
@@ -216,6 +215,7 @@
         grupos: f.grupos.map(g => ({ asignatura: g.asignatura, seccion: g.seccion, docente: g.docente, sala: g.sala, etiqueta: g.etiqueta })),
       }))])),
       salas: datos.espacios.filter(e => e.tipo === 'sala').map(e => e.nombre),
+      franjas_fijas: true,   // el horario 2027 se generó con las franjas en los bloques del Excel 2026
     };
   }
 
@@ -335,6 +335,7 @@
       const n = Math.max(distintos, resto.length);
       if (n) lista.push({ seccion: 'electivos', texto: `${nombreNivel(nivel)}, franja ${k + 1}: ${n} electivo${n > 1 ? 's' : ''} con cambios` });
     }));
+    if (INST.franjas_fijas === false) lista.push({ seccion: 'electivos', texto: 'Franjas de electivos móviles: los bloques los elige el solver' });
     return lista;
   }
 
@@ -490,6 +491,10 @@
       const franja = INST.franjas[nivel][k];
       if (franja.grupos.length <= 1) return 'Cada franja necesita al menos un electivo.';
       franja.grupos.splice(i, 1);
+      return null;
+    },
+    franjasFijas(valor) {
+      INST.franjas_fijas = Boolean(valor);
       return null;
     },
   };
@@ -888,6 +893,7 @@
     metodos: ['min_conflicts', 'busqueda_tabu', 'busqueda_local_iterada', 'min_conflicts_tabu'],
     solvers: ['GUROBI'], desde: 1, hasta: 5, tiempo_max: 10, max_pasos: 150000, usarBase: false, solversElegidos: false,
   }, leerJSON(CLAVES.comparar) || {}, { ejecutando: false, detener: false, control: null, progreso: null, errores: [] });
+  C.metodos = C.metodos.filter(m => m !== 'voraz');   // la construcción voraz ya va dentro de Voraz + Min-Conflicts
   const guardarC = () => guardar(CLAVES.comparar, JSON.stringify({
     metodos: C.metodos, solvers: C.solvers, desde: C.desde, hasta: C.hasta, tiempo_max: C.tiempo_max, max_pasos: C.max_pasos,
     usarBase: C.usarBase, solversElegidos: C.solversElegidos,
@@ -1450,7 +1456,7 @@
           <article class="dev-franja">
             <header class="dev-franja-cabecera">
               <h3><span class="punto cat-electivo"></span>Franja ${k + 1}</h3>
-              <span class="dev-tenue">${f.periodos.map(p => `${DIA_CORTO[p.dia]} ${BLOQUE[p.bloque].inicio}–${BLOQUE[p.bloque + 1].fin}`).join(' · ')}</span>
+              <span class="dev-tenue">${INST.franjas_fijas === false ? 'Bloques: los elige el solver · en la base: ' : ''}${f.periodos.map(p => `${DIA_CORTO[p.dia]} ${BLOQUE[p.bloque].inicio}–${BLOQUE[p.bloque + 1].fin}`).join(' · ')}</span>
             </header>
             <div class="tabla-marco"><table class="tabla dev-tabla">
               <thead><tr><th>Electivo</th><th>Sección</th><th>Docente</th><th>Sala</th><th><span class="visualmente-oculto">Acciones</span></th></tr></thead>
@@ -1467,26 +1473,15 @@
           ${franjas}
         </section>`;
     }).join('');
+    const fijas = INST.franjas_fijas !== false;
     return `
-      <section class="dev-explica">
-        <h2>¿Qué es una franja y qué hace el solver con ella?</h2>
-        <div class="dev-explica-columnas">
-          <div>
-            <p>En 3° y 4° medio, los cursos A y B se juntan en ciertos bloques y cada estudiante va al electivo que eligió. Cada <b>franja</b> es uno de
-              esos espacios: <b>6 horas a la semana</b> (3 bloques dobles) en que varios electivos se dictan <b>al mismo tiempo</b>. Por eso cada
-              estudiante toma un electivo por franja, 3 en total.</p>
-            <p>Ejemplo: en la franja 1 de 3° medio, mientras unos estudiantes están en Comprensión histórica, otros están en Lectura y escritura, Química o Economía.</p>
-          </div>
-          <div>
-            <p><b>Sí, el solver la considera, pero como algo fijo.</b> Los días y bloques de cada franja vienen del Excel 2026 y el solver no los mueve:</p>
-            <ul>
-              <li>En 3° y 4° medio A y B esos bloques ya están ocupados; el resto de las asignaturas va en los demás.</li>
-              <li>El <b>docente</b> de cada electivo queda ocupado en esos bloques: el solver no le puede poner otra clase ahí. Cambiar el docente sí cambia el resultado.</li>
-              <li>El <b>nombre</b> y la <b>sala</b> no afectan al solver: se muestran en el horario y la sala se revisa contra los bloqueos de pastoral.</li>
-            </ul>
-          </div>
-        </div>
-      </section>
+      <div class="dev-interruptor-fila">
+        <button type="button" class="dev-interruptor" role="switch" aria-checked="${fijas}" data-dev="franjas-fijas" data-foco="franjas-fijas"
+                aria-describedby="dev-franjas-fijas-nota"><span class="dev-interruptor-riel" aria-hidden="true"><span></span></span>Franjas de electivos fijas</button>
+        <span class="dev-tenue" id="dev-franjas-fijas-nota">${fijas
+          ? 'Quedan en los bloques del Excel 2026, como en la instancia base.'
+          : 'El solver elige los 3 bloques dobles de cada franja (días distintos, los mismos para A y B).'}</span>
+      </div>
       ${niveles}
       <datalist id="dev-lista-electivos">${nombresElectivos.map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>
       <p class="nota">Un docente no puede dictar dos electivos de la misma franja: el selector no lo deja elegir.</p>`;
@@ -1563,8 +1558,8 @@
         <dl>${EXPLICACION.map(([id, nombre, texto]) => `
           <div style="--c:${colorDe(id === 'modelo' ? 'modelo:GUROBI' : id)}"><dt><span class="dev-metodo-punto"></span>${esc(nombre)}</dt><dd>${esc(texto)}</dd></div>`).join('')}
         </dl>
-        <p class="nota">En corto: la <b>voraz</b> construye, <b>Min-Conflicts</b> repara pero solo acepta mejoras (se estanca), <b>Min-Conflicts + tabú</b> repara aceptando también
-          empeoramientos controlados (tabú, ruido y reinicios) para salir de los estancamientos, y el <b>modelo</b> resuelve todo de una vez y además puede demostrar que no hay solución.
+        <p class="nota">En corto: la heurística <b>Voraz + Min-Conflicts</b> construye y repara, pero solo acepta mejoras (se estanca); las metaheurísticas, como <b>Min-Conflicts + tabú</b>, reparan
+          aceptando también empeoramientos controlados (memoria tabú, ruido y reinicios) para salir de los estancamientos, y el <b>modelo</b> resuelve todo de una vez y además puede demostrar que no hay solución.
           Todos minimizan la misma f(x) = 1000 · violaciones duras.</p>
       </details>`;
   }
@@ -1601,6 +1596,8 @@
 
   function htmlResolver() {
     const { validacion } = calc();
+    // Un método guardado que ya no existe (p. ej. la antigua "Construcción voraz") vuelve al por defecto
+    if (!metodos().some(m => m.id === R.metodo)) R.metodo = 'min_conflicts_tabu';
     const editada = usaEditada(R);
     const bloqueada = editada && validacion.errores.length > 0;
     const listo = SRV.estado === 'conectado' && !bloqueada && !R.ejecutando;
@@ -1619,13 +1616,15 @@
     return `
       <div class="dev-resolver">
         <section class="seccion">
-          <div class="seccion-titulo"><h2>Método</h2><p>De la heurística constructiva al modelo exacto</p></div>
+          <div class="seccion-titulo"><h2>Método</h2><p>De la heurística al modelo exacto</p></div>
           <div class="dev-metodos" role="radiogroup" aria-label="Método de solución">${tarjetas}</div>
           ${htmlExplicacion()}
         </section>
         <section class="seccion">
           <div class="seccion-titulo"><h2>Parámetros</h2><p>Todos parten de la misma construcción voraz (salvo el modelo)</p></div>
           ${selectorInstancia(R, 'r')}
+          <p class="dev-tenue">Franjas de electivos: <b>${editada && INST.franjas_fijas === false ? 'móviles (las ubica el solver)' : 'fijas (bloques del Excel 2026)'}</b>
+            · <button type="button" class="enlace" data-dev="seccion" data-valor="electivos">cambiar en Electivos</button></p>
           ${camposParametros()}
           <div class="dev-ejecutar">
             <button type="button" class="boton boton-primario boton-grande" id="dev-resolver-boton" data-dev="resolver"${listo ? '' : ' disabled'}>
@@ -1641,6 +1640,19 @@
       ${R.error ? `<div class="dev-aviso mal">${ICONOS.mal}<div><b>No se pudo resolver</b><p>${esc(R.error)}</p></div></div>` : ''}
       ${R.resultado ? htmlResultado(R.resultado, Boolean(R.datos)) : ''}
       ${htmlEjecuciones()}`;
+  }
+
+  // Bloques que eligió el solver para las franjas (solo con franjas móviles)
+  function htmlFranjasResultado(r) {
+    if (!r.franjas) return '';
+    return `
+      <div class="dev-franjas-resultado">
+        <h3>Franjas de electivos que eligió el solver</h3>
+        <dl class="datos dev-datos">${Object.entries(r.franjas).map(([nivel, franjas]) => franjas.map((periodos, k) => `
+          <dt>${esc(nombreNivel(nivel))} · franja ${k + 1}</dt>
+          <dd>${periodos.map(([dia, b]) => `${DIA_CORTO[dia]} ${BLOQUE[b].inicio}–${BLOQUE[b + 1].fin}`).join(' · ')}</dd>`).join('')).join('')}
+        </dl>
+      </div>`;
   }
 
   function htmlResultado(r, conDatos) {
@@ -1686,6 +1698,7 @@
             <div class="seccion-titulo"><h2>Convergencia</h2><p>Mejor f(x) según el tiempo de búsqueda (escala logarítmica)</p></div>
             <div class="dev-grafico" data-grafico="resultado"></div>
             ${modelo}
+            ${htmlFranjasResultado(r)}
           </section>
           <section class="seccion">
             <div class="seccion-titulo"><h2>Auditoría</h2><p>Validador independiente del proyecto</p></div>
@@ -2315,6 +2328,7 @@
       }
       case 'agregar-grupo': { const [nivel, k] = idGrupo(b.dataset.id); aplicar('agregarGrupo', nivel, k); break; }
       case 'quitar-grupo': { const [nivel, k, i] = idGrupo(b.dataset.id); aplicar('quitarGrupo', nivel, k, i); break; }
+      case 'franjas-fijas': aplicar('franjasFijas', INST.franjas_fijas === false); break;
       case 'resolver': resolverUno(); break;
       case 'ver-resultado': verResultado(); break;
       case 'descargar-resultado': descargarResultado(); break;

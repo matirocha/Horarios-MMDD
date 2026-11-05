@@ -41,9 +41,8 @@ class ConstruccionVoraz:
         for sid in orden:
             s = modelo.ses[sid]
             c = s['curso']
-            if s['largo'] == 2:
-                opciones = [par for par in modelo.pares[c]
-                            if modelo.celda[c][par[0]] is None and modelo.celda[c][par[1]] is None]
+            if s['largo'] == 2:   # 'c' es una tupla (A, B) en una franja móvil: par libre en ambos cursos
+                opciones = [par for par in modelo.pares_de(c) if modelo.libre(c, par)]
             else:
                 opciones = [(x,) for x, v in modelo.celda[c].items() if v is None]
             mejor, mejor_delta = None, None

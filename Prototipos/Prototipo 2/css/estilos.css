@@ -1550,16 +1550,33 @@ input[type="number"].dev-input { width: 9rem; font-variant-numeric: tabular-nums
 .dev-fact.mal ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: .25rem; color: var(--ink); }
 .dev-fact .dev-acciones { margin-top: .2rem; }
 
-/* Explicaciones (franjas y métodos) */
-.dev-explica {
-  padding: 1rem 1.15rem; border: 1px solid var(--line-strong); border-left: 4px solid var(--accent);
-  border-radius: 10px; background: var(--surface); font-size: var(--t-sm); color: var(--ink-2);
+/* Interruptor (franjas de electivos fijas o móviles) */
+.dev-interruptor-fila {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem;
+  padding: .8rem 1rem; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface);
 }
-.dev-explica h2 { font-size: var(--t-md); font-weight: 800; color: var(--ink); margin-bottom: .6rem; }
-.dev-explica-columnas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: .5rem 2rem; }
-.dev-explica p + p, .dev-explica p + ul { margin-top: .5rem; }
-.dev-explica ul { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: .3rem; }
-.dev-explica b { color: var(--ink); }
+.dev-interruptor {
+  display: inline-flex; align-items: center; gap: .6rem; padding: .2rem .1rem; border: 0; background: none;
+  font-family: var(--font-display); font-weight: 700; font-size: var(--t-sm); color: var(--ink); cursor: pointer;
+}
+.dev-interruptor-riel {
+  position: relative; flex: none; width: 2.5rem; height: 1.4rem; border-radius: 999px;
+  background: var(--line-strong); transition: background-color .15s ease;
+}
+.dev-interruptor-riel > span {
+  position: absolute; top: .2rem; left: .2rem; width: 1rem; height: 1rem; border-radius: 50%;
+  background: oklch(0.99 0 0); box-shadow: 0 1px 2px oklch(0.2 0.02 262 / 0.3); transition: transform .15s ease;
+}
+.dev-interruptor[aria-checked="true"] .dev-interruptor-riel { background: var(--accent); }
+.dev-interruptor[aria-checked="true"] .dev-interruptor-riel > span { transform: translateX(1.1rem); background: var(--on-ink); }
+.dev-interruptor:hover .dev-interruptor-riel { box-shadow: 0 0 0 3px var(--accent-wash); }
+@media (prefers-reduced-motion: reduce) {
+  .dev-interruptor-riel, .dev-interruptor-riel > span { transition: none; }
+}
+.dev-franjas-resultado { margin-top: 1rem; }
+.dev-franjas-resultado h3 { font-size: var(--t-sm); font-weight: 800; color: var(--ink); margin-bottom: .5rem; }
+
+/* Explicación de los métodos */
 .dev-explicacion { border-top: 1px solid var(--line); padding-top: .6rem; }
 .dev-explicacion > summary { cursor: pointer; font-family: var(--font-display); font-weight: 700; font-size: var(--t-sm); color: var(--ink-2); }
 .dev-explicacion > summary:hover { color: var(--ink); }
