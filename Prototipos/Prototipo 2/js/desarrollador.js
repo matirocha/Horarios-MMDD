@@ -901,21 +901,96 @@
   // ¿Se resuelve la instancia editada? (si no hay cambios, siempre es la base)
   const usaEditada = op => hayCambios() && !op.usarBase;
 
-  // Ejecuciones de esta sesión del navegador (Resolver y Comparar)
-  let EJECUCIONES = sesion.leer(CLAVES.ejecuciones) || [];
+  // Ejecuciones de esta sesión del navegador (Resolver y Comparar). Cada una tiene un id (las de
+  // antes de existir el id reciben uno aquí) con el que se guarda su horario en HORARIOS
+  const nuevoId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let EJECUCIONES = (sesion.leer(CLAVES.ejecuciones) || []).map((e, i) => (e.id ? e : { ...e, id: `${e.cuando || 0}-v${i}` }));
   let LOTE = (EJECUCIONES.filter(e => e.lote).pop() || {}).lote || null;   // última comparación
   R.resultado = [...EJECUCIONES].reverse().find(e => !e.lote) || null;
-  function registrar(resultado, lote) {
-    const r = { ...resultado, lote, cuando: Date.now() };
+  // instancia: la que se resolvió (null = base); su huella permite saber si se puede volver a resolver igual
+  function registrar(resultado, lote, instancia = null) {
+    const r = { ...resultado, lote, cuando: Date.now(), id: nuevoId(), huella: instancia ? huella(JSON.stringify(instancia)) : null };
     if (r.historial && r.historial.length > 150) {
       const paso = (r.historial.length - 1) / 149;
       r.historial = Array.from({ length: 150 }, (_, i) => r.historial[Math.round(i * paso)]);
     }
     EJECUCIONES.push(r);
-    if (EJECUCIONES.length > 300) EJECUCIONES = EJECUCIONES.slice(-300);
+    if (EJECUCIONES.length > 300) {
+      HORARIOS.borrar(EJECUCIONES.slice(0, -300).map(e => e.id));
+      EJECUCIONES = EJECUCIONES.slice(-300);
+    }
     sesion.guardar(CLAVES.ejecuciones, EJECUCIONES);
     return r;
   }
+
+  // Horario completo de cada ejecución (≈ 0,5 MB) para abrir cualquiera en el visualizador. Va en
+  // IndexedDB porque sessionStorage no alcanza para varios; si IndexedDB no está disponible (p. ej.
+  // navegación privada en algunos navegadores) se guardan los últimos en memoria, hasta recargar.
+  const HORARIOS = (() => {
+    const claves = new Set();   // ids con horario guardado
+    const memoria = new Map();
+    let base = null;
+    const abrir = () => base || (base = new Promise((ok, mal) => {
+      try {
+        const p = indexedDB.open('mmdd-dev-horarios', 1);
+        p.onupgradeneeded = () => p.result.createObjectStore('horarios');
+        p.onsuccess = () => {
+          // Si otra pestaña borra o actualiza la base, se suelta para no bloquearla (se reabre al usarla)
+          p.result.onversionchange = () => { p.result.close(); base = null; };
+          ok(p.result);
+        };
+        p.onerror = () => mal(p.error);
+        p.onblocked = () => mal(new Error('IndexedDB bloqueado'));
+      } catch (e) {
+        mal(e);
+      }
+    }));
+    const pedir = (modo, accion) => abrir().then(db => new Promise((ok, mal) => {
+      const t = db.transaction('horarios', modo);
+      const peticion = accion(t.objectStore('horarios'));
+      t.oncomplete = () => ok(peticion ? peticion.result : undefined);
+      t.onerror = () => mal(t.error);
+      t.onabort = () => mal(t.error);
+    }));
+    const H = {
+      listo: false,   // ya se sabe qué ejecuciones tienen horario guardado
+      tiene: id => claves.has(id),
+      async guardar(id, datos) {
+        claves.add(id);
+        try {
+          await pedir('readwrite', s => s.put(datos, id));
+        } catch (e) {
+          memoria.set(id, datos);
+          if (memoria.size > 12) { const viejo = memoria.keys().next().value; memoria.delete(viejo); claves.delete(viejo); }
+        }
+      },
+      async leer(id) {
+        if (memoria.has(id)) return memoria.get(id);
+        try { return (await pedir('readonly', s => s.get(id))) || null; } catch (e) { return null; }
+      },
+      async borrar(ids) {
+        ids.forEach(id => { claves.delete(id); memoria.delete(id); });
+        try { await pedir('readwrite', s => { ids.forEach(id => s.delete(id)); return null; }); } catch (e) { /* sin IndexedDB */ }
+      },
+      // Al cargar: qué ejecuciones de esta pestaña tienen horario, y se borran los horarios de más de un
+      // día que no son de esta pestaña (los de otra pestaña abierta se dejan)
+      async cargar() {
+        try {
+          const vigentes = new Set(EJECUCIONES.map(e => e.id));
+          const todas = await pedir('readonly', s => s.getAllKeys());
+          const viejas = todas.filter(k => !vigentes.has(k) && Date.now() - Number(String(k).split('-')[0]) > 864e5);
+          todas.filter(k => vigentes.has(k)).forEach(k => claves.add(k));
+          if (viejas.length) await pedir('readwrite', s => { viejas.forEach(k => s.delete(k)); return null; });
+        } catch (e) { /* sin IndexedDB: solo los horarios de esta visita, en memoria */ }
+        H.listo = true;
+      },
+    };
+    return H;
+  })();
+
+  // ¿Se puede volver a calcular el horario de una ejecución? Con la base siempre; con una instancia
+  // editada, solo si sigue igual a la que se resolvió
+  const reproducible = r => !r.editada || (r.huella != null && hayCambios() && r.huella === huella(JSON.stringify(INST)));
 
   function avisar(texto, tipo = 'ok') {
     UI.mensaje = texto ? { texto, tipo } : null;
@@ -1709,11 +1784,26 @@
         <div class="dev-acciones">
           <button type="button" class="boton boton-primario" data-dev="ver-resultado"${conDatos ? '' : ' disabled'}>${ICONOS.ojo}Ver en el visualizador</button>
           <button type="button" class="boton" data-dev="descargar-resultado"${conDatos ? '' : ' disabled'}>${ICONOS.bajar}Descargar datos (.js)</button>
-          ${conDatos ? '' : `<span class="dev-tenue">Vuelve a resolver para ver o descargar este horario.</span>
+          ${conDatos ? '' : !HORARIOS.listo ? '<span class="dev-tenue">Cargando el horario guardado…</span>' : `<span class="dev-tenue">Vuelve a resolver para ver o descargar este horario.</span>
           <button type="button" class="boton" data-dev="resolver-de-nuevo"${R.ejecutando || SRV.estado !== 'conectado' ? ' disabled' : ''}
                   title="${esc(`Resuelve otra vez con ${r.nombre}${r.semilla != null ? `, semilla ${r.semilla}` : ''} y la ${r.editada ? 'instancia editada' : NOMBRE_BASE}`)}">${ICONOS.play}Resolver</button>`}
         </div>
       </section>`;
+  }
+
+  function botonVerEjecucion(r) {
+    const guardado = HORARIOS.tiene(r.id) || !HORARIOS.listo || (R.resultado && R.resultado.id === r.id && R.datos);
+    const quien = `${nombreClave(claveDe(r))}${r.semilla != null ? `, semilla ${r.semilla}` : ''}`;
+    let titulo = `Abre el horario de ${quien} en el visualizador`;
+    let deshabilitado = false;
+    if (!guardado) {
+      deshabilitado = !reproducible(r) || SRV.estado !== 'conectado';
+      titulo = !reproducible(r) ? 'Este horario no quedó guardado y la instancia editada cambió desde que se resolvió'
+        : SRV.estado !== 'conectado' ? 'Este horario no quedó guardado: para volver a calcularlo se necesita el servidor'
+          : `Este horario no quedó guardado: se vuelve a resolver con ${quien} y se abre`;
+    }
+    return `<button type="button" class="boton dev-boton-tabla" data-dev="ver-ejecucion" data-id="${esc(r.id)}"
+              title="${esc(titulo)}"${deshabilitado ? ' disabled' : ''}>${ICONOS.ojo}<span>Ver en el visualizador</span></button>`;
   }
 
   function htmlEjecuciones() {
@@ -1728,13 +1818,14 @@
         <td class="num">${fmtMs(r.tiempos_ms.total)}</td>
         <td class="num">${r.auditoria ? fmt(r.auditoria.metricas.total_ventanas_docentes) : '—'}</td>
         <td>${r.lote ? 'Comparar' : 'Resolver'} · ${r.editada ? 'editada' : 'base'}</td>
+        <td class="dev-col-ver">${botonVerEjecucion(r)}</td>
       </tr>`).join('');
     return `
       <section class="seccion">
         <div class="seccion-titulo"><h2>Ejecuciones de esta sesión</h2>
           <p>${EJECUCIONES.length} en total · se borran al cerrar la pestaña · <button type="button" class="enlace" data-dev="limpiar-ejecuciones">Borrar</button></p></div>
         <div class="tabla-marco"><table class="tabla dev-tabla">
-          <thead><tr><th>Método</th><th class="num">Semilla</th><th>Factible</th><th class="num">f(x) inicial</th><th class="num">f(x) final</th><th class="num">Tiempo</th><th class="num">Ventanas</th><th>Origen</th></tr></thead>
+          <thead><tr><th>Método</th><th class="num">Semilla</th><th>Factible</th><th class="num">f(x) inicial</th><th class="num">f(x) final</th><th class="num">Tiempo</th><th class="num">Ventanas</th><th>Origen</th><th><span class="visualmente-oculto">Horario</span></th></tr></thead>
           <tbody>${filas}</tbody>
         </table></div>
       </section>`;
@@ -1769,9 +1860,11 @@
       if (el) el.textContent = fmtMs(performance.now() - R.inicio);
     }, 100);
     try {
+      const instancia = usaEditada(R) ? clonar(INST) : null;
       const j = await api('resolver', cuerpoPeticion(R.metodo, R, { incluir_horario: true }));
-      R.resultado = registrar(j.resultado, null);
+      R.resultado = registrar(j.resultado, null, instancia);
       R.datos = j.datos || null;
+      if (R.datos) HORARIOS.guardar(R.resultado.id, R.datos);
     } catch (e) {
       R.error = errorDeRed(e) ? 'Se perdió la conexión con servidor.py. ¿Sigue abierto en la terminal?' : e.message;
       if (errorDeRed(e)) { SRV.estado = 'sin-servidor'; pintarServidor(); }
@@ -1808,14 +1901,53 @@
   }
 
   function verResultado() {
-    if (!R.datos) return;
+    if (R.datos) abrirEnVisualizador(R.datos);
+  }
+
+  function abrirEnVisualizador(datos) {
     // El resultado lleva la instancia base: al verlo no se pierde la base aunque sea de una instancia editada
-    R.datos.meta.desarrollador = { ...R.datos.meta.desarrollador, base: BASE };
-    if (!sesion.guardar(CLAVES.resultado, R.datos)) {
+    datos.meta.desarrollador = { ...datos.meta.desarrollador, base: BASE };
+    if (!sesion.guardar(CLAVES.resultado, datos)) {
       window.alert('El navegador no tiene espacio para guardar el horario en esta pestaña. Usa "Descargar datos (.js)".');
       return;
     }
-    location.href = `${location.pathname}?anio=${R.datos.meta.anio}&resultado=1#/cursos/${encodeURIComponent(estado.curso)}`;
+    location.href = `${location.pathname}?anio=${datos.meta.anio}&resultado=1#/cursos/${encodeURIComponent(estado.curso)}`;
+  }
+
+  // "Ver en el visualizador" de la tabla de ejecuciones: abre el horario guardado de esa ejecución o,
+  // si no quedó guardado, lo vuelve a calcular con su misma configuración (sin agregar otra fila)
+  async function verEjecucion(boton) {
+    const r = EJECUCIONES.find(e => e.id === boton.dataset.id);
+    if (!r || boton.getAttribute('aria-busy') === 'true') return;
+    let datos = (R.resultado && R.resultado.id === r.id && R.datos) || await HORARIOS.leer(r.id);
+    if (!datos) {
+      if (!reproducible(r) || SRV.estado !== 'conectado') {
+        avisar(SRV.estado !== 'conectado' ? 'Para volver a calcular este horario se necesita el servidor.'
+          : 'Este horario no quedó guardado y la instancia editada cambió desde que se resolvió.', 'error');
+        return;
+      }
+      boton.setAttribute('aria-busy', 'true');
+      boton.lastChild.textContent = 'Resolviendo…';
+      try {
+        const op = {
+          semilla: r.semilla, tiempo_max: r.tiempo_max, max_pasos: r.max_pasos, usarBase: !r.editada,
+          solver: (r.modelo && r.modelo.solver) || R.solver,
+          peso_ventanas: (r.metodo === 'modelo' && r.parametros && r.parametros.peso_ventanas) || 0,
+          hilos: (r.metodo === 'modelo' && r.parametros && r.parametros.hilos) || null,
+        };
+        const extra = { incluir_horario: true, ...(r.metodo !== 'modelo' && r.parametros ? { parametros: r.parametros } : {}) };
+        const j = await api('resolver', cuerpoPeticion(r.metodo, op, extra));
+        datos = j.datos;
+        if (datos) await HORARIOS.guardar(r.id, datos);
+      } catch (e) {
+        avisar(errorDeRed(e) ? 'Se perdió la conexión con el servidor.' : `No se pudo volver a calcular el horario: ${e.message}`, 'error');
+        return;
+      } finally {
+        boton.removeAttribute('aria-busy');
+        boton.lastChild.textContent = 'Ver en el visualizador';
+      }
+    }
+    if (datos) abrirEnVisualizador(datos);
   }
 
   function descargarResultado() {
@@ -2016,8 +2148,11 @@
       C.control = new AbortController();
       try {
         const op = { semilla: t.semilla, tiempo_max: C.tiempo_max, max_pasos: C.max_pasos, solver: t.solver, peso_ventanas: 0, hilos: null };
-        const j = await api('resolver', cuerpoPeticion(t.metodo, op, { instancia }), { senal: C.control.signal });
-        registrar({ ...j.resultado, rep: t.rep || null }, LOTE);
+        // Con el horario completo, para poder abrir cada ejecución en el visualizador (no cambia los tiempos
+        // medidos: el servidor arma el horario después de cronometrar al método)
+        const j = await api('resolver', cuerpoPeticion(t.metodo, op, { instancia, incluir_horario: true }), { senal: C.control.signal });
+        const r = registrar({ ...j.resultado, rep: t.rep || null }, LOTE, instancia);
+        if (j.datos) HORARIOS.guardar(r.id, j.datos);
         actualizarResultadosComparacion();
       } catch (e) {
         if (e.name === 'AbortError') break;
@@ -2351,9 +2486,11 @@
       case 'franjas-fijas': aplicar('franjasFijas', INST.franjas_fijas === false); break;
       case 'resolver': resolverUno(); break;
       case 'resolver-de-nuevo': resolverDeNuevo(); break;
+      case 'ver-ejecucion': verEjecucion(b); break;
       case 'ver-resultado': verResultado(); break;
       case 'descargar-resultado': descargarResultado(); break;
       case 'limpiar-ejecuciones':
+        HORARIOS.borrar(EJECUCIONES.map(e => e.id));
         EJECUCIONES = [];
         LOTE = null;
         R.resultado = null;
@@ -2471,4 +2608,9 @@
   // ===========================================================================
   window.MMDD_DEV = { renderEdicion, despuesRender, detalleExtra };
   programarVerificacion(0);   // con cambios guardados de otra visita, su estado se muestra al abrir Edición
+  // Horarios guardados de las ejecuciones: el último resultado de Resolver recupera el suyo sin volver a resolver
+  HORARIOS.cargar().then(async () => {
+    if (R.resultado && !R.datos && HORARIOS.tiene(R.resultado.id)) R.datos = await HORARIOS.leer(R.resultado.id);
+    if (estado.vista === 'edicion' && estado.edicion === 'resolver') refrescar();
+  });
 })();
