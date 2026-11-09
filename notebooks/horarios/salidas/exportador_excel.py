@@ -97,9 +97,13 @@ class ExportadorExcel:
         wb._fonts = IndexedList([Font(name=cls.FUENTE, sz=11, family=2)])
         return wb
 
+    # Otras imágenes del escudo, por si el Excel oficial no está (p. ej. el motor instalado como
+    # paquete en Vercel): el servidor del Prototipo 2 agrega aquí su assets/escudo.png
+    RUTAS_ESCUDO = []
+
     @classmethod
-    def _insertar_escudo(cls, ws):
-        """Inserta el escudo del colegio en B1 (70 x 93 px), tomado del Excel oficial 2026."""
+    def escudo(cls):
+        """Bytes de la imagen del escudo (la del Excel oficial 2026 o una de RUTAS_ESCUDO); b'' si no hay."""
         if cls._escudo is None:
             cls._escudo = b''
             try:
@@ -109,7 +113,20 @@ class ExportadorExcel:
                         cls._escudo = z.read(medios[0])
             except (OSError, zipfile.BadZipFile):
                 pass
-        if not cls._escudo:
+            for ruta in cls.RUTAS_ESCUDO:
+                if cls._escudo:
+                    break
+                try:
+                    with open(ruta, 'rb') as f:
+                        cls._escudo = f.read()
+                except OSError:
+                    pass
+        return cls._escudo
+
+    @classmethod
+    def _insertar_escudo(cls, ws):
+        """Inserta el escudo del colegio en B1 (70 x 93 px), tomado del Excel oficial 2026."""
+        if not cls.escudo():
             return
         try:
             imagen = ImagenExcel(io.BytesIO(cls._escudo))
@@ -248,8 +265,14 @@ class ExportadorExcel:
         - Hojas de párvulos (Ed. Física) y una hoja por cada uno de los 24 cursos.
         - Hoja 'AUDITORIA' con la verificación de restricciones.
         """
-        wb = cls._nuevo_libro()
         os.makedirs(os.path.dirname(ruta_salida), exist_ok=True)
+        cls.libro_cursos(horario).save(ruta_salida)
+        return ruta_salida
+
+    @classmethod
+    def libro_cursos(cls, horario):
+        """El libro de exportar_horario_cursos, sin guardarlo (el servidor web lo envía como descarga)."""
+        wb = cls._nuevo_libro()
         ws = wb.active
         ws.title = 'SALAS ELECTIVOS'
         cls._hoja_salas(ws, horario)
@@ -257,14 +280,27 @@ class ExportadorExcel:
         for curso in DatosColegio.todos_los_cursos():
             cls._hoja_curso(wb.create_sheet(curso), curso, horario)
         cls._hoja_auditoria(wb.create_sheet('AUDITORIA'), horario)
-        wb.save(ruta_salida)
-        return ruta_salida
+        return wb
 
     @classmethod
     def _hoja_curso(cls, ws, curso, horario):
         cls._formato_hoja(ws)
         cls._insertar_escudo(ws)
         cls._encabezado(ws, [('CURSO', curso), ('PROFESOR/A JEFE', DatosColegio.PROFESORES_JEFES.get(curso, ''))])
+        max_b, contenido = cls.contenido_curso(curso, horario)
+        ultima = cls._grilla(ws, 8, 2, max_b, contenido)
+        color_etiquetas = cls.BORDE_MEDIA if DatosColegio.nivel(curso) in DatosColegio.FRANJAS_ELECTIVOS else None
+        fila_total = cls._tabla_horas(ws, ultima + (3 if max_b == 8 else 2), cls._filas_tabla_curso(curso),
+                                      color_etiquetas=color_etiquetas)
+        if any(a == 'English Skills' for a, _, _, _ in DatosColegio.get_malla_curricular()[curso]):
+            cls._leyenda_skills(ws, fila_total + 2)
+
+    @classmethod
+    def contenido_curso(cls, curso, horario):
+        """
+        Último bloque de la grilla de un curso y la función contenido(dia, bloque) -> (texto, relleno)
+        de cada celda (bloque = 'C' en la colación). La usan esta hoja y los documentos Word y PDF.
+        """
         parvulo = DatosColegio.es_parvulo(curso)
         max_b = 10 if parvulo or max(DatosColegio.JORNADAS[curso]) > 8 else 8
         bloqueos = DatosColegio.BLOQUEOS_PASTORAL['PÁRVULOS'] if parvulo else []
@@ -283,12 +319,7 @@ class ExportadorExcel:
                 return None, None
             return item['etiqueta'], (cls.SKILLS if item['asignatura'] == 'English Skills' else None)
 
-        ultima = cls._grilla(ws, 8, 2, max_b, contenido)
-        color_etiquetas = cls.BORDE_MEDIA if DatosColegio.nivel(curso) in DatosColegio.FRANJAS_ELECTIVOS else None
-        fila_total = cls._tabla_horas(ws, ultima + (3 if max_b == 8 else 2), cls._filas_tabla_curso(curso),
-                                      color_etiquetas=color_etiquetas)
-        if any(a == 'English Skills' for a, _, _, _ in DatosColegio.get_malla_curricular()[curso]):
-            cls._leyenda_skills(ws, fila_total + 2)
+        return max_b, contenido
 
     @classmethod
     def _docentes_electivo(cls, nivel, electivo):

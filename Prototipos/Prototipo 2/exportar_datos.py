@@ -151,7 +151,9 @@ def exportar_docentes(horario):
             clases = []
             for (dia, b), (curso, asig) in sorted(ocupado.items(),
                                                   key=lambda kv: (D.DIAS.index(kv[0][0]), kv[0][1])):
-                if (dia, b) in detalle:
+                # En un horario con choques el docente puede tener un electivo y otra clase en el mismo
+                # bloque: queda la última asignada, y si es de un curso se muestra como clase normal
+                if (dia, b) in detalle and curso.endswith(' A-B'):
                     # Electivo de 3° o 4° medio: el docente atiende una sección mixta A+B
                     nivel = curso.replace(' A-B', '')
                     item = horario.asignaciones[f'{nivel} A'][dia][b]

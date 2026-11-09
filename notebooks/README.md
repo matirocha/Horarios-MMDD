@@ -41,6 +41,7 @@ notebooks/
         ├── horario.py                  estructura del horario final
         ├── validador.py                auditoría de restricciones
         ├── exportador_excel.py         libros .xlsx
+        ├── documentos.py               Word y PDF (horarios y distribución horaria)
         └── menu.py                     consola
 ```
 
@@ -82,6 +83,7 @@ flowchart LR
 | `horarios/salidas/horario.py` | Estructura del horario final (por curso, docente y recinto). | Validador, exportador, consola, prototipos. | **Sí.** |
 | `horarios/salidas/validador.py` | Auditoría independiente de todas las restricciones. | Scripts, Excel, prototipos. | **Sí.** |
 | `horarios/salidas/exportador_excel.py` | Escribe los Excel con el diseño oficial del colegio. | Generador, modelo matemático, Prototipo 2. | **Sí.** |
+| `horarios/salidas/documentos.py` | Horarios de cursos en Word y PDF (diseño del Excel 2026) y distribución horaria docente en Word y PDF (formato del Word 2026). Requiere `python-docx` y `reportlab`. | Prototipo 2 (`/api/exportar`). | **Sí.** |
 | `horarios/salidas/menu.py` | Consola: consultar cursos y docentes, auditar y exportar. | `generador_horarios.py`. | **Sí.** |
 
 ## Limpieza realizada

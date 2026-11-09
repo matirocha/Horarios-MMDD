@@ -697,8 +697,12 @@
 
   function accionesCabecera(tipo) {
     const flecha = d => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+    // Distribución horaria de todos los docentes, con el formato del documento Word 2026
+    const distribucion = tipo === 'docente' ? menuDescarga('distribucion', 'Descargar Distribución Horaria Docente',
+      'Todos los docentes · formato 2026', [['pdf', 'para imprimir'], ['docx', 'editable']]) : '';
     return `
       <div class="cabecera-acciones">
+        ${distribucion}
         <button type="button" class="boton-icono" data-paso="-1" aria-label="${tipo === 'curso' ? 'Curso' : tipo === 'docente' ? 'Docente' : 'Sala'} anterior">${flecha('m15 6-6 6 6 6')}</button>
         <button type="button" class="boton-icono" data-paso="1" aria-label="${tipo === 'curso' ? 'Curso' : tipo === 'docente' ? 'Docente' : 'Sala'} siguiente">${flecha('m9 6 6 6-6 6')}</button>
         <button type="button" class="boton" data-imprimir>
@@ -1810,11 +1814,177 @@
   window.addEventListener('afterprint', terminarImpresion);
 
   // ===========================================================================
+  // 14b. DOCUMENTOS (horarios en PDF, Word o Excel; distribución horaria docente)
+  // ===========================================================================
+  // Los arma servidor.py (o la función /api/exportar en Vercel) con el horario que se está
+  // viendo: 2026, 2027 o un resultado del solver. Con servidor.py el archivo además queda
+  // guardado en Outputs/ con un nombre único (fecha y hora), para comparar instancias.
+  const API_LOCAL = ['http://127.0.0.1:8765', 'http://localhost:8765'];
+  const NOMBRE_DOCUMENTO = { horarios: 'el horario de los cursos', distribucion: 'la distribución horaria docente' };
+  const NOMBRE_FORMATO = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel' };
+  let baseExportar = null;   // origen donde respondió /api/exportar
+
+  const ICONO_BAJAR = '<svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 20h14"/></svg>';
+  const ICONO_FLECHA = '<svg class="icono menu-descarga-flecha" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+
+  // Botón con menú de formatos. opciones: [[formato, detalle]]; extra: HTML de opciones adicionales
+  function menuDescarga(documento, texto, titulo, opciones, extra = '') {
+    const id = `menu-${documento}`;
+    return `
+      <div class="menu-descarga">
+        <button type="button" class="boton" data-menu-descarga aria-haspopup="menu" aria-expanded="false" aria-controls="${id}"
+                title="${esc(titulo)}">${ICONO_BAJAR}<span class="menu-descarga-texto">${esc(texto)}</span>${ICONO_FLECHA}</button>
+        <div class="menu-descarga-lista" id="${id}" role="menu" aria-label="${esc(titulo)}" hidden>
+          ${extra}
+          <span class="menu-descarga-titulo" aria-hidden="true">${esc(titulo)}</span>
+          ${opciones.map(([formato, detalle]) => `
+          <button type="button" role="menuitem" data-exportar="${documento}" data-formato="${formato}">
+            <span>${NOMBRE_FORMATO[formato]}</span><small>${esc(detalle)}</small>
+          </button>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  function cerrarMenusDescarga(excepto, devolverFoco) {
+    $$('.menu-descarga-lista').forEach(lista => {
+      if (lista === excepto || lista.hidden) return;
+      lista.hidden = true;
+      const boton = lista.parentElement.querySelector('[data-menu-descarga]');
+      boton.setAttribute('aria-expanded', 'false');
+      if (devolverFoco) boton.focus();
+    });
+  }
+
+  function alternarMenuDescarga(boton) {
+    const lista = boton.parentElement.querySelector('.menu-descarga-lista');
+    const abrir = lista.hidden;
+    cerrarMenusDescarga(lista);
+    lista.hidden = !abrir;
+    boton.setAttribute('aria-expanded', String(abrir));
+    if (abrir) opcionesVisibles(lista)[0].focus();
+  }
+
+  // Sin las opciones que solo se muestran en el celular (display: none en pantallas grandes)
+  const opcionesVisibles = lista => $$('[role="menuitem"]', lista).filter(b => b.getClientRects().length);
+
+  // Parte del nombre del archivo: de qué horario se trata
+  function descripcionHorario() {
+    const m = DATOS.meta;
+    const semilla = m.semilla != null ? ` semilla ${m.semilla}` : '';
+    if (m.desarrollador && m.desarrollador.nombre) {
+      return `${m.desarrollador.nombre} ${m.desarrollador.editada ? 'editada' : 'base'}${semilla}`;
+    }
+    return m.fuente === 'oficial' ? 'oficial' : `generado${semilla}`;
+  }
+
+  // Solo lo que necesita el servidor (el horario completo pesa ≈ 0,5 MB)
+  function datosParaExportar(documento) {
+    const meta = { anio: DATOS.meta.anio, fuente: DATOS.meta.fuente };
+    if (documento === 'distribucion') {
+      return { meta, docentes: DATOS.docentes.map(d => ({ nombre: d.nombre, departamentoCompleto: d.departamentoCompleto, distribucion: d.distribucion, horasTotales: d.horasTotales })) };
+    }
+    return {
+      meta,
+      cursos: DATOS.cursos.map(c => ({ id: c.id, jefe: c.jefe, jornada: c.jornada, malla: c.malla, clases: c.clases })),
+      docentes: DATOS.docentes.map(d => ({ nombre: d.nombre, departamentoCompleto: d.departamentoCompleto })),
+      franjas: DATOS.franjas,
+      // Gimnasio de cada clase de Ed. Física (en 2026 sale de la hoja GIMNASIOS del Excel)
+      espacios: DATOS.espacios.filter(e => /^GIMNASIO/.test(e.nombre)).map(e => ({
+        nombre: e.nombre,
+        usos: e.usos.map(u => ({ dia: u.dia, bloque: u.bloque, items: u.items.filter(i => i.curso).map(i => ({ curso: i.curso })) })),
+      })),
+    };
+  }
+
+  // La API está en el mismo sitio (servidor.py o Vercel); abierta de otra forma se busca servidor.py
+  async function pedirDocumento(cuerpo) {
+    const candidatos = baseExportar != null ? [baseExportar]
+      : location.protocol.startsWith('http') ? ['', ...API_LOCAL.filter(u => u !== location.origin)] : API_LOCAL;
+    for (const base of candidatos) {
+      let r;
+      try {
+        r = await fetch(`${base}/api/exportar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+      } catch (e) {
+        continue;   // nadie responde en ese origen
+      }
+      const tipo = r.headers.get('Content-Type') || '';
+      if (r.ok && !tipo.includes('json')) {
+        baseExportar = base;
+        return r;
+      }
+      const j = tipo.includes('json') ? await r.json().catch(() => null) : null;
+      if (j && j.error) {   // el servidor respondió, pero no pudo armar el documento
+        baseExportar = base;
+        throw new Error(j.error);
+      }
+      // 404 o 501: esa página no tiene la API (p. ej. un servidor de archivos estáticos)
+    }
+    throw new Error('sin-servidor');
+  }
+
+  let avisoTemporizador = null;
+  function avisarDescarga(texto, tipo = '') {
+    let aviso = $('#aviso-descarga');
+    if (!aviso) {
+      aviso = document.createElement('div');
+      aviso.id = 'aviso-descarga';
+      aviso.className = 'aviso-descarga';
+      aviso.setAttribute('role', 'status');
+      document.body.appendChild(aviso);
+    }
+    clearTimeout(avisoTemporizador);
+    aviso.textContent = texto;
+    aviso.className = `aviso-descarga ${tipo}`.trim();
+    aviso.hidden = false;
+    if (tipo !== 'progreso') avisoTemporizador = setTimeout(() => { aviso.hidden = true; }, tipo === 'error' ? 12000 : 8000);
+  }
+
+  async function exportarDocumento(opcion) {
+    const { exportar: documento, formato } = opcion.dataset;
+    const disparador = opcion.closest('.menu-descarga').querySelector('[data-menu-descarga]');
+    cerrarMenusDescarga(null, true);
+    if (disparador.getAttribute('aria-busy') === 'true') return;
+    disparador.setAttribute('aria-busy', 'true');
+    avisarDescarga(`Generando ${NOMBRE_DOCUMENTO[documento]} en ${NOMBRE_FORMATO[formato]}…`, 'progreso');
+    try {
+      const r = await pedirDocumento({ documento, formato, descripcion: descripcionHorario(), datos: datosParaExportar(documento) });
+      const nombre = decodeURIComponent(r.headers.get('X-Archivo') || `${documento}.${formato}`);
+      const guardado = r.headers.get('X-Guardado');
+      const url = URL.createObjectURL(await r.blob());
+      const enlace = Object.assign(document.createElement('a'), { href: url, download: nombre });
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      avisarDescarga(guardado
+        ? `Listo: ${nombre}. Quedó guardado en ${decodeURIComponent(guardado)} y en tus descargas.`
+        : `Listo: se descargó ${nombre}.`);
+    } catch (e) {
+      avisarDescarga(e.message === 'sin-servidor'
+        ? 'Los documentos los arma el servidor: abre la página con servidor.py (python "Prototipos/Prototipo 2/servidor.py") o desde Vercel.'
+        : `No se pudo generar el documento: ${e.message}`, 'error');
+    } finally {
+      disparador.removeAttribute('aria-busy');
+    }
+  }
+
+  // Menú de la pestaña Cursos (está en index.html, junto a imprimir)
+  // En el celular el botón PDF de este curso se oculta y queda como primera opción del menú (estilos.css)
+  $('#vista-cursos .cabecera-acciones').insertAdjacentHTML('afterbegin', menuDescarga('horarios', 'Descargar horarios',
+    'Horarios de todos los cursos', [['pdf', 'una página por curso'], ['docx', 'una página por curso'], ['xlsx', 'formato HORARIO CURSOS 2026']],
+    `<span class="menu-descarga-titulo solo-movil" aria-hidden="true">Este curso</span>
+     <button type="button" role="menuitem" class="solo-movil" data-descargar-pdf><span>PDF</span><small>como se ve en pantalla</small></button>`));
+
+  // ===========================================================================
   // 15. EVENTOS
   // ===========================================================================
   document.addEventListener('click', ev => {
+    if (!ev.target.closest('.menu-descarga')) cerrarMenusDescarga();
     const t = ev.target.closest('button, [data-tarjeta]');
     if (!t) return;
+
+    if (t.matches('[data-menu-descarga]')) { alternarMenuDescarga(t); return; }
+    if (t.matches('[data-exportar]')) { exportarDocumento(t); return; }
 
     if (t.matches('.pestana')) { ir(t.dataset.vista); return; }
     if (t.id === 'tema') { cambiarTema(); return; }
@@ -1840,7 +2010,11 @@
       return;
     }
     if (t.matches('[data-imprimir]')) { window.print(); return; }
-    if (t.matches('[data-descargar-pdf]')) { descargarPDF(t); return; }
+    if (t.matches('[data-descargar-pdf]')) {
+      if (t.matches('[role="menuitem"]')) cerrarMenusDescarga(null, true);
+      descargarPDF(t);
+      return;
+    }
     if (t.matches('[data-paso]')) { paso(Number(t.dataset.paso)); return; }
 
     if (t.matches('[data-sesion]')) {
@@ -1963,8 +2137,16 @@
       buscador.focus();
       return;
     }
+    const menu = ev.target.closest('.menu-descarga-lista');
+    if (menu && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {   // flechas dentro del menú de descarga
+      ev.preventDefault();
+      const items = opcionesVisibles(menu);
+      items[(items.indexOf(ev.target) + (ev.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+      return;
+    }
     if (ev.key === 'Escape') {
-      if (detalle.classList.contains('abierto')) cerrarDetalle();
+      if ($$('.menu-descarga-lista').some(l => !l.hidden)) cerrarMenusDescarga(null, true);
+      else if (detalle.classList.contains('abierto')) cerrarDetalle();
       else if (estado.resaltado) { estado.resaltado = null; resaltar($(`#vista-${estado.vista} .panel`), null, false); }
       return;
     }

@@ -351,7 +351,48 @@ main { flex: 1; padding: 1.5rem var(--gutter) 3rem; outline: none; }
 }
 .cabecera-meta { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; color: var(--ink-2); font-size: var(--t-sm); margin-top: .35rem; }
 .cabecera-meta b { color: var(--ink); }
-.cabecera-acciones { display: flex; align-items: center; gap: .4rem; }
+.cabecera-acciones { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .4rem; }
+
+/* Menú de descarga de documentos (horarios en PDF/Word/Excel, distribución horaria docente) */
+.menu-descarga { position: relative; }
+.menu-descarga .menu-descarga-flecha { width: .85rem; height: .85rem; margin-left: -.1rem; transition: transform .15s; }
+.menu-descarga [aria-expanded="true"] .menu-descarga-flecha { transform: rotate(180deg); }
+.menu-descarga [aria-busy="true"] { cursor: progress; opacity: .6; }
+.menu-descarga-lista {
+  position: absolute; right: 0; top: calc(100% + .4rem); z-index: 40;
+  display: flex; flex-direction: column; min-width: 16rem; padding: .35rem;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow);
+}
+.menu-descarga-lista[hidden] { display: none; }
+.menu-descarga-titulo { padding: .35rem .6rem .3rem; font-size: var(--t-xs); color: var(--muted); }
+.menu-descarga-lista [role="menuitem"] {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1.25rem;
+  padding: .55rem .65rem; border: 0; border-radius: 8px; background: none; text-align: left;
+  font-family: var(--font-display); font-weight: 700; font-size: var(--t-sm); color: var(--ink);
+}
+.menu-descarga-lista [role="menuitem"]:hover, .menu-descarga-lista [role="menuitem"]:focus-visible { background: var(--accent-wash); }
+.menu-descarga-lista small { font-family: var(--font-body); font-weight: 400; font-size: var(--t-xs); color: var(--muted); }
+.aviso-descarga {
+  position: fixed; left: 50%; bottom: 1.25rem; transform: translateX(-50%); z-index: 70;
+  width: max-content; max-width: min(38rem, calc(100vw - 32px)); padding: .7rem 1rem;
+  border-radius: 10px; background: var(--ink); color: var(--on-ink); box-shadow: var(--shadow);
+  font-size: var(--t-sm); line-height: 1.4; overflow-wrap: anywhere;
+}
+.aviso-descarga[hidden] { display: none; }
+.aviso-descarga.error { background: var(--bad); color: oklch(0.99 0 0); }
+.menu-descarga-lista .solo-movil { display: none; }
+@media (max-width: 719px) {
+  /* En el celular el menú de Cursos es un ícono redondo (el texto sigue para lectores de pantalla) y
+     reemplaza al botón PDF de este curso, que pasa a ser la primera opción del menú */
+  #vista-cursos .menu-descarga-texto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  #vista-cursos .menu-descarga > .boton { width: 2.75rem; height: 2.75rem; padding: 0; justify-content: center; }
+  #vista-cursos .menu-descarga .menu-descarga-flecha { display: none; }
+  #vista-cursos .curso-barra .cabecera-acciones > [data-descargar-pdf] { display: none; }
+  .menu-descarga-lista .solo-movil { display: flex; }
+  /* El menú se abre como hoja al pie de la pantalla */
+  .menu-descarga-lista { position: fixed; left: 16px; right: 16px; top: auto; bottom: 16px; min-width: 0; z-index: 80; }
+  .menu-descarga-lista [role="menuitem"] { min-height: 2.75rem; align-items: center; }
+}
 
 .estadisticas { display: flex; flex-wrap: wrap; gap: .5rem 2rem; }
 .estadistica { display: flex; flex-direction: column; min-width: 5.5rem; }

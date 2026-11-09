@@ -1709,7 +1709,9 @@
         <div class="dev-acciones">
           <button type="button" class="boton boton-primario" data-dev="ver-resultado"${conDatos ? '' : ' disabled'}>${ICONOS.ojo}Ver en el visualizador</button>
           <button type="button" class="boton" data-dev="descargar-resultado"${conDatos ? '' : ' disabled'}>${ICONOS.bajar}Descargar datos (.js)</button>
-          ${conDatos ? '' : '<span class="dev-tenue">Vuelve a resolver para ver o descargar este horario.</span>'}
+          ${conDatos ? '' : `<span class="dev-tenue">Vuelve a resolver para ver o descargar este horario.</span>
+          <button type="button" class="boton" data-dev="resolver-de-nuevo"${R.ejecutando || SRV.estado !== 'conectado' ? ' disabled' : ''}
+                  title="${esc(`Resuelve otra vez con ${r.nombre}${r.semilla != null ? `, semilla ${r.semilla}` : ''} y la ${r.editada ? 'instancia editada' : NOMBRE_BASE}`)}">${ICONOS.play}Resolver</button>`}
         </div>
       </section>`;
   }
@@ -1785,6 +1787,24 @@
         }
       }
     }
+  }
+
+  // El horario de un resultado no se guarda al recargar la página: "Resolver" lo vuelve a calcular
+  // con la misma configuración (método, semilla, tiempo, solver e instancia) del resultado que se ve
+  function resolverDeNuevo() {
+    const r = R.resultado;
+    if (r) {
+      if (metodos().some(m => m.id === r.metodo)) R.metodo = r.metodo;
+      if (r.semilla != null) R.semilla = r.semilla;
+      if (r.tiempo_max) R.tiempo_max = r.tiempo_max;
+      if (r.max_pasos) R.max_pasos = r.max_pasos;
+      const solver = r.modelo && r.modelo.solver;
+      if (r.metodo === 'modelo' && solvers().includes(solver)) R.solver = solver;
+      if (r.metodo === 'modelo' && r.parametros && r.parametros.peso_ventanas != null) R.peso_ventanas = r.parametros.peso_ventanas;
+      R.usarBase = !r.editada;
+      guardarR();
+    }
+    resolverUno();
   }
 
   function verResultado() {
@@ -2330,6 +2350,7 @@
       case 'quitar-grupo': { const [nivel, k, i] = idGrupo(b.dataset.id); aplicar('quitarGrupo', nivel, k, i); break; }
       case 'franjas-fijas': aplicar('franjasFijas', INST.franjas_fijas === false); break;
       case 'resolver': resolverUno(); break;
+      case 'resolver-de-nuevo': resolverDeNuevo(); break;
       case 'ver-resultado': verResultado(); break;
       case 'descargar-resultado': descargarResultado(); break;
       case 'limpiar-ejecuciones':

@@ -16,6 +16,10 @@ desarrollador): dotación docente, asignación profesor-curso y electivos.
   POST /api/resolver    Resuelve una instancia con el método pedido y retorna tiempos,
                         función objetivo, auditoría y, si se pide, el horario completo
                         con el mismo formato que datos/horarios_<año>.js.
+  POST /api/exportar    Documentos del horario que muestra la página (2026, 2027 o un resultado):
+                        horarios de los cursos en PDF, Word o Excel (formato HORARIO CURSOS
+                        2026) y distribución horaria docente en PDF o Word (formato del Word
+                        2026). En local también los guarda en Outputs/ con un nombre único.
 
 La instancia editada se aplica sobre DatosColegio solo mientras dura cada resolución
 (y una a la vez), así que el motor, el validador y el exportador trabajan sin cambios.
@@ -37,6 +41,7 @@ Requiere lo mismo que el motor; el modelo matemático, además, OR-Tools (pip in
 import argparse
 import copy
 import inspect
+import io
 import json
 import os
 import random
@@ -55,11 +60,12 @@ sys.path.insert(0, os.path.join(RAIZ, 'notebooks'))
 sys.path.insert(0, AQUI)
 
 import exportar_datos as EX  # noqa: E402  (también deja 'notebooks' en sys.path)
-from horarios import (DatosColegio as D, METAHEURISTICAS, MotorHorarios,  # noqa: E402
-                      ValidadorRestricciones, crear_metaheuristica)
+from horarios import (DatosColegio as D, ExportadorExcel, HorarioEscolar, METAHEURISTICAS,  # noqa: E402
+                      MotorHorarios, ValidadorRestricciones, crear_metaheuristica)
+from horarios.salidas import documentos as DOC  # noqa: E402
 
 PUERTO = 8765
-MAX_CUERPO = 2 * 1024 * 1024        # bytes de una petición
+MAX_CUERPO = 4 * 1024 * 1024        # bytes de una petición (el horario completo pesa ≈ 0,5 MB)
 EN_VERCEL = bool(os.environ.get('VERCEL'))   # funciones de api/ desplegadas en Vercel (ver vercel.json)
 # Segundos máximos que acepta una resolución. En Vercel la función se corta a los 300 s
 # (plan Hobby), así que se deja margen para armar el modelo y enviar la respuesta.
@@ -181,8 +187,10 @@ def estado_api():
 # -----------------------------------------------------------------------------
 # Instancia editable
 # -----------------------------------------------------------------------------
+# JORNADAS y ANIO_HORARIO no se editan, pero la exportación los ajusta al horario que recibe
+# (el 2026 tiene las jornadas del Excel) y así también vuelven a su valor al terminar
 CAMPOS = ('DEPARTAMENTOS', 'PROFESORES_JEFES', 'FRANJAS_ELECTIVOS', 'ELECTIVOS_OFERTA',
-          'HORAS_NO_LECTIVAS', 'FRANJAS_FIJAS', '_malla_cache')
+          'HORAS_NO_LECTIVAS', 'FRANJAS_FIJAS', '_malla_cache', 'JORNADAS', 'ANIO_HORARIO')
 D.get_malla_curricular()   # llena la caché para copiarla
 ORIGINAL = {k: copy.deepcopy(getattr(D, k)) for k in CAMPOS}
 SALAS = [nombre for nombre, tipo, _ in EX.ESPACIOS if tipo == 'sala']
@@ -315,6 +323,9 @@ def convertir_instancia(inst):
             franjas[nivel].append({'periodos': copy.deepcopy(franja['periodos']),
                                    'etiquetas': copy.deepcopy(franja['etiquetas']),
                                    'grupos': nuevos})
+        # Los electivos que ya existían conservan el orden de la tabla de horas original; los nuevos van al final
+        orden = ORIGINAL['ELECTIVOS_OFERTA'].get(nivel, [])
+        oferta[nivel].sort(key=lambda a: orden.index(a) if a in orden else len(orden))
 
     # Filas de las franjas en la malla de 3° y 4° medio (como en get_malla_curricular)
     for nivel, lista in franjas.items():
@@ -637,6 +648,153 @@ def verificar_factibilidad(cuerpo):
 
 
 # -----------------------------------------------------------------------------
+# Documentos para descargar (horarios en PDF, Word o Excel; distribución horaria docente)
+# -----------------------------------------------------------------------------
+# Escudo de los documentos cuando el Excel oficial no está (en Vercel el motor viene como paquete)
+ExportadorExcel.RUTAS_ESCUDO.append(os.path.join(AQUI, 'assets', 'escudo.png'))
+
+SALIDAS = os.path.join(RAIZ, 'Outputs')   # en local cada documento queda guardado aquí
+FORMATOS = {
+    'pdf': 'application/pdf',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+}
+DOCUMENTOS = {
+    'horarios': {'carpeta': 'Horarios', 'prefijo': 'Horarios', 'formatos': ('pdf', 'docx', 'xlsx')},
+    'distribucion': {'carpeta': 'Distribucion Horaria Docente', 'prefijo': 'Distribucion_Horaria_Docente',
+                     'formatos': ('pdf', 'docx')},
+}
+
+
+def _slug(texto, largo=60):
+    """'Gurobi · editada' -> 'Gurobi_editada' (solo letras ASCII, números, '-' y '_')."""
+    import unicodedata
+    texto = unicodedata.normalize('NFKD', str(texto or '')).encode('ascii', 'ignore').decode()
+    limpio = ''.join(c if c.isalnum() or c in '-_' else '_' for c in texto)
+    return '_'.join(p for p in limpio.split('_') if p)[:largo].strip('_-')
+
+
+def nombre_unico(documento, anio, descripcion, formato):
+    """Horarios_2027_Gurobi_editada_20261108-213512.pdf; si ya existe en Outputs, agrega _2, _3, …"""
+    d = DOCUMENTOS[documento]
+    partes = [d['prefijo'], str(anio), _slug(descripcion), time.strftime('%Y%m%d-%H%M%S')]
+    base = '_'.join(p for p in partes if p)
+    carpeta = os.path.join(SALIDAS, d['carpeta'])
+    nombre, n = f'{base}.{formato}', 2
+    while os.path.exists(os.path.join(carpeta, nombre)):
+        nombre, n = f'{base}_{n}.{formato}', n + 1
+    return nombre
+
+
+def instancia_de_datos(datos):
+    """La instancia (formato de la página) con que se armó un horario de datos/horarios_<año>.js."""
+    cursos = {c.get('id'): c for c in datos.get('cursos') or [] if isinstance(c, dict)}
+    faltan = [c for c in D.todos_los_cursos() if c not in cursos]
+    if faltan:
+        raise ErrorInstancia(f'Al horario le faltan cursos: {", ".join(faltan[:3])}')
+    return {
+        'version': 1,
+        'docentes': [{'nombre': d.get('nombre'), 'departamento': d.get('departamentoCompleto'),
+                      'original': d.get('nombre')} for d in datos.get('docentes') or []],
+        'jefes': {c: cursos[c].get('jefe') for c in D.CURSOS},
+        'malla': {c: [{'asignatura': f.get('asignatura'), 'horas': f.get('horas'), 'docentes': f.get('docentes'),
+                       'espacio': f.get('espacio')}
+                      for f in cursos[c].get('malla') or [] if not str(f.get('asignatura')).startswith('Formación Diferenciada')]
+                  for c in D.todos_los_cursos()},
+        'franjas': {nivel: [{'grupos': f.get('grupos')} for f in lista]
+                    for nivel, lista in (datos.get('franjas') or {}).items()},
+    }
+
+
+def horario_de_datos(datos):
+    """
+    Reconstruye el HorarioEscolar de datos/horarios_<año>.js (o de un resultado del solver), con la
+    instancia de esos datos ya aplicada sobre DatosColegio (ver horario_aplicado).
+    """
+    # Bloques de las franjas tal como quedaron en el horario (con franjas móviles los eligió el solver)
+    for nivel, lista in (datos.get('franjas') or {}).items():
+        for k, f in enumerate(lista):
+            periodos = [(p.get('dia'), int(p.get('bloque'))) for p in f.get('periodos') or []]
+            if nivel in D.FRANJAS_ELECTIVOS and k < len(D.FRANJAS_ELECTIVOS[nivel]) and periodos:
+                D.FRANJAS_ELECTIVOS[nivel][k]['periodos'] = periodos
+    horario = HorarioEscolar()
+    for c in datos['cursos']:
+        curso = c['id']
+        if isinstance(c.get('jornada'), list) and len(c['jornada']) == len(D.DIAS):
+            D.JORNADAS[curso] = tuple(int(x) for x in c['jornada'])
+        nivel = D.nivel(curso)
+        for k in c.get('clases') or []:
+            dia, b = k.get('dia'), k.get('bloque')
+            if dia not in D.DIAS or not isinstance(b, int) or not 1 <= b <= len(D.HORARIOS_BLOQUES):
+                raise ErrorInstancia(f'{curso}: clase con día o bloque inválido ({dia}, {b})')
+            docentes = tuple(k.get('docentes') or ())
+            franja = k.get('franja')
+            if franja:
+                grupos = D.FRANJAS_ELECTIVOS[nivel][int(franja) - 1]['grupos']
+                detalle = {doc: (et, sala, f'{asig.capitalize()} ({seccion})') for asig, seccion, doc, sala, et in grupos}
+                horario.asignar(curso, dia, b, k.get('asignatura'), docentes, k.get('espacio') or 'Salas electivos',
+                                etiqueta=k.get('etiqueta'), clave=f'{nivel} A-B', detalle=detalle)
+            else:
+                horario.asignar(curso, dia, b, k.get('asignatura'), docentes, k.get('espacio') or 'Aula',
+                                etiqueta=k.get('etiqueta'))
+    # Gimnasio de cada clase de Ed. Física como en los datos (el 2026 sigue la hoja GIMNASIOS del Excel)
+    recintos = defaultdict(list)
+    for e in datos.get('espacios') or []:
+        if e.get('nombre') in D.RECINTOS_DEPORTIVOS:
+            for u in e.get('usos') or []:
+                for item in u.get('items') or []:
+                    if item.get('curso'):
+                        recintos[(e['nombre'], u.get('dia'), u.get('bloque'))].append(item['curso'])
+    if recintos:
+        horario.asignar_recintos = lambda: dict(recintos)
+    return horario
+
+
+def exportar(cuerpo):
+    """
+    Arma el documento pedido a partir del horario que muestra la página ('datos', con el formato
+    de datos/horarios_<año>.js). Retorna (bytes, nombre de archivo, tipo MIME, ruta guardada o None).
+    """
+    documento, formato = cuerpo.get('documento'), cuerpo.get('formato')
+    if documento not in DOCUMENTOS:
+        raise ErrorInstancia(f'Documento desconocido: {documento}')
+    if formato not in DOCUMENTOS[documento]['formatos']:
+        raise ErrorInstancia(f'Formato no disponible para este documento: {formato}')
+    datos = cuerpo.get('datos')
+    if not isinstance(datos, dict):
+        raise ErrorInstancia('Falta el horario (datos)')
+    anio = _numero((datos.get('meta') or {}).get('anio'), D.ANIO_HORARIO, 2000, 2100, entero=True)
+    descripcion = cuerpo.get('descripcion') or ''
+
+    if documento == 'distribucion':
+        departamentos = DOC.distribucion_desde_datos(datos.get('docentes') or [])
+        if not departamentos:
+            raise ErrorInstancia('El horario no trae la distribución de los docentes')
+        contenido = (DOC.distribucion_pdf if formato == 'pdf' else DOC.distribucion_docx)(departamentos, anio)
+    else:
+        with instancia_aplicada(instancia_de_datos(datos)):
+            D.ANIO_HORARIO = anio
+            horario = horario_de_datos(datos)
+            if formato == 'xlsx':
+                salida = io.BytesIO()
+                ExportadorExcel.libro_cursos(horario).save(salida)
+                contenido = salida.getvalue()
+            else:
+                paginas = DOC.paginas_cursos(horario)
+                contenido = (DOC.horarios_pdf if formato == 'pdf' else DOC.horarios_docx)(paginas, anio, descripcion)
+
+    nombre = nombre_unico(documento, anio, descripcion, formato)
+    guardado = None
+    if not EN_VERCEL:   # en Vercel el disco es efímero: solo se descarga
+        carpeta = os.path.join(SALIDAS, DOCUMENTOS[documento]['carpeta'])
+        os.makedirs(carpeta, exist_ok=True)
+        with open(os.path.join(carpeta, nombre), 'wb') as f:
+            f.write(contenido)
+        guardado = os.path.relpath(os.path.join(carpeta, nombre), RAIZ).replace(os.sep, '/')
+    return contenido, nombre, FORMATOS[formato], guardado
+
+
+# -----------------------------------------------------------------------------
 # Servidor HTTP
 # -----------------------------------------------------------------------------
 class APIMixin:
@@ -664,7 +822,22 @@ class APIMixin:
         origen = self.headers.get('Origin')
         if origen and origen in self.permitidos:
             self.send_header('Access-Control-Allow-Origin', origen)
+            self.send_header('Access-Control-Expose-Headers', 'X-Archivo, X-Guardado')
             self.send_header('Vary', 'Origin')
+
+    def _archivo(self, contenido, nombre, tipo, guardado):
+        """Documento para descargar; X-Archivo y X-Guardado (ruta en Outputs) van codificados como URL."""
+        from urllib.parse import quote
+        self.send_response(200)
+        self.send_header('Content-Type', tipo)
+        self.send_header('Content-Length', str(len(contenido)))
+        self.send_header('Content-Disposition', f"attachment; filename*=UTF-8''{quote(nombre)}")
+        self.send_header('X-Archivo', quote(nombre))
+        if guardado:
+            self.send_header('X-Guardado', quote(guardado))
+        self._cors()
+        self.end_headers()
+        self.wfile.write(contenido)
 
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store')
@@ -707,7 +880,7 @@ class APIMixin:
         if not self._origen_valido():
             self._json(403, {'ok': False, 'error': 'Origen no permitido'})
             return
-        if ruta not in ('/api/resolver', '/api/factibilidad'):
+        if ruta not in ('/api/resolver', '/api/factibilidad', '/api/exportar'):
             self._json(404, {'ok': False, 'error': 'Ruta desconocida'})
             return
         # Exigir JSON obliga a los sitios de otro origen a pasar por la verificación CORS
@@ -721,6 +894,12 @@ class APIMixin:
         try:
             cuerpo = json.loads(self.rfile.read(largo) or b'{}')
             t0 = time.perf_counter()
+            if ruta == '/api/exportar':
+                contenido, nombre, tipo, guardado = exportar(cuerpo)
+                print(f"  Documento {nombre} ({len(contenido) // 1024} KB, {(time.perf_counter() - t0):.2f} s)"
+                      f"{f' guardado en {guardado}' if guardado else ''}", flush=True)
+                self._archivo(contenido, nombre, tipo, guardado)
+                return
             if ruta == '/api/factibilidad':
                 respuesta = verificar_factibilidad(cuerpo)
                 print(f"  Factibilidad ({respuesta['solver']}): {respuesta['factible']}  "

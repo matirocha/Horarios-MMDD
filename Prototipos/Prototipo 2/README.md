@@ -72,6 +72,23 @@ completo), `datos/resumen_<año>.js` (lo que muestra la tarjeta del menú) y `as
   de la CDN al pedir el primero: sin conexión, usa Imprimir y elige *Guardar como PDF*.
 - Si el equipo está en horario de clases se marcan el día de hoy y el bloque en curso.
 
+### Descargar documentos
+
+Los documentos son del horario que se está viendo: el oficial 2026, el generado 2027 o un resultado
+del solver abierto con *Ver en el visualizador*.
+
+| Dónde | Botón | Formatos |
+| :--- | :--- | :--- |
+| Cursos | **Descargar horarios** | PDF y Word (una página por curso, con el diseño de las hojas del Excel 2026) y Excel con el formato de `data/Data 2026/HORARIO CURSOS 2026.xlsx` (salas de electivos, gimnasios, una hoja por curso y auditoría). |
+| Docentes | **Descargar Distribución Horaria Docente** | PDF y Word con el formato de `data/Data 2026/DISTRIBUCIÓN HORARIA 2026.docx`: una tabla por departamento con profesor, cursos, n° de horas, asignatura y horas lectivas; jefaturas en celeste y English skills en verde. |
+
+Los arma el servidor (`/api/exportar`), así que necesitan `servidor.py` o la página en Vercel. Con
+`servidor.py` cada documento además queda guardado en `Outputs/Horarios/` o
+`Outputs/Distribucion Horaria Docente/` (en la raíz del repositorio) con un nombre único que dice qué
+horario es y cuándo se generó, para comparar instancias, por ejemplo
+`Horarios_2027_Modelo_matematico_GUROBI_editada_20261108-215602.pdf`. En Vercel solo se descargan.
+En el celular el botón PDF de un curso pasa a ser la primera opción del menú de descarga.
+
 ## Modo desarrollador
 
 El botón `</>` de la barra superior activa el modo desarrollador para los dos horarios (se recuerda
@@ -90,7 +107,7 @@ entre visitas). Con el modo activo:
 | **Docentes** | Agregar, renombrar, cambiar de departamento y quitar docentes. Al quitar uno se elige quién se queda con sus clases, jefaturas y electivos. Muestra la carga en grilla de cada docente frente a los 42 bloques de la semana. |
 | **Asignación** | Por curso, quién dicta cada asignatura (dos docentes en la co-docencia) y el profesor/a jefe; la Orientación sigue a la jefatura. Las horas y jornadas no se editan. |
 | **Electivos** | Nombre, sección, docente y sala de cada electivo de las 3 franjas de 3° y 4° medio; agregar o quitar electivos. No deja poner a un docente en dos electivos de la misma franja. El interruptor **Franjas de electivos fijas** decide si las franjas quedan en los bloques del Excel 2026 (encendido, como en la base) o si el solver elige sus 3 bloques dobles (apagado: días distintos y los mismos para A y B). |
-| **Resolver** | Resuelve la instancia base o la editada con el método elegido: la heurística Voraz + Min-Conflicts, las metaheurísticas búsqueda tabú, búsqueda local iterada y Min-Conflicts + tabú (con sus parámetros) o el modelo matemático (**Gurobi** por defecto; también CP-SAT, HiGHS, SCIP o CBC). Explica qué hace cada método. Con franjas móviles muestra los bloques que eligió el solver. Muestra f(x) inicial y final, tiempos por fase, convergencia y la auditoría, y permite **ver el resultado en el visualizador** (solo en esa pestaña del navegador) o descargarlo con el formato de `datos/horarios_<año>.js`. |
+| **Resolver** | Resuelve la instancia base o la editada con el método elegido: la heurística Voraz + Min-Conflicts, las metaheurísticas búsqueda tabú, búsqueda local iterada y Min-Conflicts + tabú (con sus parámetros) o el modelo matemático (**Gurobi** por defecto; también CP-SAT, HiGHS, SCIP o CBC). Explica qué hace cada método. Con franjas móviles muestra los bloques que eligió el solver. Muestra f(x) inicial y final, tiempos por fase, convergencia y la auditoría, y permite **ver el resultado en el visualizador** (solo en esa pestaña del navegador; desde ahí se descargan sus documentos) o descargarlo con el formato de `datos/horarios_<año>.js`. Al recargar la página el resultado conserva sus números pero no el horario: el botón **Resolver**, junto al aviso, lo vuelve a calcular con la misma configuración. |
 | **Comparar** | Ejecuta los métodos elegidos con varias semillas y el mismo presupuesto (el modelo se repite tantas veces como semillas) y compara factibilidad, f(x) inicial y final, tiempo de ejecución (mediana, media ± desviación, hasta factible), pasos, ventanas y % de bloques dobles. Incluye gráficos de tiempos, función objetivo y convergencia, y descarga en CSV. |
 
 Los docentes, departamentos, salas y cursos se eligen con un selector emergente (fichas agrupadas,
@@ -138,9 +155,9 @@ cual, sin paso de build, y las funciones viven en `api/`.
 
 | Archivo | Para qué |
 | :--- | :--- |
-| `vercel.json` | Configura las funciones (300 s máximo; sin datos ni archivos de la página en su paquete). |
-| `api/estado.py`, `api/instancia.py`, `api/resolver.py`, `api/factibilidad.py` | Las rutas de la API, con la misma lógica de `servidor.py` (`ManejadorVercel`). |
-| `pyproject.toml` | Dependencias de las funciones: OR-Tools, gurobipy y el motor de `notebooks/`, instalado como paquete. |
+| `vercel.json` | Configura las funciones (300 s máximo; sin datos ni archivos de la página en su paquete, salvo el escudo de los documentos). |
+| `api/estado.py`, `api/instancia.py`, `api/resolver.py`, `api/factibilidad.py`, `api/exportar.py` | Las rutas de la API, con la misma lógica de `servidor.py` (`ManejadorVercel`). |
+| `pyproject.toml` | Dependencias de las funciones: OR-Tools, gurobipy, openpyxl, python-docx, reportlab y Pillow (documentos) y el motor de `notebooks/`, instalado como paquete. |
 | `../../notebooks/pyproject.toml` | Empaqueta el motor (`horarios`, `generador_horarios`, `modelo_matematico`). |
 
 **Por qué el motor va como paquete:** durante el build Vercel tiene todo el repositorio, pero el
@@ -193,9 +210,9 @@ Prototipo 2/
 ├── datos/resumen_<año>.js   # Resumen de cada año para las tarjetas del menú
 ├── assets/escudo.png        # Escudo del colegio
 ├── exportar_datos.py        # Lee el Excel 2026, ejecuta el motor (2027) y exporta los datos
-├── servidor.py              # Servidor local del modo desarrollador (página + API del solver)
-├── api/                     # Funciones de Vercel: estado, instancia y resolver
-├── pyproject.toml           # Dependencias de las funciones de Vercel (OR-Tools + motor)
+├── servidor.py              # Servidor local del modo desarrollador (página + API del solver y documentos)
+├── api/                     # Funciones de Vercel: estado, instancia, resolver, factibilidad y exportar
+├── pyproject.toml           # Dependencias de las funciones de Vercel (OR-Tools, Gurobi, documentos + motor)
 └── vercel.json              # Configuración de las funciones de Vercel
 ```
 

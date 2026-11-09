@@ -15,6 +15,7 @@ dependencies = []   # el motor solo usa la biblioteca estándar
 [project.optional-dependencies]
 modelo = ["ortools"]     # modelo_matematico.py
 excel = ["openpyxl"]     # libros Excel de horarios/salidas/exportador_excel.py
+documentos = ["python-docx", "reportlab", "pillow"]   # Word y PDF de horarios/salidas/documentos.py
 
 [tool.setuptools]
 packages = ["horarios", "horarios.heuristicas", "horarios.metaheuristicas", "horarios.salidas"]

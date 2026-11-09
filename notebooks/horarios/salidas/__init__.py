@@ -5,6 +5,7 @@ Salidas: todo lo que trabaja sobre el horario ya generado.
   horario.py            HorarioEscolar: estructura del horario final (cursos, docentes, recintos).
   validador.py          ValidadorRestricciones: auditoría independiente de las restricciones.
   exportador_excel.py   ExportadorExcel: libros .xlsx con el diseño oficial 2026.
+  documentos.py         Horarios y distribución horaria docente en Word (.docx) y PDF.
   menu.py               MenuInteractivo: consola para consultar horarios y exportar.
 """
 

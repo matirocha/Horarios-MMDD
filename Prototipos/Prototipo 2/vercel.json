@@ -4,7 +4,7 @@
   "functions": {
     "api/*.py": {
       "maxDuration": 300,
-      "excludeFiles": "{datos/**,assets/**,css/**,js/**,index.html,README.md}"
+      "excludeFiles": "{datos/**,css/**,js/**,index.html,README.md}"
     }
   }
 }
