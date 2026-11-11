@@ -3,12 +3,11 @@
 Fase de mejora: clases base y medición del tiempo de ejecución.
 
   MetodoMejora    base de todo método que mejora una solución completa.
-  Metaheuristica  base de las metaheurísticas (metaheuristicas/).
+  Metaheuristica  base de las metaheurísticas (metaheuristicas/: ILS e ITS).
   Seguimiento     cronómetro y memoria de la mejor solución de cada búsqueda.
 
-La heurística Min-Conflicts (heuristicas/min_conflicts.py) hereda de MetodoMejora y
-cada metaheurística de Metaheuristica. La clase base se encarga de lo que debe medirse
-igual en todos los métodos para poder compararlos:
+Cada metaheurística hereda de Metaheuristica. La clase base se encarga de lo que debe
+medirse igual en todos los métodos para poder compararlos:
 
   - el cronómetro de la búsqueda y el límite de tiempo opcional ('tiempo_max');
   - la mejor solución encontrada (costo y posiciones) y su restauración al final;
@@ -82,14 +81,15 @@ class MetodoMejora:
     y lo modifica en el lugar para bajar su costo (modelo.costo, ver modelo.py).
 
     Para moverse puede usar modelo.vecinos(sid), modelo.mover(curso, mapa) y
-    modelo.restaurar(posiciones), y los operadores de heuristicas/min_conflicts.py.
+    modelo.restaurar(posiciones), y los operadores de metaheuristicas/vecindario.py.
 
     Criterios de parada comunes: costo 0 (óptimo: no hay nada que mejorar),
     'max_pasos' pasos o 'tiempo_max' segundos (None = sin límite de tiempo).
     """
 
     nombre = None
-    tipo = None   # 'heurística' o 'metaheurística'
+    titulo = None   # nombre legible (p. ej. 'Búsqueda tabú iterada (ITS)')
+    tipo = None     # 'metaheurística'
 
     def __init__(self, max_pasos=150000, tiempo_max=None):
         self.max_pasos = max_pasos
@@ -123,7 +123,8 @@ class MetodoMejora:
 
 class Metaheuristica(MetodoMejora):
     """
-    Método de mejora que guía a la búsqueda local para escapar de óptimos locales.
+    Método de mejora que guía a una búsqueda local para escapar de óptimos locales
+    (ILS con perturbaciones; ITS además con memoria tabú).
     Para crear una nueva, ver las instrucciones en metaheuristicas/__init__.py.
     """
 

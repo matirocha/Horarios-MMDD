@@ -61,7 +61,7 @@ sys.path.insert(0, AQUI)
 
 import exportar_datos as EX  # noqa: E402  (también deja 'notebooks' en sys.path)
 from horarios import (DatosColegio as D, ExportadorExcel, HorarioEscolar, METAHEURISTICAS,  # noqa: E402
-                      MotorHorarios, ValidadorRestricciones, crear_metaheuristica)
+                      POR_DEFECTO, MotorHorarios, ValidadorRestricciones, crear_metaheuristica)
 from horarios.salidas import documentos as DOC  # noqa: E402
 
 PUERTO = 8765
@@ -77,32 +77,26 @@ CANDADO = threading.Lock()          # una resolución a la vez (DatosColegio es 
 # -----------------------------------------------------------------------------
 
 
-# La construcción voraz no aparece sola: es el primer paso de la heurística Voraz + Min-Conflicts
-# (y la solución inicial de las metaheurísticas)
+# Las dos metaheurísticas parten de la heurística constructiva voraz (solución inicial), usan el
+# mismo vecindario y la misma perturbación, y se diferencian en su búsqueda local
 METODOS = [
-    {'id': 'min_conflicts', 'nombre': 'Voraz + Min-Conflicts', 'tipo': 'heurística',
-     'descripcion': 'Arma el horario con la construcción voraz y lo repara con Min-Conflicts, aceptando solo '
-                    'intercambios que no empeoran. Puede quedar en un óptimo local.'},
-    {'id': 'busqueda_tabu', 'nombre': 'Búsqueda tabú', 'tipo': 'metaheurística',
-     'descripcion': 'Aplica el mejor intercambio admisible aunque empeore, con lista tabú y criterio de aspiración.'},
-    {'id': 'busqueda_local_iterada', 'nombre': 'Búsqueda local iterada', 'tipo': 'metaheurística',
-     'descripcion': 'ILS: descenso Min-Conflicts y perturbaciones desde la mejor solución encontrada.'},
-    {'id': 'min_conflicts_tabu', 'nombre': 'Min-Conflicts + tabú', 'tipo': 'metaheurística',
-     'descripcion': 'Híbrido del proyecto (método por defecto): tabú, ruido aleatorio y reinicios ILS.'},
+    {'id': 'ils', 'nombre': 'Búsqueda local iterada (ILS)', 'tipo': 'metaheurística',
+     'descripcion': 'Construcción voraz y luego: descenso de mayor pendiente hasta un óptimo local, perturbación '
+                    '(intercambios al azar) y aceptación de la nueva solución si no es peor.'},
+    {'id': 'its', 'nombre': 'Búsqueda tabú iterada (ITS)', 'tipo': 'metaheurística',
+     'descripcion': 'Construcción voraz y luego: búsqueda tabú (acepta el mejor intercambio admisible aunque '
+                    'empeore, con lista tabú y aspiración), perturbación y aceptación. Método por defecto.'},
     {'id': 'modelo', 'nombre': 'Modelo matemático', 'tipo': 'modelo exacto',
      'descripcion': 'Programación lineal entera (Gurobi u OR-Tools): las restricciones duras van como restricciones.'},
 ]
 IDS_METODOS = {m['id'] for m in METODOS}
 
 AYUDA_PARAMETROS = {
-    'max_sin_mejora': 'Pasos sin mejorar antes de declarar un óptimo local',
+    'perturbaciones': 'Intercambios al azar de cada perturbación (k)',
+    'laterales': 'Movimientos laterales seguidos (sin cambiar f(x)) que admite el descenso',
     'tabu_min': 'Permanencia mínima de un movimiento en la lista tabú (pasos)',
     'tabu_rango': 'Rango aleatorio que se suma a la permanencia tabú',
-    'parada_factible': 'Pasos sin mejora para detenerse si ya es factible',
-    'largo_busqueda_local': 'Pasos sin mejora que cierran cada búsqueda local',
-    'perturbaciones': 'Intercambios al azar de cada perturbación',
-    'prob_ruido': 'Probabilidad de aplicar un intercambio al azar (0 a 1)',
-    'reinicio': 'Pasos sin mejora antes de volver a la mejor solución y perturbarla',
+    'largo_tabu': 'Pasos sin mejora que cierran cada búsqueda tabú (luego se perturba)',
 }
 
 # GUROBI se usa con gurobipy (modelo_matematico.SolverGurobi), nunca a través de OR-Tools: con una
@@ -114,11 +108,12 @@ _gurobi = None
 
 
 def parametros_de(clase):
-    """Parámetros propios del constructor de un método (sin max_pasos ni tiempo_max)."""
+    """Parámetros numéricos propios del constructor de un método (sin max_pasos ni tiempo_max)."""
     firma = inspect.signature(clase.__init__)
     return [{'nombre': n, 'defecto': p.default, 'ayuda': AYUDA_PARAMETROS.get(n, '')}
             for n, p in firma.parameters.items()
-            if n not in ('self', 'max_pasos', 'tiempo_max') and p.default is not inspect.Parameter.empty]
+            if n not in ('self', 'max_pasos', 'tiempo_max') and isinstance(p.default, (int, float))
+            and not isinstance(p.default, bool)]
 
 
 def estado_gurobi():
@@ -178,7 +173,7 @@ def estado_api():
     for m in METODOS:
         clase = METAHEURISTICAS.get(m['id'])
         metodos.append({**m, 'parametros': parametros_de(clase) if clase else [],
-                        'defecto': m['id'] == 'min_conflicts_tabu'})
+                        'defecto': m['id'] == POR_DEFECTO})
     return {'ok': True, 'version': 2, 'metodos': metodos, **solvers_disponibles(),
             'python': sys.version.split()[0], 'entorno': 'vercel' if EN_VERCEL else 'local',
             'tiempo_max_tope': TIEMPO_MAX_TOPE}
@@ -465,7 +460,7 @@ def resolver_modelo(solver, tiempo_max, peso_ventanas, hilos):
 
 
 def resolver(cuerpo):
-    metodo = cuerpo.get('metodo') or 'min_conflicts_tabu'
+    metodo = cuerpo.get('metodo') or POR_DEFECTO
     if metodo not in IDS_METODOS:
         raise ErrorInstancia(f'Método desconocido: {metodo}')
     semilla = _numero(cuerpo.get('semilla'), 3, 0, 2 ** 31 - 1, entero=True)

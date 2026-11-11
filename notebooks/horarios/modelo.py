@@ -3,8 +3,8 @@
 Modelo de sesiones del horario y función objetivo (costo incremental).
 
 Es el estado compartido sobre el que trabajan la solución inicial
-(heuristicas/construccion_voraz.py) y los métodos de mejora (heuristicas/min_conflicts.py
-y metaheuristicas/). Cada curso se descompone en sesiones (bloques dobles de 90 min o
+(heuristicas/construccion_voraz.py) y las metaheurísticas de mejora (metaheuristicas/:
+ILS e ITS). Cada curso se descompone en sesiones (bloques dobles de 90 min o
 simples de 45 min). Los dobles ocupan siempre un par pedagógico (1-2, 3-4, 5-6, 7-8, 9-10),
 por lo que nunca cruzan un recreo, y la jornada de cada curso queda completa sin huecos.
 Las franjas de electivos son sesiones compartidas por las secciones A y B: fijas en sus

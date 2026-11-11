@@ -313,19 +313,18 @@ Horarios-MMDD/
 │       └── DISTRIBUCIÓN HORARIA 2026.docx      # Dotación docente y asignación profesor-curso
 ├── notebooks/                                  # Código Python (guía de cada archivo en notebooks/README.md)
 │   ├── generador_horarios.py                   # Punto de entrada: genera el horario, Excel y consola
-│   ├── comparar_metaheuristicas.py             # Compara tiempos y resultados de los métodos de mejora
+│   ├── comparar_metaheuristicas.py             # Compara horarios y tiempos de ILS e ITS
 │   ├── modelo_matematico.py                    # Modelo de programación entera (OR-Tools: CP-SAT, SCIP...)
 │   ├── horarios/                               # Paquete con el código del motor, por fases
 │   │   ├── datos.py                            # 1. DatosColegio: parámetros y mallas 2026
 │   │   ├── modelo.py                           # 2. ModeloHorario: sesiones y función objetivo (costo incremental)
-│   │   ├── heuristicas/                        # 3. Heurísticas
-│   │   │   ├── construccion_voraz.py           #    Heurística constructiva voraz: solución inicial
-│   │   │   └── min_conflicts.py                #    Heurística Min-Conflicts: operadores de búsqueda local
-│   │   ├── mejora.py                           # 4. Clases base de los métodos de mejora y medición de tiempos
+│   │   ├── heuristicas/                        # 3. Heurística constructiva
+│   │   │   └── construccion_voraz.py           #    Construcción voraz: solución inicial
+│   │   ├── mejora.py                           # 4. Clase base de las metaheurísticas y medición de tiempos
 │   │   ├── metaheuristicas/                    # 4. Metaheurísticas de mejora (una por archivo)
-│   │   │   ├── busqueda_tabu.py                #    Búsqueda tabú (lista tabú + aspiración)
+│   │   │   ├── vecindario.py                   #    Vecindario, evaluación y perturbación comunes
 │   │   │   ├── busqueda_local_iterada.py       #    Búsqueda local iterada (ILS)
-│   │   │   └── min_conflicts_tabu.py           #    Híbrido Min-Conflicts + tabú + ruido + reinicios (por defecto)
+│   │   │   └── busqueda_tabu_iterada.py        #    Búsqueda tabú iterada (ITS, por defecto)
 │   │   ├── motor.py                            # 5. MotorHorarios: encadena las fases y mide tiempos
 │   │   └── salidas/                            # 6. Trabajo sobre el horario ya generado
 │   │       ├── horario.py                      #    HorarioEscolar: estructura del horario final
@@ -358,28 +357,29 @@ flowchart LR
 
 1. **Recolección y Consolidación:** Verificación y cruce de datos oficiales con la contraparte del colegio (dotación definitiva, electivos y disponibilidad).
 2. **Formalización de Reglas:** Modelamiento formal del problema de programación entera / optimización combinatoria.
-3. **Diseño y Codificación:** Implementación de algoritmos heurísticos y metaheurísticos en Python (Búsqueda Local Iterada, Algoritmos Genéticos / ILS).
+3. **Diseño y Codificación:** Implementación en Python de una heurística constructiva y de dos metaheurísticas de mejora: Búsqueda Local Iterada (ILS) y Búsqueda Tabú Iterada (ITS).
 4. **Calibración y Ajuste:** Afinamiento de parámetros computacionales y ponderaciones de la función de aptitud frente a la escala combinatoria real.
 5. **Validación y Despliegue:** Contraste de horarios generados versus horarios manuales históricos y despliegue en la plataforma web interactiva.
 
 ### Motor actual (`MotorHorarios`)
-Cada fase está en su propio módulo de `notebooks/horarios/`: el modelo de sesiones en `modelo.py`, las heurísticas en `heuristicas/`, las metaheurísticas de mejora en `metaheuristicas/` (una por archivo) y la auditoría, los Excel y la consola en `salidas/`. La guía de cada archivo está en [`notebooks/README.md`](notebooks/README.md).
+Cada fase está en su propio módulo de `notebooks/horarios/`: el modelo de sesiones en `modelo.py`, la heurística constructiva en `heuristicas/`, las metaheurísticas de mejora en `metaheuristicas/` (una por archivo, con su vecindario común en `vecindario.py`) y la auditoría, los Excel y la consola en `salidas/`. La guía de cada archivo está en [`notebooks/README.md`](notebooks/README.md).
 
 1. **Modelo de sesiones:** cada asignatura se descompone en sesiones dobles (90 min, siempre dentro de un par pedagógico) y, si sus horas son impares, una sesión simple. Las franjas de electivos se fijan primero y se comparten entre A y B.
 2. **Construcción voraz:** se ubican primero las sesiones dobles y luego las simples, de la más restringida (co-docencia, docentes con mayor carga, Educación Física) a la menos restringida, en la posición de menor costo.
-3. **Método de mejora (por defecto, el híbrido `min_conflicts_tabu`):** se elige una restricción violada, una de sus sesiones y el mejor intercambio dentro del curso (par por par o bloque por bloque, lo que mantiene la jornada completa), con lista tabú, ruido aleatorio y reinicios desde la mejor solución encontrada.
+3. **Metaheurística de mejora: ILS o ITS (por defecto, ITS).** Las dos repiten el ciclo *búsqueda local → perturbación (k intercambios al azar) → aceptación (la nueva solución reemplaza a la actual si no es peor)* hasta $f(x) = 0$ o el límite de tiempo. Usan el mismo vecindario: todos los intercambios dentro del curso (par por par o bloque por bloque, lo que mantiene la jornada completa) de las sesiones que participan en alguna violación. Se evalúa completo en cada paso. Solo cambia la búsqueda local:
+   * **ILS:** descenso de mayor pendiente; aplica el mejor intercambio mientras baje $f(x)$, con algunos movimientos laterales, y se detiene en el primer óptimo local.
+   * **ITS:** búsqueda tabú; aplica el mejor intercambio admisible aunque empeore $f(x)$, con lista tabú de permanencia aleatoria y criterio de aspiración, hasta varios pasos sin mejora.
 
-Con la semilla por defecto (`--seed 3`) el motor obtiene en menos de un segundo un horario con **936/936 bloques asignados, 0 violaciones duras, 92% de las horas en bloques dobles y 130 bloques de ventana docente**.
+Hasta noviembre de 2026 la mejora usaba la heurística Min-Conflicts (una sesión en conflicto al azar por paso) con tabú, ruido y reinicios. Con ese método se generaron las instancias 2027 del 6 de octubre y del 3 de noviembre, que el Prototipo 2 sigue mostrando.
 
 #### Heurísticas y metaheurísticas identificadas
 
 | Archivo (`notebooks/horarios/`) | Tipo | Técnica |
 | :--- | :--- | :--- |
 | `heuristicas/construccion_voraz.py` | Heurística constructiva | Ubica cada sesión, de la más a la menos restringida, en la posición de menor costo. Genera la solución inicial. |
-| `heuristicas/min_conflicts.py` | Heurística de mejora (búsqueda local) | **Min-Conflicts**: elige una restricción violada, una de sus sesiones y el intercambio que deja menos conflictos. Sola, solo acepta movimientos que no empeoran y se queda en óptimos locales. Sus operadores los usan todas las metaheurísticas. |
-| `metaheuristicas/busqueda_tabu.py` | Metaheurística | **Búsqueda tabú**: aplica el mejor intercambio aunque empeore; lista tabú de permanencia aleatoria y criterio de aspiración. |
-| `metaheuristicas/busqueda_local_iterada.py` | Metaheurística | **ILS**: descenso Min-Conflicts hasta un óptimo local, vuelta a la mejor solución y perturbación al azar. |
-| `metaheuristicas/min_conflicts_tabu.py` | Metaheurística híbrida (por defecto) | Min-Conflicts + búsqueda tabú + ruido (*random walk*) + reinicios con perturbación de la ILS. |
+| `metaheuristicas/vecindario.py` | Operadores comunes | Vecindario $N(x)$ (intercambios de las sesiones en conflicto), evaluación incremental, mejor movimiento y perturbación. |
+| `metaheuristicas/busqueda_local_iterada.py` | Metaheurística | **ILS** (Lourenço et al., 2003): descenso de mayor pendiente + perturbación + aceptación "mejor o igual". |
+| `metaheuristicas/busqueda_tabu_iterada.py` | Metaheurística (por defecto) | **ITS** (Misevicius, 2005): búsqueda tabú (lista tabú + aspiración) + perturbación + aceptación "mejor o igual". |
 
 #### Función objetivo
 Todos los métodos minimizan la misma función, calculada de forma incremental en `modelo.py`:
@@ -398,7 +398,7 @@ Formulación de programación lineal entera del mismo problema y con la misma in
 | HiGHS | factible | ≈ 0,4 s |
 | SCIP | factible | ≈ 46 s |
 
-Con `--peso-ventanas 1 --tiempo-max 120`, CP-SAT encuentra un horario con **2 ventanas docentes** (cota inferior 1, sin probar optimalidad), contra ≈ 130 de los horarios de las metaheurísticas (que hoy no minimizan las ventanas).
+Con `--peso-ventanas 1 --tiempo-max 120`, CP-SAT encuentra un horario con **2 ventanas docentes** (cota inferior 1, sin probar optimalidad), contra 115–140 de los horarios de las metaheurísticas (que hoy no minimizan las ventanas).
 
 ---
 
@@ -427,11 +427,11 @@ Opciones de línea de comandos (los Excel se generan siempre al iniciar):
 | `--curso "3° MEDIO A"` | Muestra el horario de un curso. |
 | `--docente "Inglés 1"` | Muestra el horario de un docente. |
 | `--seed N` | Cambia la semilla del generador (por defecto 3). |
-| `--metaheuristica NOMBRE` | Método de mejora: `min_conflicts_tabu` (por defecto), `busqueda_tabu`, `busqueda_local_iterada` o `min_conflicts`. |
+| `--metaheuristica NOMBRE` | Metaheurística de mejora: `its` (búsqueda tabú iterada, por defecto) o `ils` (búsqueda local iterada). |
 | `--tiempo-max S` | Límite de segundos de la búsqueda (por defecto, sin límite). |
 
 ### Comparar metaheurísticas
-`comparar_metaheuristicas.py` ejecuta cada método registrado con varias semillas (por defecto 1 a 10) y el mismo presupuesto (por defecto 20 s por búsqueda). Para cada semilla todos parten de la misma solución inicial. No genera Excel.
+`comparar_metaheuristicas.py` ejecuta ILS e ITS con varias semillas (por defecto 1 a 10) y el mismo presupuesto (por defecto 30 s por búsqueda). Para cada semilla los dos parten de la misma solución inicial (la de la heurística constructiva) y usan el mismo vecindario y la misma perturbación. No genera Excel.
 
 ```bash
 python notebooks/comparar_metaheuristicas.py
@@ -439,18 +439,16 @@ python notebooks/comparar_metaheuristicas.py --semillas 1 2 3 4 5 --tiempo-max 1
 python notebooks/comparar_metaheuristicas.py --convergencia convergencia.csv   # curvas costo vs. tiempo
 ```
 
-Por ejecución informa si el horario quedó factible, el costo final $f(x)$, los pasos, el **tiempo de búsqueda**, el **tiempo hasta la primera solución factible**, el tiempo hasta la mejor solución y los indicadores de la auditoría (ventanas docentes y % de bloques dobles). El resumen ordena los métodos por % de ejecuciones factibles, costo final medio y mediana del tiempo hasta factible. El tiempo se mide en la clase base (`mejora.py`), igual para todos los métodos.
+Por ejecución informa si el horario quedó factible, el costo final $f(x)$, los pasos (movimientos aplicados), las iteraciones (perturbaciones), el **tiempo de búsqueda**, el **tiempo hasta la primera solución factible**, el tiempo hasta la mejor solución y los indicadores de la auditoría (ventanas docentes y % de bloques dobles). El resumen ordena los métodos por % de ejecuciones factibles, costo final medio y mediana del tiempo hasta factible. El tiempo se mide en la clase base (`mejora.py`), igual para todos los métodos.
 
-Resultados de referencia (semillas 1 a 10, límite de 20 s, un núcleo):
+Resultados de referencia (11-11-2026; semillas 1 a 10, límite de 30 s, un núcleo; CSV en `notebooks/resultados/comparacion_ils_its_2026-11-11.csv`):
 
-| Método | Tipo | Factibles | Mediana hasta factible | Mediana de búsqueda | Peor caso |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| `min_conflicts_tabu` (híbrido) | Metaheurística | 10 / 10 | 0,26 s | 0,26 s | 0,44 s |
-| `busqueda_local_iterada` | Metaheurística | 10 / 10 | 1,4 s | 1,4 s | 5,1 s |
-| `busqueda_tabu` | Metaheurística | 5 / 10 | 0,17 s* | 10 s | 20 s (límite) |
-| `min_conflicts` | Heurística | 0 / 10 | – | 0,97 s | 1,4 s |
+| Método | Factibles | Mediana de búsqueda | Media ± desv. | Peor caso | Pasos prom. | Perturbaciones prom. | Ventanas prom. |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **ITS** (búsqueda tabú iterada) | 10 / 10 | 1,4 s | 1,9 ± 1,3 s | 5,4 s | 234 | 0,3 | 125,9 |
+| **ILS** (búsqueda local iterada) | 10 / 10 | 9,3 s | 10,3 ± 5,7 s | 22,2 s | 1 400 | 60 | 132,2 |
 
-\* Solo entre las 5 ejecuciones que llegaron a factible; las otras 5 ciclan alrededor de 1–2 violaciones hasta el límite de tiempo.
+Para cada semilla las dos parten de la misma solución inicial de la heurística constructiva (53 a 67 violaciones duras). ITS fue más rápida en las 10 semillas (prueba de Wilcoxon pareada exacta, p ≈ 0,002). Casi siempre llega a $f(x) = 0$ en su primera búsqueda tabú: perturbó en 2 de las 10 semillas. ILS necesita en promedio 60 ciclos de descenso + perturbación, porque cada descenso se detiene en el primer óptimo local. Las dos dejan 92 % de las horas en bloques dobles. Sus ventanas docentes (113 a 145) no se comparan como calidad, porque no están en $f(x)$.
 
 Cómo decidir qué método es mejor:
 1. **Eficacia:** % de semillas que llegan a 0 violaciones duras y costo final medio (con el mismo límite de tiempo).
@@ -459,7 +457,7 @@ Cómo decidir qué método es mejor:
 4. **Calidad secundaria:** ventanas docentes y % de bloques dobles. Mientras no estén en la función objetivo, sus diferencias son casuales; para compararlos hay que agregarlos a $f(x)$ (`modelo.py`).
 5. Con 10 a 30 semillas, las diferencias por semilla se pueden contrastar con una prueba pareada de Wilcoxon (`scipy.stats.wilcoxon`) y las curvas de `--convergencia` muestran cuál baja el costo más rápido.
 
-Para agregar una metaheurística nueva: crear un archivo en `notebooks/horarios/metaheuristicas/` con una subclase de `Metaheuristica` (`horarios/mejora.py`; instrucciones en `metaheuristicas/__init__.py`) que implemente `_buscar(modelo, rng, seg)` usando los operadores de `heuristicas/min_conflicts.py`, revisar `self.parada_comun(modelo, seg)` en cada paso, llamar a `seg.registrar(paso, modelo)` después de cada movimiento, y registrarla en `METAHEURISTICAS` de `metaheuristicas/__init__.py`. Queda disponible en `--metaheuristica` y en el script de comparación, con sus tiempos medidos igual que los demás.
+Para agregar una metaheurística nueva: crear un archivo en `notebooks/horarios/metaheuristicas/` con una subclase de `Metaheuristica` (`horarios/mejora.py`; instrucciones en `metaheuristicas/__init__.py`) que implemente `_buscar(modelo, rng, seg)` usando los operadores de `metaheuristicas/vecindario.py`, revisar `self.parada_comun(modelo, seg)` en cada paso, llamar a `seg.registrar(paso, modelo)` después de cada movimiento, y registrarla en `METAHEURISTICAS` de `metaheuristicas/__init__.py`. Queda disponible en `--metaheuristica` y en el script de comparación, con sus tiempos medidos igual que los demás.
 
 ### Modelo matemático
 ```bash

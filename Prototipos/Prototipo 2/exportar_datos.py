@@ -8,11 +8,14 @@ PROTOTIPO 2 — EXPORTADOR DE DATOS PARA LA PLATAFORMA WEB DE HORARIOS MMDD
 Prepara los dos horarios que se eligen en el menú de inicio de la página:
 
   - 2026: el horario OFICIAL, leído tal cual de 'data/Data 2026/HORARIO CURSOS 2026.xlsx'
-    (los docentes de cada clase salen de la distribución horaria 2026 del motor).
-  - 2027: el horario GENERADO por el motor de 'notebooks/generador_horarios.py'.
+    (los docentes de cada clase salen de la distribución horaria 2026 del motor). Se escribe en
+    'datos/horarios_2026.js', más un resumen liviano para el menú en 'datos/resumen_2026.js'.
+  - 2027: el horario GENERADO por el motor de 'notebooks/generador_horarios.py'. Cada ejecución
+    guarda una INSTANCIA en 'datos/instancias/horarios_2027_<id>.js' y la anota en el catálogo
+    'datos/instancias_2027.js'; en la página, Configuración elige cuál se muestra. Con --importar
+    se agrega un horario ya guardado (de una versión anterior o descargado desde Resolver).
 
-Ambos se auditan con el mismo validador y se escriben con el mismo formato en
-'datos/horarios_<año>.js', más un resumen liviano para el menú en 'datos/resumen_<año>.js':
+Todos se auditan con el mismo validador y tienen el mismo formato:
 
   - Bloques, recreos y días de la semana.
   - Los 24 cursos regulares y los 3 niveles de párvulos (jornada, profesor/a jefe,
@@ -25,9 +28,10 @@ Los datos se guardan como scripts (window.HORARIOS_MMDD = {...}) para que la pá
 funcione abriendo 'index.html' directamente, sin servidor.
 
 Uso:
-    python "Prototipos/Prototipo 2/exportar_datos.py"                     # 2026 y 2027 (semilla 3)
-    python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2027 --seed 7
+    python "Prototipos/Prototipo 2/exportar_datos.py"                     # 2026 y una instancia 2027 (semilla 3)
+    python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2027 --seed 7 --nombre "Semilla 7"
     python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2026
+    python "Prototipos/Prototipo 2/exportar_datos.py" --importar horario.js --nombre "..." --defecto
 """
 
 import os
@@ -494,22 +498,46 @@ def construir_datos(horario, meta, jornadas=None):
     }
 
 
-def escribir_datos(datos):
-    """Escribe datos/horarios_<año>.js (completo) y datos/resumen_<año>.js (tarjeta del menú)."""
-    meta = datos['meta']
-    anio = meta['anio']
-    carpeta = os.path.join(AQUI, 'datos')
-    os.makedirs(carpeta, exist_ok=True)
-    origen = 'Excel oficial' if meta['fuente'] == 'oficial' else f"Semilla {meta['semilla']}"
+CARPETA_DATOS = os.path.join(AQUI, 'datos')
+CARPETA_INSTANCIAS = os.path.join(CARPETA_DATOS, 'instancias')
+MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic']
 
-    destino = os.path.join(carpeta, f'horarios_{anio}.js')
-    with open(destino, 'w', encoding='utf-8') as f:
+def nombre_metodo(metaheuristica):
+    """'its' -> 'Voraz + Búsqueda tabú iterada (ITS)' (el primer paso siempre es la construcción voraz)."""
+    from horarios import METAHEURISTICAS
+    clase = METAHEURISTICAS.get(metaheuristica)
+    return f"Voraz + {clase.titulo}" if clase and clase.titulo else metaheuristica
+
+
+def escribir_script(ruta, encabezado, asignacion, valor):
+    """Guarda 'valor' como script (asignacion + JSON) para que la página lo lea sin servidor."""
+    os.makedirs(os.path.dirname(ruta), exist_ok=True)
+    with open(ruta, 'w', encoding='utf-8') as f:
         f.write('// Archivo generado por exportar_datos.py — no editar a mano.\n')
-        f.write(f"// Horario {anio} · {origen} · {meta['generado']}\n")
-        f.write('window.HORARIOS_MMDD = ')
-        json.dump(datos, f, ensure_ascii=False, separators=(',', ':'))
+        for linea in encabezado:
+            f.write(f'// {linea}\n')
+        f.write(asignacion)
+        json.dump(valor, f, ensure_ascii=False, separators=(',', ':'))
         f.write(';\n')
 
+
+def leer_objeto(texto):
+    """Objeto JSON de un archivo de datos: un .json o un .js del tipo 'window.X = {...};'."""
+    decodificador = json.JSONDecoder()
+    i = texto.find('{')
+    while i != -1:
+        try:
+            valor, fin = decodificador.raw_decode(texto, i)
+            if isinstance(valor, dict) and not texto[fin:].strip().lstrip(';').strip():
+                return valor
+        except json.JSONDecodeError:
+            pass
+        i = texto.find('{', i + 1)
+    raise ValueError('No se encontró el objeto de datos en el archivo')
+
+
+def resumen_de(datos):
+    """Lo que muestra la tarjeta del menú: totales, auditoría y la semana de un curso."""
     a = datos['auditoria']
     m = a['metricas']
     # Semana de un curso para la mini-grilla de la tarjeta: asignatura por día y bloque (None si no hay clase)
@@ -517,8 +545,8 @@ def escribir_datos(datos):
     clases = {(k['dia'], k['bloque']): k['asignatura'] for k in curso['clases']}
     muestra = {'curso': curso['nombre'],
                'dias': [[clases.get((dia, b)) for b in range(1, max(curso['jornada']) + 1)] for dia in D.DIAS]}
-    resumen = {
-        **meta,
+    return {
+        **datos['meta'],
         'cursos': len(datos['cursos']),
         'docentes': len(datos['docentes']),
         'valido': a['valido'],
@@ -528,17 +556,181 @@ def escribir_datos(datos):
         'ventanas': m['total_ventanas_docentes'],
         'muestra': muestra,
     }
-    with open(os.path.join(carpeta, f'resumen_{anio}.js'), 'w', encoding='utf-8') as f:
-        f.write('// Archivo generado por exportar_datos.py — no editar a mano.\n')
-        f.write(f'(window.HORARIOS_MMDD_RESUMEN = window.HORARIOS_MMDD_RESUMEN || {{}})[{anio}] = ')
-        json.dump(resumen, f, ensure_ascii=False, separators=(',', ':'))
-        f.write(';\n')
 
+
+def informar(datos, destino):
+    a, m = datos['auditoria'], datos['auditoria']['metricas']
     estado = 'FACTIBLE' if a['valido'] else f"{a['totalErrores']} incumplimientos"
-    print(f"Horario {anio} ({origen}) exportado en {os.path.relpath(destino, RAIZ)}")
+    print(f"  {os.path.relpath(destino, RAIZ)}")
     print(f"  {len(datos['cursos'])} cursos · {len(datos['docentes'])} docentes · {len(datos['espacios'])} espacios")
     print(f"  Auditoría: {estado} ({m['total_bloques_asignados']}/{m['total_bloques_esperados']} bloques, "
           f"{m['total_ventanas_docentes']} ventanas docentes)")
+
+
+def escribir_datos(datos):
+    """Horario oficial: escribe datos/horarios_<año>.js (completo) y datos/resumen_<año>.js (tarjeta del menú)."""
+    meta = datos['meta']
+    anio = meta['anio']
+    destino = os.path.join(CARPETA_DATOS, f'horarios_{anio}.js')
+    escribir_script(destino, [f"Horario {anio} · Excel oficial · {meta['generado']}"], 'window.HORARIOS_MMDD = ', datos)
+    escribir_script(os.path.join(CARPETA_DATOS, f'resumen_{anio}.js'), [],
+                    f'(window.HORARIOS_MMDD_RESUMEN = window.HORARIOS_MMDD_RESUMEN || {{}})[{anio}] = ', resumen_de(datos))
+    print(f'Horario {anio} (Excel oficial) exportado:')
+    informar(datos, destino)
+
+
+# -----------------------------------------------------------------------------
+# Instancias generadas (horario 2027): un archivo por instancia y un catálogo
+# -----------------------------------------------------------------------------
+#   datos/instancias/horarios_<año>_<id>.js   el horario completo (window.HORARIOS_MMDD = {...})
+#   datos/instancias_<año>.js                 catálogo: instancia predeterminada y, de cada una, su
+#                                             archivo, nombre, método y el resumen para el menú
+# La página carga la instancia elegida en Configuración (o la predeterminada).
+def huella(datos):
+    """Identifica el horario por sus clases (curso, día, bloque, asignatura y docentes)."""
+    import hashlib
+    clases = sorted([c['id'], k['dia'], k['bloque'], k['asignatura'], list(k.get('docentes') or [])]
+                    for c in datos['cursos'] for k in c['clases'])
+    return hashlib.sha1(json.dumps(clases, ensure_ascii=False).encode('utf-8')).hexdigest()[:12]
+
+
+def fecha_legible(generado):
+    """'2026-10-06 22:05' -> '6 oct 2026'"""
+    anio, mes, dia = generado[:10].split('-')
+    return f'{int(dia)} {MESES[int(mes) - 1]} {anio}'
+
+
+def ruta_catalogo(anio):
+    return os.path.join(CARPETA_DATOS, f'instancias_{anio}.js')
+
+
+def leer_catalogo(anio):
+    ruta = ruta_catalogo(anio)
+    if not os.path.exists(ruta):
+        return {'defecto': None, 'lista': []}
+    with open(ruta, encoding='utf-8') as f:
+        return leer_objeto(f.read())
+
+
+def _slug(texto):
+    texto = unicodedata.normalize('NFKD', str(texto)).encode('ascii', 'ignore').decode().lower()
+    return '-'.join(p for p in ''.join(c if c.isalnum() else ' ' for c in texto).split())[:40]
+
+
+def guardar_instancia(datos, nombre=None, descripcion=None, id_instancia=None, defecto=False):
+    """
+    Agrega el horario 'datos' al catálogo de su año como una instancia más (o actualiza la que
+    tiene las mismas clases). Retorna la entrada del catálogo.
+    """
+    meta = datos['meta']
+    anio = meta['anio']
+    catalogo = leer_catalogo(anio)
+    lista = catalogo['lista']
+    h = huella(datos)
+    previa = next((e for e in lista if e.get('huella') == h), None)
+    if id_instancia is None and previa:
+        # El mismo horario ya está en el catálogo: se actualiza su entrada y conserva su fecha
+        id_instancia = previa['id']
+        meta['generado'] = previa['generado']
+    if id_instancia is None:
+        # Fecha, método y semilla: '2026-11-11_its_s3'
+        metodo = meta.get('metodo') or {}
+        partes = [meta['generado'][:10], metodo.get('id') or _slug(metodo.get('nombre') or 'solver')]
+        if meta.get('semilla') is not None:
+            partes.append(f"s{meta['semilla']}")
+        base = '_'.join(p for p in partes if p)
+        id_instancia, n = base, 2
+        while any(e['id'] == id_instancia for e in lista):
+            id_instancia, n = f'{base}_{n}', n + 1
+    previa = previa if previa and previa['id'] == id_instancia else next((e for e in lista if e['id'] == id_instancia), None)
+    if nombre is None:
+        nombre = previa['nombre'] if previa else (
+            f"{fecha_legible(meta['generado'])} · " + (f"semilla {meta['semilla']}" if meta.get('semilla') is not None
+                                                       else (meta.get('metodo') or {}).get('nombre', 'solver')))
+    if descripcion is None:
+        descripcion = previa.get('descripcion', '') if previa else ''
+
+    meta['instancia'] = id_instancia
+    meta['nombreInstancia'] = nombre
+    archivo = f'datos/instancias/horarios_{anio}_{id_instancia}.js'
+    destino = os.path.join(AQUI, *archivo.split('/'))
+    escribir_script(destino, [f"Horario {anio} · instancia {id_instancia} · {nombre}"], 'window.HORARIOS_MMDD = ', datos)
+
+    entrada = {
+        'id': id_instancia,
+        'archivo': archivo,
+        'nombre': nombre,
+        'descripcion': descripcion,
+        'generado': meta['generado'],
+        'semilla': meta.get('semilla'),
+        'metodo': meta.get('metodo'),
+        'huella': h,
+        'resumen': resumen_de(datos),
+    }
+    lista[:] = [e for e in lista if e['id'] != id_instancia] + [entrada]
+    lista.sort(key=lambda e: (e['generado'], e['id']))
+    if defecto or not any(e['id'] == catalogo.get('defecto') for e in lista):
+        catalogo['defecto'] = id_instancia
+    escribir_script(ruta_catalogo(anio), [f'Catálogo de instancias del horario {anio} (las elige Configuración en la página)'],
+                    f'(window.HORARIOS_MMDD_INSTANCIAS = window.HORARIOS_MMDD_INSTANCIAS || {{}})[{anio}] = ', catalogo)
+
+    print(f"Instancia {anio} '{id_instancia}' ({nombre}) guardada{' como predeterminada' if catalogo['defecto'] == id_instancia else ''}:")
+    informar(datos, destino)
+    return entrada
+
+
+def version_motor():
+    """Commit del repositorio con que se generó (y si notebooks/ tenía cambios sin commit)."""
+    import subprocess
+    try:
+        commit = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'], cwd=RAIZ, capture_output=True,
+                                text=True, timeout=10).stdout.strip()
+        cambios = subprocess.run(['git', 'status', '--porcelain', '--', 'notebooks'], cwd=RAIZ, capture_output=True,
+                                 text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return f"{commit}{' + cambios sin commit' if cambios else ''}" if commit else None
+
+
+def generar_instancia(semilla, metaheuristica):
+    """Ejecuta el motor actual y arma los datos del horario 2027 con el detalle del método."""
+    motor = MotorHorarios(seed=semilla, metaheuristica=metaheuristica)
+    horario = motor.generar()
+    e, t = motor.estadisticas, motor.tiempos
+    metodo = {
+        'id': metaheuristica,
+        'nombre': nombre_metodo(metaheuristica),
+        'motor': version_motor(),
+        'costoInicial': e['costo_construccion'],
+        'durasIniciales': e['duras_construccion'],
+        'costoFinal': e['costo_final'],
+        'pasos': e['pasos'],
+        'motivoParada': e['motivo_parada'],
+        'iteraciones': e.get('iteraciones'),
+        'tiempoMs': round(t['total'] * 1000),
+    }
+    return construir_datos(horario, meta_base(ANIO_GENERADO, 'generado', semilla=semilla, metodo=metodo))
+
+
+def importar_instancia(ruta, metodo_texto=None):
+    """
+    Reconstruye un horario guardado (datos/horarios_<año>.js de una versión anterior, un archivo
+    descargado desde Resolver o un .json) con el formato y la auditoría actuales.
+    """
+    with open(ruta, encoding='utf-8') as f:
+        datos = leer_objeto(f.read())
+    meta = dict(datos.get('meta') or {})
+    if meta.get('fuente') == 'oficial':
+        raise SystemExit('Ese archivo es el horario oficial: no es una instancia generada.')
+    # servidor.py sabe reconstruir el horario de unos datos (y aplicar una instancia editada)
+    sys.modules.setdefault('exportar_datos', sys.modules[__name__])
+    import servidor as S
+    dev = meta.get('desarrollador') or {}
+    if metodo_texto or not meta.get('metodo'):
+        meta['metodo'] = {'id': dev.get('metodo'), 'nombre': metodo_texto or dev.get('nombre') or 'Método no registrado'}
+    with S.instancia_aplicada(S.instancia_de_datos(datos) if dev.get('editada') else None):
+        horario = S.horario_de_datos(datos)
+        return construir_datos(horario, meta)
 
 
 def meta_base(anio, fuente, **extra):
@@ -553,12 +745,27 @@ def meta_base(anio, fuente, **extra):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Exporta los horarios 2026 (oficial) y 2027 (generado) '
-                                                 'para la plataforma web (Prototipo 2)')
+    from horarios import METAHEURISTICAS, POR_DEFECTO
+    parser = argparse.ArgumentParser(description='Exporta el horario 2026 (oficial) y guarda instancias del 2027 '
+                                                 '(generado) para la plataforma web (Prototipo 2)')
     parser.add_argument('--anio', type=int, choices=[ANIO_OFICIAL, ANIO_GENERADO],
                         help='Exporta solo ese año (por defecto, ambos)')
     parser.add_argument('--seed', type=int, default=3, help='Semilla del generador para 2027 (default: 3)')
+    parser.add_argument('--metaheuristica', choices=sorted(METAHEURISTICAS), default=POR_DEFECTO,
+                        help=f'Metaheurística de mejora para 2027: ils o its (default: {POR_DEFECTO})')
+    parser.add_argument('--importar', metavar='ARCHIVO',
+                        help='En vez de generar, agrega como instancia un horario guardado (.js o .json)')
+    parser.add_argument('--nombre', help='Nombre de la instancia en Configuración (ej.: "Horario del 6 de octubre")')
+    parser.add_argument('--descripcion', help='Texto breve que acompaña a la instancia en Configuración')
+    parser.add_argument('--id', dest='id_instancia', help='Identificador de la instancia (por defecto, fecha y semilla)')
+    parser.add_argument('--metodo', help='Con --importar: nombre del método con que se generó ese horario')
+    parser.add_argument('--defecto', action='store_true', help='Deja la instancia como la predeterminada de la página')
     args = parser.parse_args()
+
+    if args.importar:
+        datos = importar_instancia(args.importar, args.metodo)
+        guardar_instancia(datos, args.nombre, args.descripcion, args.id_instancia, args.defecto)
+        return
 
     if args.anio in (None, ANIO_OFICIAL):
         horario, jornadas, avisos = leer_horario_oficial()
@@ -569,8 +776,8 @@ def main():
             print(f'  Aviso: {aviso}')
 
     if args.anio in (None, ANIO_GENERADO):
-        horario = MotorHorarios(seed=args.seed).generar()
-        escribir_datos(construir_datos(horario, meta_base(ANIO_GENERADO, 'generado', semilla=args.seed)))
+        datos = generar_instancia(args.seed, args.metaheuristica)
+        guardar_instancia(datos, args.nombre, args.descripcion, args.id_instancia, args.defecto)
 
     escudo = exportar_escudo()
     print(f"Escudo: {'assets/escudo.png' if escudo else 'no disponible (se usa el monograma)'}")

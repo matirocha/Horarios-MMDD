@@ -1,76 +1,72 @@
 # -*- coding: utf-8 -*-
 """
-METAHEURÍSTICA: BÚSQUEDA LOCAL ITERADA (Iterated Local Search, ILS; Lourenço et al. 2003).
+METAHEURÍSTICA: BÚSQUEDA LOCAL ITERADA (Iterated Local Search, ILS; Lourenço, Martin y Stützle, 2003).
 
-Alterna una búsqueda local con perturbaciones:
+Parte de la solución de la heurística constructiva y alterna búsqueda local y perturbación:
 
-  1. Búsqueda local: descenso Min-Conflicts (heuristicas/min_conflicts.py), que solo
-     acepta intercambios que no empeoran, hasta que pasan 'largo_busqueda_local' pasos
-     sin mejorar (óptimo local).
-  2. Criterio de aceptación "mejor": se vuelve a la mejor solución encontrada.
-  3. Perturbación: se aplican 'perturbaciones' intercambios al azar en cursos al azar,
-     para salir de la cuenca del óptimo local, y se vuelve al paso 1.
+    s0  = construcción voraz                         (heuristicas/construccion_voraz.py)
+    s*  = BúsquedaLocal(s0)
+    repetir hasta f(s*) = 0, 'max_pasos' o 'tiempo_max':
+        s'  = Perturbación(s*)                       k = 'perturbaciones' intercambios al azar
+        s*' = BúsquedaLocal(s')
+        s*  = s*'  si f(s*') <= f(s*)                criterio de aceptación "mejor o igual"
+
+BúsquedaLocal: descenso de mayor pendiente (steepest descent). En cada paso evalúa TODO el
+vecindario N(x) (vecindario.py) y aplica el mejor intercambio si baja f(x). Si el mejor no
+cambia f(x), puede aplicar hasta 'laterales' movimientos laterales seguidos para cruzar
+mesetas; si empeora, la solución es un óptimo local y la búsqueda local termina.
+
+Cada movimiento aplicado cuenta como un paso; cada perturbación + búsqueda local, como una
+iteración.
 """
 
-from ..heuristicas.min_conflicts import elegir_sesion_en_conflicto, mejor_movimiento
 from ..mejora import Metaheuristica
-
-
-def perturbar(modelo, rng, intensidad):
-    """Aplica 'intensidad' intercambios al azar, cada uno en un curso elegido al azar."""
-    for _ in range(intensidad):
-        c = rng.choice(modelo.cursos)
-        sids_c = sorted({v for v in modelo.celda[c].values() if v is not None})
-        if sids_c:
-            sid = rng.choice(sids_c)
-            vecinos = modelo.vecinos(sid)
-            if vecinos:   # una franja móvil se mueve en sus dos cursos ('curso' es una tupla)
-                modelo.mover(modelo.ses[sid]['curso'], rng.choice(vecinos))
+from .vecindario import mejor_movimiento, perturbar, vecindario
 
 
 class BusquedaLocalIterada(Metaheuristica):
-    """ILS: descenso Min-Conflicts + perturbación desde la mejor solución."""
+    """ILS: descenso de mayor pendiente + perturbación + aceptación "mejor o igual"."""
 
-    nombre = 'busqueda_local_iterada'
+    nombre = 'ils'
+    titulo = 'Búsqueda local iterada (ILS)'
 
-    def __init__(self, max_pasos=150000, tiempo_max=None, largo_busqueda_local=100, perturbaciones=15,
-                 parada_factible=3000):
+    # Valores por defecto calibrados con las semillas 1 a 5 (ver notebooks/README.md, "Calibración")
+    def __init__(self, max_pasos=150000, tiempo_max=None, perturbaciones=15, laterales=10, vecindario='conflictos'):
         super().__init__(max_pasos, tiempo_max)
-        self.largo_busqueda_local = largo_busqueda_local  # pasos sin mejora que cierran una búsqueda local
-        self.perturbaciones = perturbaciones              # intercambios al azar de cada perturbación
-        self.parada_factible = parada_factible            # pasos sin mejora global para parar si ya es factible
+        self.perturbaciones = perturbaciones   # intercambios al azar de cada perturbación (k)
+        self.laterales = laterales             # movimientos laterales seguidos permitidos en el descenso
+        self.vecindario = vecindario           # 'conflictos' o 'completo' (ver vecindario.py)
+
+    def busqueda_local(self, modelo, rng, seg, paso):
+        """Descenso de mayor pendiente desde la solución actual. Retorna (paso, motivo de parada o None)."""
+        laterales = 0
+        while True:
+            motivo = self.parada_comun(modelo, seg)
+            if motivo is None and paso >= self.max_pasos:
+                motivo = 'max_pasos'
+            if motivo:
+                return paso, motivo
+            elegido, delta = mejor_movimiento(modelo, vecindario(modelo, self.vecindario), rng)
+            if elegido is None or delta > 0 or (delta == 0 and laterales >= self.laterales):
+                return paso, None   # óptimo local
+            laterales = laterales + 1 if delta == 0 else 0
+            modelo.mover(*elegido)
+            seg.registrar(paso, modelo)
+            paso += 1
 
     def _buscar(self, modelo, rng, seg):
-        sin_mejora = 0          # pasos sin mejorar la mejor solución global
-        costo_local = modelo.costo
-        sin_mejora_local = 0    # pasos sin mejorar en la búsqueda local en curso
-        iteraciones = 0         # perturbaciones aplicadas
-        for paso in range(self.max_pasos):
-            motivo = self.parada_comun(modelo, seg)
-            if motivo is None and modelo.duras == 0 and sin_mejora > self.parada_factible:
-                motivo = 'factible_sin_mejora'
-            if motivo:
-                return {'pasos': paso, 'motivo_parada': motivo, 'iteraciones': iteraciones}
-            sid, motivo = elegir_sesion_en_conflicto(modelo, rng)
-            if sid is None:
-                return {'pasos': paso, 'motivo_parada': motivo, 'iteraciones': iteraciones}
-
-            # 1. Un paso de la búsqueda local (descenso)
-            movimientos = modelo.vecinos(sid)
-            if movimientos:
-                mov, delta = mejor_movimiento(modelo, sid, movimientos, rng)
-                if delta <= 0:
-                    modelo.mover(modelo.ses[sid]['curso'], mov)
-            sin_mejora = 0 if seg.registrar(paso, modelo) else sin_mejora + 1
-            if modelo.costo < costo_local:
-                costo_local, sin_mejora_local = modelo.costo, 0
-            else:
-                sin_mejora_local += 1
-
-            # 2 y 3. Óptimo local: aceptar la mejor solución y perturbarla
-            if sin_mejora_local >= self.largo_busqueda_local:
-                iteraciones += 1
-                modelo.restaurar(seg.mejor_pos)
-                perturbar(modelo, rng, self.perturbaciones)
-                costo_local, sin_mejora_local = modelo.costo, 0
-        return {'pasos': self.max_pasos, 'motivo_parada': 'max_pasos', 'iteraciones': iteraciones}
+        paso, motivo = self.busqueda_local(modelo, rng, seg, 0)
+        actual_pos, actual_costo = dict(modelo.pos), modelo.costo
+        iteraciones = aceptadas = 0
+        while motivo is None:
+            iteraciones += 1
+            perturbar(modelo, rng, self.perturbaciones)
+            seg.registrar(paso, modelo)
+            paso, motivo = self.busqueda_local(modelo, rng, seg, paso)
+            # Criterio de aceptación: la nueva solución reemplaza a la actual si no es peor
+            if modelo.costo <= actual_costo:
+                actual_pos, actual_costo = dict(modelo.pos), modelo.costo
+                aceptadas += 1
+            elif motivo is None:
+                modelo.restaurar(actual_pos)
+        return {'pasos': paso, 'motivo_parada': motivo, 'iteraciones': iteraciones, 'aceptadas': aceptadas}

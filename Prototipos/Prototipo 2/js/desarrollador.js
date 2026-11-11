@@ -10,7 +10,7 @@
           Docentes    agregar, quitar (reasignando sus clases) y renombrar docentes.
           Asignación  quién dicta cada asignatura de cada curso y la jefatura.
           Electivos   nombre, sección, docente y sala de los electivos de 3° y 4° medio.
-          Resolver    ejecuta un método (heurística, metaheurística o modelo matemático)
+          Resolver    ejecuta un método (ILS, ITS o modelo matemático)
                       sobre la instancia editada.
           Comparar    varias semillas por método: tiempos de ejecución y función objetivo.
 
@@ -148,12 +148,11 @@
 
   // Si el servidor no está, los métodos se muestran igual (sin poder ejecutarlos)
   const METODOS_LOCAL = [
-    { id: 'min_conflicts', nombre: 'Voraz + Min-Conflicts', tipo: 'heurística', descripcion: 'Arma el horario con la construcción voraz y lo repara con Min-Conflicts, aceptando solo intercambios que no empeoran. Puede quedar en un óptimo local.', parametros: [] },
-    { id: 'busqueda_tabu', nombre: 'Búsqueda tabú', tipo: 'metaheurística', descripcion: 'Aplica el mejor intercambio admisible aunque empeore, con lista tabú y criterio de aspiración.', parametros: [] },
-    { id: 'busqueda_local_iterada', nombre: 'Búsqueda local iterada', tipo: 'metaheurística', descripcion: 'ILS: descenso Min-Conflicts y perturbaciones desde la mejor solución encontrada.', parametros: [] },
-    { id: 'min_conflicts_tabu', nombre: 'Min-Conflicts + tabú', tipo: 'metaheurística', descripcion: 'Híbrido del proyecto (método por defecto): tabú, ruido aleatorio y reinicios ILS.', parametros: [] },
+    { id: 'ils', nombre: 'Búsqueda local iterada (ILS)', tipo: 'metaheurística', descripcion: 'Construcción voraz y luego: descenso de mayor pendiente hasta un óptimo local, perturbación (intercambios al azar) y aceptación de la nueva solución si no es peor.', parametros: [] },
+    { id: 'its', nombre: 'Búsqueda tabú iterada (ITS)', tipo: 'metaheurística', descripcion: 'Construcción voraz y luego: búsqueda tabú (acepta el mejor intercambio admisible aunque empeore, con lista tabú y aspiración), perturbación y aceptación. Método por defecto.', parametros: [] },
     { id: 'modelo', nombre: 'Modelo matemático', tipo: 'modelo exacto', descripcion: 'Programación lineal entera (Gurobi u OR-Tools): las restricciones duras van como restricciones.', parametros: [] },
   ];
+  const METODO_DEFECTO = 'its';
   const metodos = () => (SRV.info && SRV.info.metodos) || METODOS_LOCAL;
   const solvers = () => (SRV.info ? SRV.info.solvers : ['GUROBI', 'CP-SAT', 'HIGHS', 'SCIP', 'CBC']);
   const conModelo = () => !SRV.info || Boolean(SRV.info.solvers && SRV.info.solvers.length);
@@ -162,21 +161,19 @@
 
   // Qué hace cada método, para la explicación de la sección Resolver
   const EXPLICACION = [
-    ['min_conflicts', 'Voraz + Min-Conflicts (heurística)', 'Dos pasos, una sola heurística. Primero la construcción voraz arma el horario de una pasada: ordena las sesiones de la más difícil a la más fácil y pone cada una donde agrega menos conflictos (unas 50 violaciones). Después Min-Conflicts lo repara: elige un conflicto, prueba los intercambios de esa sesión dentro de su curso y aplica el mejor, solo si no empeora. Por eso se estanca en un óptimo local: llega cerca de 0, pero a veces no lo alcanza. La construcción voraz también es el punto de partida de las metaheurísticas.'],
-    ['busqueda_tabu', 'Búsqueda tabú', 'Igual que Min-Conflicts, pero acepta el mejor intercambio aunque empeore, para salir de los óptimos locales. Para no deshacer lo que acaba de hacer, prohíbe por unos pasos volver a la posición anterior (lista tabú), salvo que eso mejore la mejor solución encontrada (aspiración).'],
-    ['busqueda_local_iterada', 'Búsqueda local iterada (ILS)', 'Repite dos fases: un descenso Min-Conflicts hasta estancarse y una perturbación (varios intercambios al azar) aplicada a la mejor solución, para empezar el siguiente descenso desde otro lugar.'],
-    ['min_conflicts_tabu', 'Min-Conflicts + tabú (híbrido)', 'El método del proyecto: la regla de Min-Conflicts con la memoria tabú, un poco de ruido (a veces aplica un intercambio al azar) y reinicios desde la mejor solución con perturbación (como ILS) cuando lleva muchos pasos sin mejorar. Junta lo mejor de los anteriores.'],
+    ['voraz', 'Heurística constructiva voraz (solución inicial)', 'Es el primer paso de ILS y de ITS. Arma el horario de una pasada: ordena las sesiones de la más difícil a la más fácil y pone cada una donde agrega menos conflictos. Queda completo, pero con unas 50 violaciones que reparan las metaheurísticas. Las dos parten de la misma solución inicial con la misma semilla.'],
+    ['ils', 'Búsqueda local iterada (ILS)', 'Repite tres pasos: búsqueda local (descenso de mayor pendiente: en cada paso revisa todos los intercambios de las sesiones en conflicto y aplica el mejor si baja f(x), hasta un óptimo local), perturbación (varios intercambios al azar) y aceptación (la nueva solución reemplaza a la actual si no es peor).'],
+    ['its', 'Búsqueda tabú iterada (ITS)', 'Igual que ILS, pero su búsqueda local es una búsqueda tabú: aplica el mejor intercambio aunque empeore f(x), para seguir más allá de los óptimos locales, y prohíbe por unos pasos devolver las sesiones movidas a su lugar anterior (lista tabú), salvo que eso mejore la mejor solución encontrada (aspiración). Si pasan varios pasos sin mejorar, perturba y vuelve a empezar.'],
     ['modelo', 'Modelo matemático', 'No busca paso a paso: escribe el problema completo como programación lineal entera (variables 0/1 de qué sesión va en qué bloque) y un solver (Gurobi o los de OR-Tools) lo resuelve de forma exacta. Si existe un horario factible lo encuentra, y si no existe lo demuestra.'],
   ];
 
   // Color fijo por método (sigue a la entidad, no al orden): --serie-1 … --serie-8 en estilos.css
-  const SERIE = { min_conflicts: 1, busqueda_tabu: 2, busqueda_local_iterada: 3, min_conflicts_tabu: 4,
-    'modelo:GUROBI': 5, 'modelo:CP-SAT': 6, 'modelo:HIGHS': 7, 'modelo:SCIP': 8, 'modelo:CBC': 0, voraz: 0 };
+  const SERIE = { ils: 3, its: 4, 'modelo:GUROBI': 5, 'modelo:CP-SAT': 6, 'modelo:HIGHS': 7, 'modelo:SCIP': 8, 'modelo:CBC': 0, voraz: 1 };
   const colorDe = clave => `var(--serie-${SERIE[clave] ?? 0})`;
   const claveDe = r => (r.metodo === 'modelo' ? `modelo:${(r.parametros && r.parametros.solver) || 'CP-SAT'}` : r.metodo);
-  // 'voraz' solo aparece en ejecuciones antiguas de esta sesión (ya no es un método aparte)
-  const CORTO = { voraz: ['Construcción voraz', 'Voraz'], min_conflicts: ['Voraz + Min-Conflicts', 'Voraz+MC'], busqueda_tabu: ['Búsqueda tabú', 'Tabú'],
-    busqueda_local_iterada: ['Búsqueda local iterada', 'ILS'], min_conflicts_tabu: ['Min-Conflicts + tabú', 'MC + tabú'] };
+  // 'voraz' es la solución inicial de las dos metaheurísticas (no se ejecuta como método aparte)
+  const CORTO = { voraz: ['Construcción voraz', 'Voraz'], ils: ['Búsqueda local iterada (ILS)', 'ILS'],
+    its: ['Búsqueda tabú iterada (ITS)', 'ITS'] };
   function nombreClave(clave, estrecho = false) {
     if (clave.startsWith('modelo:')) {
       const s = NOMBRE_SOLVER[clave.slice(7)] || clave.slice(7);
@@ -184,7 +181,7 @@
     }
     return (CORTO[clave] || [clave, clave])[estrecho ? 1 : 0];
   }
-  const ORDEN_CLAVES = ['min_conflicts', 'busqueda_tabu', 'busqueda_local_iterada', 'min_conflicts_tabu', 'modelo:GUROBI', 'modelo:CP-SAT', 'modelo:HIGHS', 'modelo:SCIP', 'modelo:CBC'];
+  const ORDEN_CLAVES = ['ils', 'its', 'modelo:GUROBI', 'modelo:CP-SAT', 'modelo:HIGHS', 'modelo:SCIP', 'modelo:CBC'];
 
   const MOTIVOS = {
     costo_cero: 'llegó a f(x) = 0', tiempo_max: 'se agotó el tiempo máximo', max_pasos: 'se agotaron los pasos',
@@ -832,10 +829,12 @@
           : '<p class="nota">Sin violaciones duras: el horario es un óptimo de f(x).</p>'}
       </section>
       <section class="seccion dev-seccion">
-        <div class="seccion-titulo"><h2>Datos técnicos</h2><p>Lo que lee la página en <code>datos/horarios_${meta.anio}.js</code></p></div>
+        <div class="seccion-titulo"><h2>Datos técnicos</h2><p>Lo que lee la página en ${meta.instancia
+          ? `<code>datos/instancias/horarios_${meta.anio}_${esc(meta.instancia)}.js</code>` : `<code>datos/horarios_${meta.anio}.js</code>`}</p></div>
         <dl class="datos dev-datos">
           <dt>Origen</dt><dd>${esc(fuente)}</dd>
           <dt>Generado</dt><dd>${esc(meta.generado)}</dd>
+          ${meta.nombreInstancia ? `<dt>Instancia generada</dt><dd>${esc(meta.nombreInstancia)} (<code>${esc(meta.instancia)}</code>)${meta.metodo && meta.metodo.nombre ? ` · ${esc(meta.metodo.nombre)}` : ''}</dd>` : ''}
           <dt>Instancia</dt><dd>${meta.desarrollador ? (meta.desarrollador.editada ? 'editada en la pestaña Edición' : 'original') : 'original (datos 2026 de DatosColegio)'}</dd>
           <dt>Tamaño</dt><dd>${CURSOS.length} cursos · ${DATOS.docentes.length} docentes · ${DATOS.espacios.length} salas y recintos · ${Object.values(DATOS.franjas).reduce((s, l) => s + l.length, 0)} franjas de electivos</dd>
           <dt>Auditoría</dt><dd>${DATOS.auditoria.valido ? 'válida' : `${fmt(DATOS.auditoria.totalErrores)} errores`} · ${fmt(m.total_ventanas_docentes)} ventanas docentes</dd>
@@ -880,7 +879,7 @@
   };
 
   const R = Object.assign({
-    metodo: 'min_conflicts_tabu', semilla: 3, tiempo_max: 20, max_pasos: 150000,
+    metodo: METODO_DEFECTO, semilla: 3, tiempo_max: 20, max_pasos: 150000,
     solver: 'GUROBI', peso_ventanas: 0, hilos: '', parametros: {}, usarBase: false, solverElegido: false,
   }, leerJSON(CLAVES.resolver) || {}, { ejecutando: false, resultado: null, datos: null, error: null, inicio: 0 });
   const guardarR = () => guardar(CLAVES.resolver, JSON.stringify({
@@ -890,10 +889,12 @@
   }));
 
   const C = Object.assign({
-    metodos: ['min_conflicts', 'busqueda_tabu', 'busqueda_local_iterada', 'min_conflicts_tabu'],
-    solvers: ['GUROBI'], desde: 1, hasta: 5, tiempo_max: 10, max_pasos: 150000, usarBase: false, solversElegidos: false,
+    metodos: ['ils', 'its'],
+    solvers: ['GUROBI'], desde: 1, hasta: 5, tiempo_max: 30, max_pasos: 150000, usarBase: false, solversElegidos: false,
   }, leerJSON(CLAVES.comparar) || {}, { ejecutando: false, detener: false, control: null, progreso: null, errores: [] });
-  C.metodos = C.metodos.filter(m => m !== 'voraz');   // la construcción voraz ya va dentro de Voraz + Min-Conflicts
+  // Métodos guardados en el navegador que ya no existen (Min-Conflicts, tabú e híbrido anteriores)
+  C.metodos = C.metodos.filter(m => m === 'modelo' || CORTO[m] && m !== 'voraz');
+  if (!C.metodos.length) C.metodos = ['ils', 'its'];
   const guardarC = () => guardar(CLAVES.comparar, JSON.stringify({
     metodos: C.metodos, solvers: C.solvers, desde: C.desde, hasta: C.hasta, tiempo_max: C.tiempo_max, max_pasos: C.max_pasos,
     usarBase: C.usarBase, solversElegidos: C.solversElegidos,
@@ -1633,9 +1634,10 @@
         <dl>${EXPLICACION.map(([id, nombre, texto]) => `
           <div style="--c:${colorDe(id === 'modelo' ? 'modelo:GUROBI' : id)}"><dt><span class="dev-metodo-punto"></span>${esc(nombre)}</dt><dd>${esc(texto)}</dd></div>`).join('')}
         </dl>
-        <p class="nota">En corto: la heurística <b>Voraz + Min-Conflicts</b> construye y repara, pero solo acepta mejoras (se estanca); las metaheurísticas, como <b>Min-Conflicts + tabú</b>, reparan
-          aceptando también empeoramientos controlados (memoria tabú, ruido y reinicios) para salir de los estancamientos, y el <b>modelo</b> resuelve todo de una vez y además puede demostrar que no hay solución.
-          Todos minimizan la misma f(x) = 1000 · violaciones duras.</p>
+        <p class="nota">En corto: la <b>heurística constructiva</b> arma la solución inicial; <b>ILS</b> la repara con descensos que se detienen en el primer óptimo local y
+          perturbaciones para salir de él; <b>ITS</b> usa en cambio una búsqueda tabú, que acepta empeoramientos controlados por la memoria tabú; y el <b>modelo</b> resuelve todo
+          de una vez y además puede demostrar que no hay solución. ILS e ITS usan el mismo vecindario (intercambios dentro de cada curso de las sesiones en conflicto) y la misma
+          perturbación, así que la diferencia entre sus horarios y tiempos se debe solo a la estrategia de búsqueda. Todos minimizan la misma f(x) = 1000 · violaciones duras.</p>
       </details>`;
   }
 
@@ -1672,7 +1674,7 @@
   function htmlResolver() {
     const { validacion } = calc();
     // Un método guardado que ya no existe (p. ej. la antigua "Construcción voraz") vuelve al por defecto
-    if (!metodos().some(m => m.id === R.metodo)) R.metodo = 'min_conflicts_tabu';
+    if (!metodos().some(m => m.id === R.metodo)) R.metodo = METODO_DEFECTO;
     const editada = usaEditada(R);
     const bloqueada = editada && validacion.errores.length > 0;
     const listo = SRV.estado === 'conectado' && !bloqueada && !R.ejecutando;
@@ -1691,7 +1693,7 @@
     return `
       <div class="dev-resolver">
         <section class="seccion">
-          <div class="seccion-titulo"><h2>Método</h2><p>De la heurística al modelo exacto</p></div>
+          <div class="seccion-titulo"><h2>Método</h2><p>Heurística constructiva + metaheurística, o modelo exacto</p></div>
           <div class="dev-metodos" role="radiogroup" aria-label="Método de solución">${tarjetas}</div>
           ${htmlExplicacion()}
         </section>
@@ -1955,7 +1957,8 @@
     const r = R.resultado;
     const nombre = `horarios_${R.datos.meta.anio}_${r.metodo}${r.semilla != null ? `_s${r.semilla}` : ''}.js`;
     descargar(nombre, `// Generado en el modo desarrollador del Prototipo 2 · ${r.nombre} · ${R.datos.meta.generado}\n`
-      + `// Para publicarlo, reemplaza datos/horarios_${R.datos.meta.anio}.js (exportar_datos.py lo regenera).\n`
+      + `// Para agregarlo como instancia (Configuración la puede elegir), en la carpeta del prototipo:\n`
+      + `//   python exportar_datos.py --importar ${nombre} --nombre "${r.nombre}"\n`
       + `window.HORARIOS_MMDD = ${JSON.stringify(R.datos)};\n`, 'text/javascript');
   }
 
@@ -2028,7 +2031,7 @@
         <div class="seccion-titulo"><h2>Configurar la comparación</h2>
           <p>Mismo presupuesto para todos: cada ejecución para al llegar a f(x) = 0, al tiempo máximo o a los pasos máximos</p></div>
         <div class="dev-comparar-config">
-          <fieldset class="dev-grupo-checks"><legend>Heurísticas y metaheurísticas</legend>
+          <fieldset class="dev-grupo-checks"><legend>Metaheurísticas (desde la construcción voraz)</legend>
             ${ms.map(m => check('cmp-metodo', m.id, esc(m.nombre), C.metodos.includes(m.id), '', esc(m.tipo))).join('')}
           </fieldset>
           <fieldset class="dev-grupo-checks"><legend>Modelo matemático</legend>

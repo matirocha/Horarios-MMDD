@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Motor de generación de horarios: encadena el modelo de sesiones, la solución
-inicial (heurística constructiva) y un método de mejora (metaheurística), y mide
+inicial (heurística constructiva) y una metaheurística de mejora (ILS o ITS), y mide
 el tiempo de cada fase.
 """
 
@@ -9,7 +9,7 @@ import random
 import time
 
 from .heuristicas import ConstruccionVoraz
-from .metaheuristicas import crear_metaheuristica
+from .metaheuristicas import POR_DEFECTO, crear_metaheuristica
 from .modelo import ModeloHorario
 
 
@@ -21,8 +21,9 @@ class MotorHorarios:
        con las franjas de electivos fijas y compartidas por las secciones A y B.
     2. Solución inicial (heuristicas/construccion_voraz.py): sesiones dobles y luego simples,
        de la más restringida a la menos restringida, en la posición de menor costo.
-    3. Método de mejora (metaheuristicas/, por defecto el híbrido Min-Conflicts + tabú +
-       reinicios): repara las violaciones intercambiando sesiones dentro de cada curso.
+    3. Metaheurística de mejora (metaheuristicas/): búsqueda local iterada (ILS) o búsqueda
+       tabú iterada (ITS, por defecto). Repara las violaciones intercambiando sesiones
+       dentro de cada curso.
 
     Las tres fases comparten un mismo generador aleatorio con semilla 'seed', así cada
     ejecución con la misma semilla da el mismo horario. Tras generar(), 'tiempos' guarda
@@ -33,7 +34,7 @@ class MotorHorarios:
     'tiempo_max' (segundos) limita la duración de la búsqueda; None = sin límite.
     """
 
-    def __init__(self, seed=42, max_pasos=150000, metaheuristica='min_conflicts_tabu', construccion=None,
+    def __init__(self, seed=42, max_pasos=150000, metaheuristica=POR_DEFECTO, construccion=None,
                  tiempo_max=None):
         self.seed = seed
         self.max_pasos = max_pasos
