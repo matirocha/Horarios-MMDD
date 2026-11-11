@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Compara los métodos de mejora registrados en horarios/metaheuristicas/ (las
-metaheurísticas y la heurística Min-Conflicts sola, como línea base).
+Compara las metaheurísticas registradas en horarios/metaheuristicas/: búsqueda local
+iterada (ILS) y búsqueda tabú iterada (ITS).
 
 Diseño del experimento (para que la comparación sea justa):
   - Misma instancia (datos 2026) y, para cada semilla, la misma solución inicial: la
-    construcción voraz se ejecuta antes de la búsqueda con el mismo generador aleatorio.
+    heurística constructiva voraz se ejecuta antes de la búsqueda con el mismo generador
+    aleatorio.
+  - Mismos operadores: ILS e ITS usan el mismo vecindario y la misma perturbación
+    (metaheuristicas/vecindario.py); solo cambia la búsqueda local (descenso o tabú).
   - Mismo presupuesto: cada búsqueda se detiene al llegar a costo 0, a 'max_pasos' o
-    a 'tiempo_max' segundos (por defecto 20 s).
+    a 'tiempo_max' segundos (por defecto 30 s).
   - Varias semillas por método (por defecto 1 a 10), porque los métodos son aleatorios.
 
 Por ejecución se mide:
@@ -17,13 +20,14 @@ Por ejecución se mide:
   t_busqueda_ms     tiempo de la fase de mejora.
   t_factible_ms     tiempo hasta la primera solución sin violaciones duras (vacío si no llegó).
   t_mejor_ms        tiempo hasta la mejor solución encontrada.
-  pasos, pasos_por_s  iteraciones realizadas y velocidad.
+  pasos, pasos_por_s  movimientos aplicados y velocidad.
+  iteraciones       perturbaciones aplicadas (cada una seguida de una búsqueda local).
   ventanas_docentes, pct_dobles  indicadores de calidad de la auditoría.
 
 Uso:
     python notebooks/comparar_metaheuristicas.py
     python notebooks/comparar_metaheuristicas.py --semillas 1 2 3 4 5 --tiempo-max 10
-    python notebooks/comparar_metaheuristicas.py --metaheuristicas min_conflicts_tabu busqueda_tabu --csv resultados.csv
+    python notebooks/comparar_metaheuristicas.py --metaheuristicas ils its --csv resultados.csv
     python notebooks/comparar_metaheuristicas.py --convergencia convergencia.csv   # curvas costo vs. tiempo
 """
 
@@ -34,7 +38,7 @@ import statistics
 from horarios import METAHEURISTICAS, MotorHorarios, ValidadorRestricciones
 
 COLUMNAS = ['metaheuristica', 'tipo', 'semilla', 'factible', 'costo_construccion', 'duras_construccion',
-            'costo_final', 'duras_finales', 'pasos', 'motivo_parada', 'pasos_por_s',
+            'costo_final', 'duras_finales', 'pasos', 'iteraciones', 'motivo_parada', 'pasos_por_s',
             't_construccion_ms', 't_busqueda_ms', 't_factible_ms', 't_mejor_ms', 't_total_ms',
             'ventanas_docentes', 'pct_dobles']
 
@@ -60,6 +64,7 @@ def ejecutar(nombre, semilla, max_pasos, tiempo_max):
         'costo_final': e['costo_final'],
         'duras_finales': e['duras_finales'],
         'pasos': e['pasos'],
+        'iteraciones': e.get('iteraciones'),
         'motivo_parada': e['motivo_parada'],
         'pasos_por_s': round(e['pasos'] / t['busqueda']) if t['busqueda'] > 0 else None,
         't_construccion_ms': ms(t['construccion']),
@@ -101,8 +106,8 @@ def main():
     parser.add_argument('--semillas', nargs='+', type=int, default=list(range(1, 11)),
                         help="Semillas a ejecutar (por defecto, 1 a 10)")
     parser.add_argument('--max-pasos', type=int, default=150000, help="Pasos máximos de cada búsqueda (default: 150000)")
-    parser.add_argument('--tiempo-max', type=float, default=20.0,
-                        help="Segundos máximos de cada búsqueda; 0 = sin límite (default: 20)")
+    parser.add_argument('--tiempo-max', type=float, default=30.0,
+                        help="Segundos máximos de cada búsqueda; 0 = sin límite (default: 30)")
     parser.add_argument('--csv', type=str, help="Guarda todas las ejecuciones en este archivo CSV")
     parser.add_argument('--convergencia', type=str,
                         help="Guarda en este CSV el historial (tiempo, paso, costo) de cada ejecución")
@@ -113,7 +118,7 @@ def main():
     print(f"Límite por búsqueda: {f'{tiempo_max:g} s' if tiempo_max else 'sin límite de tiempo'} "
           f"y {args.max_pasos} pasos\n")
     print(f"{'Método':<24} {'Semilla':>7} {'Factible':>8} {'Duras ini':>9} {'Duras fin':>9} {'Costo fin':>9} "
-          f"{'Pasos':>7} {'Búsq. ms':>9} {'Factible ms':>11} {'Total ms':>9}  Motivo de parada")
+          f"{'Pasos':>7} {'Iter.':>6} {'Búsq. ms':>9} {'Factible ms':>11} {'Total ms':>9}  Motivo de parada")
     for nombre in args.metaheuristicas:
         for semilla in args.semillas:
             f, historial = ejecutar(nombre, semilla, args.max_pasos, tiempo_max)
@@ -122,7 +127,7 @@ def main():
                             for t, paso, costo, duras in historial]
             t_fact = '-' if f['t_factible_ms'] is None else f['t_factible_ms']
             print(f"{nombre:<24} {semilla:>7} {'sí' if f['factible'] else 'no':>8} {f['duras_construccion']:>9} "
-                  f"{f['duras_finales']:>9} {f['costo_final']:>9} {f['pasos']:>7} {f['t_busqueda_ms']:>9} "
+                  f"{f['duras_finales']:>9} {f['costo_final']:>9} {f['pasos']:>7} {f['iteraciones'] if f['iteraciones'] is not None else '-':>6} {f['t_busqueda_ms']:>9} "
                   f"{t_fact:>11} {f['t_total_ms']:>9}  {f['motivo_parada']}", flush=True)
 
     # Resumen ordenado: más factibles, menor costo final medio y menor tiempo hasta factible

@@ -203,13 +203,13 @@ p { margin: 0; }
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
-.marca { display: flex; align-items: center; gap: .7rem; min-width: 0; }
+.marca { display: flex; align-items: center; gap: .7rem; min-width: 0; flex-shrink: 0; }
 .escudo { width: 34px; height: auto; display: block; }
 :root[data-theme="dark"] .escudo { filter: invert(1); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .escudo { filter: invert(1); } }
 .escudo-texto { display: grid; place-items: center; width: 34px; height: 42px; border: 2px solid var(--ink); border-radius: 0 0 50% 50%; font-family: var(--font-display); font-weight: 800; font-size: .8rem; }
 .marca-texto { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-.marca-nombre { font-family: var(--font-display); font-weight: 850; font-stretch: 118%; font-size: 1.15rem; letter-spacing: .01em; text-transform: uppercase; }
+.marca-nombre { font-family: var(--font-display); font-weight: 850; font-stretch: 118%; font-size: 1.15rem; letter-spacing: .01em; text-transform: uppercase; white-space: nowrap; }
 .marca-colegio { font-size: var(--t-xs); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .buscador { position: relative; margin-left: auto; width: min(26rem, 100%); }
@@ -228,6 +228,11 @@ p { margin: 0; }
   position: absolute; right: .7rem; top: 50%; translate: 0 -50%;
   font-family: var(--font-display); font-size: var(--t-xs); color: var(--muted);
   border: 1px solid var(--line); border-radius: 4px; padding: 0 .35rem; line-height: 1.4;
+}
+/* Pantallas medianas: el buscador queda angosto junto a los botones de la barra */
+@media (max-width: 900px) {
+  .atajo { display: none; }
+  .buscador input { padding-right: .8rem; }
 }
 .resultados {
   position: absolute; left: 0; right: 0; top: calc(100% + .4rem);
@@ -694,6 +699,80 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
 .calor-escala { display: flex; align-items: center; gap: .6rem; font-size: var(--t-xs); color: var(--muted); margin-top: .5rem; }
 .calor-escala-barra { flex: 0 1 12rem; height: 8px; border-radius: 4px; background: linear-gradient(to right, var(--seq-lo), var(--seq-hi)); border: 1px solid var(--line); }
 
+/* Configuración: selector de instancias generadas (botón de la esquina superior derecha) */
+.config {
+  position: fixed; z-index: 90;
+  top: calc(env(safe-area-inset-top, 0px) + 4.1rem); right: var(--gutter);
+  width: min(31rem, calc(100vw - 2 * var(--gutter)));
+  max-height: calc(100vh - 5.5rem);
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.config[hidden] { display: none; }
+.config-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem .7rem .55rem 1.1rem; border-bottom: 1px solid var(--line); }
+.config-titulo { margin: 0; font-family: var(--font-display); font-weight: 850; font-stretch: 112%; font-size: var(--t-md); text-transform: uppercase; letter-spacing: .02em; }
+.config-cabecera .boton-icono { width: 2rem; height: 2rem; }
+.config-cuerpo { overflow: auto; padding: .9rem 1.1rem 1.1rem; display: flex; flex-direction: column; gap: 1.2rem; scrollbar-width: thin; }
+.config-seccion { display: flex; flex-direction: column; gap: .6rem; }
+.config-seccion-titulo { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.config-seccion-titulo .enlace { font-size: var(--t-sm); }
+.config-ayuda { margin: 0; font-size: var(--t-sm); color: var(--ink-2); }
+.config-nota { margin: 0; font-size: var(--t-xs); color: var(--muted); }
+.config-ayuda code, .config-nota code { font-size: .9em; padding: .05rem .3rem; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--line); word-break: break-word; }
+.config-aviso { margin: 0; padding: .5rem .7rem; border-radius: 8px; background: var(--accent-wash); font-size: var(--t-sm); }
+.config-opciones { display: flex; flex-direction: column; gap: .5rem; }
+.config-opcion {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: .75rem;
+  width: 100%; padding: .75rem .85rem; text-align: left;
+  border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface);
+  transition: border-color .15s, background-color .15s, box-shadow .15s;
+}
+.config-opcion:hover { border-color: var(--ink); }
+.config-opcion[aria-checked="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); background: var(--surface-2); }
+.config-marca { display: grid; place-items: center; width: 1.05rem; height: 1.05rem; margin-top: .15rem; border-radius: 50%; border: 2px solid var(--line-strong); }
+.config-opcion[aria-checked="true"] .config-marca { border-color: var(--ink); }
+.config-opcion[aria-checked="true"] .config-marca::after { content: ''; width: .5rem; height: .5rem; border-radius: 50%; background: var(--ink); }
+.config-opcion-texto { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.config-opcion-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; }
+.config-opcion-nombre { font-family: var(--font-display); font-weight: 800; font-size: var(--t-base); }
+.config-insignia {
+  padding: .05rem .45rem; border: 1px solid var(--line-strong); border-radius: 999px;
+  font-family: var(--font-display); font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2);
+}
+.config-insignia.en-pantalla { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.config-opcion-meta { font-size: var(--t-xs); color: var(--muted); }
+.config-opcion-datos { display: flex; flex-wrap: wrap; gap: .25rem .9rem; font-size: var(--t-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.config-opcion-datos b { color: var(--ink); font-family: var(--font-display); }
+.config-estado { display: inline-flex; align-items: center; gap: .25rem; font-weight: 700; }
+.config-estado .icono { width: .95rem; height: .95rem; stroke-width: 2.4; }
+.config-estado.bien { color: var(--good); }
+.config-estado.mal { color: var(--bad); }
+.config-opcion-desc { font-size: var(--t-xs); color: var(--ink-2); line-height: 1.45; }
+
+/* Ventanas por docente y día */
+.kpi-enlace { align-self: flex-start; margin-top: .3rem; font-size: var(--t-sm); }
+#ventanas-docentes { scroll-margin-top: 5rem; }
+.vent-opciones { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1.4rem; }
+.tabla-ventanas { max-width: 52rem; }
+.tabla-ventanas th, .tabla-ventanas td { padding-block: .3rem; vertical-align: middle; }
+.tabla-ventanas tbody th { font-weight: 400; max-width: 14rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tabla-ventanas .vent { text-align: center; width: 4.5rem; }
+.tabla-ventanas abbr { text-decoration: none; }
+.tabla-ventanas tfoot .vent { text-align: center; }
+.vent-docente { font-weight: 500; text-align: left; }
+.vent-valor {
+  --t: 0;
+  display: inline-grid; place-items: center; min-width: 2.1rem; height: 1.6rem; padding: 0 .35rem; border-radius: 4px;
+  background: color-mix(in oklch, var(--seq-hi) calc(var(--t) * 100%), var(--seq-lo));
+  color: var(--seq-ink-lo);
+  font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.vent-valor.alto { color: var(--seq-ink-hi); }
+.vent-valor.cero { background: none; color: var(--muted); font-weight: 500; }
+.vent-valor.nulo { background: none; color: var(--muted); font-weight: 400; }
+.vent-vacio { color: var(--muted); text-align: center; padding-block: 1rem !important; }
+
 .errores { margin: 0; padding-left: 1.2rem; color: var(--bad); font-size: var(--t-sm); }
 .nota { font-size: var(--t-sm); color: var(--ink-2); max-width: 70ch; }
 .nota code { font-size: .85em; padding: .05rem .3rem; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--line); }
@@ -814,6 +893,12 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
   }
   .veredicto { grid-template-columns: minmax(0, 1fr); }
   .barra-fila, .eje { grid-template-columns: 6.5rem minmax(0, 1fr) 2rem; gap: .5rem; }
+  .config { top: auto; left: .5rem; right: .5rem; bottom: .5rem; width: auto; max-height: 82vh; }
+  .tabla-ventanas th, .tabla-ventanas td { padding-inline: .15rem; }
+  .tabla-ventanas thead th { letter-spacing: .02em; }
+  .tabla-ventanas tbody th { max-width: 7.5rem; }
+  .tabla-ventanas .vent { width: auto; }
+  .vent-valor { min-width: 1.5rem; padding: 0 .2rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -824,10 +909,10 @@ button.sesion:hover { transform: translateY(-2px); box-shadow: var(--shadow); z-
 @media print {
   @page { size: letter landscape; margin: 10mm; }   /* carta horizontal, como el PDF descargado */
   body { background: #fff; color: #000; }
-  .barra, .pestanas, .selector, .detalle, .pie, .cabecera-acciones, .consejo, .tooltip, .dias-movil, .leyenda-nota { display: none !important; }
+  .barra, .pestanas, .selector, .detalle, .pie, .cabecera-acciones, .consejo, .tooltip, .dias-movil, .leyenda-nota, .config { display: none !important; }
   main { padding: 0; }
   .disposicion { display: block; }
-  .sesion, .vacia.fuera, .vacia.pastoral, .calor-celda, .g-pausa.colacion { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sesion, .vacia.fuera, .vacia.pastoral, .calor-celda, .vent-valor, .g-pausa.colacion { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .sesion { break-inside: avoid; }
   .grilla > .fuera-dia { display: flex !important; }
 }
@@ -1030,8 +1115,8 @@ html.hoja-pdf * { font-stretch: 100% !important; }
    el cursor). Los bloques de colores del fondo son las mismas familias de la grilla.
    ========================================================================== */
 html.menu-abierto { overflow: hidden; }
-/* Sin año elegido, la plataforma queda oculta tras el menú */
-html:not(.con-anio) body > :not(.menu):not(script) { visibility: hidden; }
+/* Sin año elegido, la plataforma queda oculta tras el menú (Configuración se abre sobre el menú) */
+html:not(.con-anio) body > :not(.menu):not(.config):not(script) { visibility: hidden; }
 
 .menu {
   position: fixed; inset: 0; z-index: 80;
@@ -1120,6 +1205,8 @@ html:not(.con-anio) body > :not(.menu):not(script) { visibility: hidden; }
 
 .tarjeta-desc { font-size: var(--t-sm); color: var(--ink-2); max-width: 36ch; min-height: 3em; }
 .tarjeta-desc code { font-size: .85em; }
+.tarjeta-instancia { font-size: var(--t-sm); color: var(--ink-2); margin-top: -.35rem; }
+.tarjeta-instancia b { color: var(--ink); }
 
 .mini { margin: 0; display: grid; gap: .35rem; }
 .mini-dias, .mini-grilla { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }

@@ -3,9 +3,11 @@
    Antes de entrar a la plataforma se elige el año escolar:
      - 2026: horario oficial, leído del Excel del colegio (data/Data 2026).
      - 2027: horario generado por el motor del proyecto.
-   Al elegir, se cargan datos/horarios_<año>.js y js/app.js, y el año queda en la URL
+   Al elegir, se cargan el horario del año y js/app.js, y el año queda en la URL
    (?anio=2027) para que al recargar se entre directo. El botón de la barra superior
    vuelve a abrir este menú. Las animaciones usan GSAP si está disponible.
+   El 2027 tiene varias instancias generadas (datos/instancias_2027.js): el panel de
+   Configuración (esquina superior derecha) elige cuál se carga.
    ========================================================================== */
 (() => {
   'use strict';
@@ -14,6 +16,9 @@
   const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)];
 
   const RESUMEN = window.HORARIOS_MMDD_RESUMEN || {};
+  // Catálogo de instancias generadas por año (datos/instancias_<año>.js): cada una trae su
+  // archivo y su resumen; Configuración elige cuál se muestra (se recuerda en este navegador)
+  const INSTANCIAS = window.HORARIOS_MMDD_INSTANCIAS || {};
   const ANIOS = [2026, 2027];
   const raiz = document.documentElement;
   const menu = $('#menu');
@@ -49,6 +54,32 @@
     return ANIOS.includes(n) ? n : null;
   };
   const urlDe = anio => `${location.pathname}?anio=${anio}${location.hash}`;
+  const leerLocal = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const guardarLocal = (k, v) => {
+    try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* almacenamiento no disponible */ }
+  };
+
+  // ===========================================================================
+  // INSTANCIAS GENERADAS
+  // ===========================================================================
+  const claveInstancia = anio => `mmdd-instancia-${anio}`;
+
+  // Instancia que se muestra: la elegida en Configuración o, si no hay (o ya no existe), la predeterminada
+  function instanciaElegida(anio) {
+    const cat = INSTANCIAS[anio];
+    if (!cat || !cat.lista || !cat.lista.length) return null;
+    const porId = id => cat.lista.find(e => e.id === id);
+    return porId(leerLocal(claveInstancia(anio))) || porId(cat.defecto) || cat.lista[cat.lista.length - 1];
+  }
+
+  // La tarjeta del menú usa el resumen de la instancia elegida
+  function actualizarResumenes() {
+    Object.keys(INSTANCIAS).forEach(anio => {
+      const e = instanciaElegida(Number(anio));
+      if (e) RESUMEN[anio] = { ...e.resumen, nombreInstancia: e.nombre };
+    });
+  }
+  actualizarResumenes();
 
   // ===========================================================================
   // TARJETAS
@@ -97,7 +128,7 @@
         <div class="tarjeta-anio sin-datos" role="listitem">
           <span class="eyebrow">Sin datos</span>
           <span class="tarjeta-numero">${anio}</span>
-          <p class="tarjeta-desc">Falta <code>datos/resumen_${anio}.js</code>. Ejecuta
+          <p class="tarjeta-desc">Faltan los datos de ${anio}. Ejecuta
           <code>python exportar_datos.py --anio ${anio}</code> en la carpeta del prototipo y recarga la página.</p>
         </div>`;
     }
@@ -116,6 +147,7 @@
         </span>
         <span class="tarjeta-numero" aria-hidden="true">${[...String(anio)].map(d => `<span class="digito">${d}</span>`).join('')}</span>
         <span class="tarjeta-desc">${t.descripcion}</span>
+        ${r.nombreInstancia ? `<span class="tarjeta-instancia">Instancia: <b>${esc(r.nombreInstancia)}</b></span>` : ''}
         ${miniGrillaHTML(r.muestra)}
         <span class="tarjeta-datos">
           <span><b data-contar="${r.cursos}">${r.cursos}</b> cursos</span>
@@ -298,9 +330,12 @@
   function etiquetarBarra(anio) {
     const r = RESUMEN[anio];
     const tipo = resultadoDev(anio) ? 'Solver' : r ? (r.fuente === 'oficial' ? 'Oficial' : 'Generado') : '';
+    const instancia = !resultadoDev(anio) && instanciaElegida(anio);
     $('#anio-chip-texto').textContent = tipo ? `${anio} · ${tipo}` : String(anio);
     $('#cambiar-anio').dataset.fuente = r ? r.fuente : '';
-    $('#cambiar-anio').setAttribute('aria-label', `Horario ${anio}${tipo ? ` (${tipo.toLowerCase()})` : ''}. Cambiar de año`);
+    $('#cambiar-anio').title = `${instancia ? `Instancia: ${instancia.nombre}. ` : ''}Volver al menú para elegir otro año`;
+    $('#cambiar-anio').setAttribute('aria-label', `Horario ${anio}${tipo ? ` (${tipo.toLowerCase()})` : ''}`
+      + `${instancia ? `, instancia ${instancia.nombre}` : ''}. Cambiar de año`);
   }
 
   async function cargarAnio(anio) {
@@ -309,8 +344,9 @@
     if (resultado) {
       window.HORARIOS_MMDD = resultado;
     } else {
+      const instancia = instanciaElegida(anio);
       try {
-        await cargarScript(`datos/horarios_${anio}.js`);
+        await cargarScript(instancia ? instancia.archivo : `datos/horarios_${anio}.js`);
       } catch (e) {
         window.HORARIOS_MMDD = null;   // app.js muestra el aviso de datos faltantes
       }
@@ -342,7 +378,8 @@
   // ===========================================================================
   // ABRIR Y CERRAR
   // ===========================================================================
-  const fueraDelMenu = () => [...document.body.children].filter(el => el !== menu && el.tagName !== 'SCRIPT');
+  // Configuración queda disponible sobre el menú (no se vuelve inert)
+  const fueraDelMenu = () => [...document.body.children].filter(el => el !== menu && el.id !== 'config' && el.tagName !== 'SCRIPT');
 
   function mostrar({ completa }) {
     focoPrevio = document.activeElement;
@@ -383,6 +420,139 @@
   }
 
   // ===========================================================================
+  // CONFIGURACIÓN: selector de instancias generadas
+  // ===========================================================================
+  const config = $('#config');
+  const configCuerpo = $('#config-cuerpo');
+  let disparadorConfig = null;
+
+  const fechaCorta = generado => {
+    const [f, h] = String(generado || '').split(' ');
+    const [a, m, d] = f.split('-');
+    return d ? `${Number(d)}-${m}-${a}${h ? ` · ${h}` : ''}` : '';
+  };
+
+  function opcionInstanciaHTML(anio, e, elegida, defecto) {
+    const r = e.resumen || {};
+    const enPantalla = anioCargado === anio && !resultadoDev(anio) && e.id === elegida.id;
+    const metodo = (e.metodo && e.metodo.nombre) || '';
+    const insignias = [
+      e.id === defecto ? '<span class="config-insignia">Predeterminada</span>' : '',
+      enPantalla ? '<span class="config-insignia en-pantalla">En pantalla</span>' : '',
+    ].join('');
+    const estado = r.valido
+      ? `<span class="config-estado bien">${ICONO_OK}Factible</span>`
+      : `<span class="config-estado mal">${ICONO_ALERTA}${r.totalErrores} errores</span>`;
+    const elegidaAhora = e.id === elegida.id;
+    return `
+      <button type="button" class="config-opcion" role="radio" aria-checked="${elegidaAhora}" tabindex="${elegidaAhora ? 0 : -1}"
+              data-anio="${anio}" data-instancia="${esc(e.id)}">
+        <span class="config-marca" aria-hidden="true"></span>
+        <span class="config-opcion-texto">
+          <span class="config-opcion-cabeza"><span class="config-opcion-nombre">${esc(e.nombre)}</span>${insignias}</span>
+          <span class="config-opcion-meta">${esc(metodo)}${e.semilla != null ? ` · semilla ${e.semilla}` : ''} · ${esc(fechaCorta(e.generado))}</span>
+          <span class="config-opcion-datos">${estado}<span><b>${r.ventanas}</b> ventanas</span><span><b>${r.bloques}</b>/${r.bloquesEsperados} bloques</span></span>
+          ${e.descripcion ? `<span class="config-opcion-desc">${esc(e.descripcion)}</span>` : ''}
+        </span>
+      </button>`;
+  }
+
+  function dibujarConfig() {
+    const secciones = Object.keys(INSTANCIAS).map(Number).filter(a => INSTANCIAS[a].lista && INSTANCIAS[a].lista.length).map(anio => {
+      const cat = INSTANCIAS[anio];
+      const elegida = instanciaElegida(anio);
+      const solver = anioCargado === anio && resultadoDev(anio)
+        ? `<p class="config-aviso">Ahora ves un resultado del solver. Al elegir una instancia vuelves a los horarios guardados.</p>` : '';
+      const restablecer = elegida.id !== cat.defecto && cat.lista.some(e => e.id === cat.defecto)
+        ? `<button type="button" class="enlace" data-instancia-defecto="${anio}">Usar la predeterminada</button>` : '';
+      return `
+        <section class="config-seccion">
+          <div class="config-seccion-titulo">
+            <span class="eyebrow" id="config-instancias-${anio}">Horario ${anio} · instancia generada</span>
+            ${restablecer}
+          </div>
+          <p class="config-ayuda">Elige cuál de los horarios generados se muestra en todas las vistas, en el menú y en los
+            documentos que se descargan. Se recuerda en este navegador.</p>
+          ${solver}
+          <div class="config-opciones" role="radiogroup" aria-labelledby="config-instancias-${anio}">
+            ${cat.lista.map(e => opcionInstanciaHTML(anio, e, elegida, cat.defecto)).join('')}
+          </div>
+          <p class="config-nota">Para agregar una instancia: <code>python exportar_datos.py --anio ${anio} --seed 7 --nombre "Semilla 7"</code>
+            en la carpeta del prototipo (con <code>--importar archivo.js</code> se agrega un horario descargado desde Resolver).</p>
+        </section>`;
+    });
+    configCuerpo.innerHTML = secciones.join('')
+      || '<p class="config-ayuda">No hay instancias generadas. Ejecuta <code>python exportar_datos.py --anio 2027</code> en la carpeta del prototipo.</p>';
+  }
+
+  function abrirConfig(boton) {
+    disparadorConfig = boton || null;
+    dibujarConfig();
+    config.hidden = false;
+    $$('[data-abrir-config]').forEach(b => b.setAttribute('aria-expanded', 'true'));
+    const g = G();
+    if (g) {
+      g.fromTo(config, { opacity: 0, y: -10, scale: 0.98 }, { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: 'power3.out', clearProps: 'all' });
+      g.fromTo($$('.config-opcion', config), { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3, stagger: 0.05, delay: 0.08, ease: 'power2.out', clearProps: 'all' });
+    }
+    const foco = $('.config-opcion[aria-checked="true"]', config) || $('#config-cerrar');
+    foco.focus({ preventScroll: true });
+  }
+
+  function cerrarConfig(devolverFoco = true) {
+    if (config.hidden) return;
+    config.hidden = true;
+    $$('[data-abrir-config]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+    if (devolverFoco && disparadorConfig && document.contains(disparadorConfig)) disparadorConfig.focus({ preventScroll: true });
+  }
+
+  function elegirInstancia(anio, id) {
+    const cat = INSTANCIAS[anio];
+    if (!cat || !cat.lista.some(e => e.id === id)) return;
+    const antes = instanciaElegida(anio);
+    // La predeterminada no se guarda: así, si el catálogo cambia de predeterminada, se sigue la nueva
+    guardarLocal(claveInstancia(anio), id === cat.defecto ? null : id);
+    actualizarResumenes();
+    if (anioCargado === anio && (antes.id !== id || resultadoDev(anio))) {
+      // El horario de ese año está en pantalla: se recarga con la instancia nueva, en la misma vista
+      // (si solo cambiara el #fragmento, asignar location.href no recargaría la página)
+      const destino = `${location.pathname}?anio=${anio}`;
+      if (`${location.pathname}${location.search}` === destino) location.reload();
+      else location.href = urlDe(anio);
+      return;
+    }
+    dibujarConfig();
+    const foco = $(`.config-opcion[data-instancia="${CSS.escape(id)}"]`, config);
+    if (foco) foco.focus({ preventScroll: true });
+    if (!menu.hidden) {
+      dibujarTarjetas();
+      entrada({ completa: false });
+    }
+  }
+
+  document.addEventListener('click', ev => {
+    const abrirBoton = ev.target.closest('[data-abrir-config]');
+    if (abrirBoton) {
+      if (config.hidden) abrirConfig(abrirBoton);
+      else cerrarConfig();
+      return;
+    }
+    if (ev.target.closest('#config-cerrar')) { cerrarConfig(); return; }
+    const opcion = ev.target.closest('.config-opcion[data-instancia]');
+    if (opcion) { elegirInstancia(Number(opcion.dataset.anio), opcion.dataset.instancia); return; }
+    const defecto = ev.target.closest('[data-instancia-defecto]');
+    if (defecto) {
+      const anio = Number(defecto.dataset.instanciaDefecto);
+      elegirInstancia(anio, INSTANCIAS[anio].defecto);
+    }
+  });
+  // Se cierra al tocar fuera del panel
+  document.addEventListener('pointerdown', ev => {
+    if (config.hidden || config.contains(ev.target) || ev.target.closest('[data-abrir-config]')) return;
+    cerrarConfig(false);
+  });
+
+  // ===========================================================================
   // EVENTOS
   // ===========================================================================
   tarjetas.addEventListener('click', ev => {
@@ -401,8 +571,24 @@
     if (g) g.fromTo('#menu-tema .icono', { rotate: -90, scale: 0.4 }, { rotate: 0, scale: 1, duration: 0.5, ease: 'back.out(2)', clearProps: 'transform' });
   });
 
-  // Con el menú abierto, el teclado es solo del menú (los atajos de app.js no deben actuar detrás)
+  // Con el menú abierto, el teclado es solo del menú (los atajos de app.js no deben actuar detrás).
+  // Con Configuración abierta, el teclado es de Configuración: Esc la cierra y las flechas recorren las opciones.
   window.addEventListener('keydown', ev => {
+    if (!config.hidden) {
+      ev.stopImmediatePropagation();
+      if (ev.key === 'Escape') { ev.preventDefault(); cerrarConfig(); return; }
+      const opcion = ev.target.closest && ev.target.closest('.config-opcion');
+      if (opcion && ['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(ev.key)) {
+        ev.preventDefault();
+        const grupo = $$('.config-opcion', opcion.parentElement);
+        const i = grupo.indexOf(opcion);
+        const destino = ev.key === 'Home' ? grupo[0] : ev.key === 'End' ? grupo[grupo.length - 1]
+          : grupo[(i + (ev.key === 'ArrowDown' || ev.key === 'ArrowRight' ? 1 : -1) + grupo.length) % grupo.length];
+        grupo.forEach(b => { b.tabIndex = b === destino ? 0 : -1; });
+        destino.focus();
+      }
+      return;
+    }
     if (menu.hidden) return;
     ev.stopImmediatePropagation();
     if (ev.key === 'Escape') { ev.preventDefault(); cerrar(); return; }

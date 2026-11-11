@@ -15,8 +15,7 @@ menos restringida, cada una en la posición libre de menor costo:
 
 Es una heurística: decide una vez cada sesión y nunca la reconsidera. El resultado es
 un horario completo (cada curso cubre su malla y su jornada), pero puede tener
-violaciones duras que luego reparan los métodos de mejora (heuristicas/min_conflicts.py
-y metaheuristicas/).
+violaciones duras que luego reparan las metaheurísticas (metaheuristicas/: ILS e ITS).
 """
 
 from ..datos import DatosColegio

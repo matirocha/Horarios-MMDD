@@ -19,7 +19,7 @@
     $('main').innerHTML = `
       <div class="aviso-datos">
         <h1>Faltan los datos del horario</h1>
-        <p class="nota">No se encontró <code>datos/horarios_${window.HORARIOS_MMDD_ANIO || '&lt;año&gt;'}.js</code>. Ejecuta
+        <p class="nota">No se encontró el horario ${window.HORARIOS_MMDD_ANIO || ''} en la carpeta <code>datos/</code>. Ejecuta
         <code>python exportar_datos.py</code> dentro de la carpeta <code>Prototipo 2</code> y recarga la página.</p>
       </div>`;
     return;
@@ -1313,6 +1313,104 @@
   const ICONO_OK = '<svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
   const ICONO_MAL = '<svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
 
+  // Ventanas por docente y día: bloques libres entre dos clases del mismo día (misma definición
+  // que ventanasDocente y que la métrica total_ventanas_docentes del validador)
+  const opcionesVentanas = { orden: 'depto', solo: false };   // orden: 'depto' | 'total'
+
+  function ventanasPorDia() {
+    return DOCENTES.map(d => {
+      const v = ventanasDocente(d).porDia;
+      const dias = DIAS.map(dia => [...v[dia]].sort((x, y) => x - y));
+      const conClases = DIAS.map(dia => d.clases.some(k => k.dia === dia));
+      return { doc: d, dias, conClases, total: dias.reduce((s, l) => s + l.length, 0) };
+    });
+  }
+
+  // Bloques de ventana agrupados en tramos seguidos: [3, 4, 7] -> "Bloques 3–4 · 09:45–11:15", "Bloque 7 · 13:10–13:55"
+  function tramosVentana(bloques) {
+    const tramos = [];
+    bloques.forEach(b => {
+      const ultimo = tramos[tramos.length - 1];
+      if (ultimo && ultimo[1] === b - 1) ultimo[1] = b;
+      else tramos.push([b, b]);
+    });
+    return tramos.map(([b1, b2]) => `${textoBloques(b1, b2)} · ${rango(b1, b2)}`);
+  }
+
+  function filasVentanasHTML(lista) {
+    const max = Math.max(1, ...lista.flatMap(f => f.dias.map(l => l.length)));
+    const fila = f => {
+      const celdas = DIAS.map((dia, i) => {
+        const n = f.dias[i].length;
+        if (!f.conClases[i]) {
+          return `<td class="vent" data-tip="<b>${esc(f.doc.nombre)}</b> · ${dia}<br>Sin clases este día"><span class="vent-valor nulo">—</span></td>`;
+        }
+        if (!n) {
+          return `<td class="vent" data-tip="<b>${esc(f.doc.nombre)}</b> · ${dia}<br>Sin ventanas"><span class="vent-valor cero">0</span></td>`;
+        }
+        const t = 0.25 + 0.75 * (n / max);
+        const tip = `<b>${esc(f.doc.nombre)}</b> · ${dia}<br>${n} ${n === 1 ? 'bloque' : 'bloques'} de ventana:<br>${tramosVentana(f.dias[i]).join('<br>')}`;
+        return `<td class="vent" data-tip="${tip}"><span class="vent-valor${t > 0.6 ? ' alto' : ''}" style="--t:${t.toFixed(3)}">${n}</span></td>`;
+      }).join('');
+      return `<tr>
+        <th scope="row"><button type="button" class="enlace vent-docente" data-docente="${esc(f.doc.nombre)}">${esc(f.doc.nombre)}</button></th>
+        ${celdas}<td class="num">${f.total}</td></tr>`;
+    };
+
+    const visibles = opcionesVentanas.solo ? lista.filter(f => f.total > 0) : lista;
+    if (!visibles.length) return `<tr><td colspan="${DIAS.length + 2}" class="vent-vacio">Ningún docente tiene ventanas en este horario.</td></tr>`;
+    if (opcionesVentanas.orden === 'total') {
+      return [...visibles].sort((a, b) => b.total - a.total || a.doc.nombre.localeCompare(b.doc.nombre, 'es')).map(fila).join('');
+    }
+    const porDepto = new Map();
+    visibles.forEach(f => {
+      const k = departamento(f.doc);
+      if (!porDepto.has(k)) porDepto.set(k, []);
+      porDepto.get(k).push(f);
+    });
+    return [...porDepto].map(([depto, filas]) =>
+      `<tr class="grupo-fila"><th colspan="${DIAS.length + 2}">${esc(depto)}</th></tr>${filas.map(fila).join('')}`).join('');
+  }
+
+  function seccionVentanasHTML() {
+    const lista = ventanasPorDia();
+    const porDia = DIAS.map((dia, i) => lista.reduce((s, f) => s + f.dias[i].length, 0));
+    const total = porDia.reduce((s, n) => s + n, 0);
+    const conVentanas = lista.filter(f => f.total > 0).length;
+    const iMax = porDia.indexOf(Math.max(...porDia));
+    const resumen = total
+      ? `${total} ${total === 1 ? 'bloque' : 'bloques'} · ${conVentanas} de ${DOCENTES.length} docentes con alguna · más ventanas el ${DIAS[iMax].toLowerCase()} (${porDia[iMax]})`
+      : 'Ningún docente tiene ventanas';
+    const orden = [['depto', 'Por departamento'], ['total', 'Más ventanas primero']]
+      .map(([v, txt]) => `<button type="button" data-ventanas-orden="${v}" aria-pressed="${opcionesVentanas.orden === v}">${txt}</button>`).join('');
+    return `
+      <section class="seccion" id="ventanas-docentes">
+        <div class="seccion-titulo"><h2>Ventanas por docente y día</h2><p>${resumen}</p></div>
+        <div class="vent-opciones">
+          <div class="segmentado" role="group" aria-label="Orden de los docentes">${orden}</div>
+          <button type="button" class="dev-interruptor" role="switch" data-ventanas-solo aria-checked="${opcionesVentanas.solo}">
+            <span class="dev-interruptor-riel" aria-hidden="true"><span></span></span>Solo docentes con ventanas
+          </button>
+        </div>
+        <div class="tabla-marco"><table class="tabla tabla-ventanas">
+          <thead><tr><th scope="col">Docente</th>${DIAS.map(d => `<th scope="col" class="vent"><abbr title="${d}">${DIA_CORTO[d]}</abbr></th>`).join('')}<th scope="col" class="num">Total</th></tr></thead>
+          <tbody>${filasVentanasHTML(lista)}</tbody>
+          <tfoot><tr><td>Total colegio</td>${porDia.map(n => `<td class="vent num">${n}</td>`).join('')}<td class="num">${total}</td></tr></tfoot>
+        </table></div>
+        <p class="nota">Cada número es la cantidad de bloques de 45 minutos libres entre dos clases del mismo día
+          (— = sin clases ese día). Pasa el cursor por una celda para ver qué bloques son; toca un docente para ver su horario.</p>
+      </section>`;
+  }
+
+  function actualizarVentanas() {
+    const seccion = $('#ventanas-docentes');
+    if (!seccion) return;
+    $$('[data-ventanas-orden]', seccion).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ventanasOrden === opcionesVentanas.orden)));
+    $('[data-ventanas-solo]', seccion).setAttribute('aria-checked', String(opcionesVentanas.solo));
+    $('.tabla-ventanas tbody', seccion).innerHTML = filasVentanasHTML(ventanasPorDia());
+    animar.aparecer($$('.tabla-ventanas tbody tr', seccion), { y: 4, stagger: 0.008, duracion: 0.25 });
+  }
+
   function renderAuditoria(animarEntrada) {
     const a = DATOS.auditoria;
     const m = a.metricas;
@@ -1371,7 +1469,8 @@
       <div class="veredicto">
         <div class="veredicto-sello${a.valido ? '' : ' mal'}">${a.valido ? ICONO_OK : ICONO_MAL}</div>
         <div>
-          <span class="eyebrow">Auditoría de restricciones · ${OFICIAL ? `horario oficial ${DATOS.meta.anio}` : `semilla ${DATOS.meta.semilla}`}</span>
+          <span class="eyebrow">Auditoría de restricciones · ${OFICIAL ? `horario oficial ${DATOS.meta.anio}`
+            : [DATOS.meta.nombreInstancia, DATOS.meta.semilla != null ? `semilla ${DATOS.meta.semilla}` : ''].filter(Boolean).map(esc).join(' · ')}</span>
           <h1>${a.valido ? 'Horario factible' : 'Horario con conflictos'}</h1>
           <p>${a.valido
             ? `Cumple las ${a.criterios.length} restricciones duras auditadas en ${m.cursos_auditados} cursos y ${m.docentes_auditados} docentes.`
@@ -1385,7 +1484,8 @@
 
       <div class="kpis">
         <div class="kpi"><span class="kpi-valor"><span data-contar="${m.total_bloques_asignados}">${m.total_bloques_asignados}</span><small>/ ${m.total_bloques_esperados}</small></span><span class="kpi-etiqueta">bloques asignados</span></div>
-        <div class="kpi"><span class="kpi-valor"><span data-contar="${m.total_ventanas_docentes}">${m.total_ventanas_docentes}</span></span><span class="kpi-etiqueta">bloques de ventana docente (libres entre dos clases del mismo día; menos es mejor)</span></div>
+        <div class="kpi"><span class="kpi-valor"><span data-contar="${m.total_ventanas_docentes}">${m.total_ventanas_docentes}</span></span><span class="kpi-etiqueta">bloques de ventana docente (libres entre dos clases del mismo día; menos es mejor)</span>
+          <button type="button" class="enlace kpi-enlace" data-ir-ventanas>Ver por docente y día</button></div>
       </div>
       ${DEV.activo ? '<div id="auditoria-dev" class="dev-auditoria"></div>' : ''}
 
@@ -1407,9 +1507,11 @@
           <div class="calor-escala"><span>0</span><span class="calor-escala-barra"></span><span>${DOCENTES.length} docentes</span></div>
         </section>
       </div>
+      ${seccionVentanasHTML()}
       <p class="nota">${OFICIAL
         ? `Datos leídos de <code>${esc(DATOS.meta.archivo)}</code>. Si el Excel cambia, ejecuta <code>python exportar_datos.py --anio ${DATOS.meta.anio}</code> en la carpeta del prototipo y recarga la página.`
-        : `Para revisar otro horario, ejecuta <code>python exportar_datos.py --anio ${DATOS.meta.anio} --seed N</code> en la carpeta del prototipo y recarga la página.`}</p>`;
+        : `Para revisar otro horario generado, elígelo en <b>Configuración</b> (botón de la esquina superior derecha). Para agregar uno,
+           ejecuta <code>python exportar_datos.py --anio ${DATOS.meta.anio} --seed N</code> en la carpeta del prototipo y recarga la página.`}</p>`;
 
     const panel = $('#panel-auditoria');
     if (animarEntrada) {
@@ -1874,7 +1976,8 @@
     if (m.desarrollador && m.desarrollador.nombre) {
       return `${m.desarrollador.nombre} ${m.desarrollador.editada ? 'editada' : 'base'}${semilla}`;
     }
-    return m.fuente === 'oficial' ? 'oficial' : `generado${semilla}`;
+    if (m.fuente === 'oficial') return 'oficial';
+    return m.instancia ? `instancia ${m.instancia}` : `generado${semilla}`;
   }
 
   // Solo lo que necesita el servidor (el horario completo pesa ≈ 0,5 MB)
@@ -2052,6 +2155,13 @@
       }
       return;
     }
+    if (t.matches('[data-ventanas-orden]')) { opcionesVentanas.orden = t.dataset.ventanasOrden; actualizarVentanas(); return; }
+    if (t.matches('[data-ventanas-solo]')) { opcionesVentanas.solo = !opcionesVentanas.solo; actualizarVentanas(); return; }
+    if (t.matches('[data-ir-ventanas]')) {
+      const seccion = $('#ventanas-docentes');
+      if (seccion) seccion.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+      return;
+    }
     if (t.matches('[data-bloque-dia]')) { estado.dia = t.dataset.bloqueDia; actualizarBloque(); return; }
     if (t.matches('[data-bloque-num]')) { estado.bloque = Number(t.dataset.bloqueNum); actualizarBloque(); return; }
     if (t.id === 'reproducir') { alternarReproduccion(); return; }
@@ -2198,7 +2308,8 @@
     ? `Resultado del solver (${RESULTADO_DEV.nombre}${DATOS.meta.semilla != null ? `, semilla ${DATOS.meta.semilla}` : ''}) · ${DATOS.meta.generado} · `
     : OFICIAL
       ? `Horario oficial ${DATOS.meta.anio} · ${DATOS.meta.archivo} · `
-      : `Horario ${DATOS.meta.anio} generado con la semilla ${DATOS.meta.semilla} · ${DATOS.meta.generado} · `)
+      : `Horario ${DATOS.meta.anio} generado${DATOS.meta.nombreInstancia ? ` · instancia «${DATOS.meta.nombreInstancia}»` : ''}`
+        + `${DATOS.meta.semilla != null ? ` · semilla ${DATOS.meta.semilla}` : ''} · ${DATOS.meta.generado} · `)
     + `${DATOS.auditoria.metricas.total_bloques_asignados}/${DATOS.auditoria.metricas.total_bloques_esperados} bloques asignados`;
   if (RESULTADO_DEV) {
     $('#hoja-anio').textContent = `Horario ${DATOS.meta.anio} · resultado del solver`;

@@ -14,14 +14,18 @@ oficiales del año 2026 (carpeta data/Data 2026):
   - HORARIO CURSOS 2026.xlsx       -> bloques, jornadas, cargas, electivos y recintos.
   - DISTRIBUCIÓN HORARIA 2026.docx -> dotación docente y asignación profesor-curso.
 
+Metodología: una heurística constructiva voraz arma la solución inicial y una
+metaheurística la repara hasta un horario factible: búsqueda local iterada (ILS) o
+búsqueda tabú iterada (ITS, por defecto).
+
 El código vive en el paquete horarios/ (ver notebooks/README.md). El modelo
-matemático exacto está en modelo_matematico.py y la comparación de métodos en
+matemático exacto está en modelo_matematico.py y la comparación de ILS e ITS en
 comparar_metaheuristicas.py.
 """
 
 import argparse
 
-from horarios import METAHEURISTICAS, MenuInteractivo, MotorHorarios
+from horarios import METAHEURISTICAS, POR_DEFECTO, MenuInteractivo, MotorHorarios
 # Los prototipos web importan estas clases desde este archivo ('from generador_horarios import ...')
 from horarios import DatosColegio, ExportadorExcel, HorarioEscolar, ValidadorRestricciones  # noqa: F401
 
@@ -33,8 +37,9 @@ def main():
     parser.add_argument('--export', action='store_true', help="Generar Excel automáticamente y salir")
     parser.add_argument('--audit', action='store_true', help="Mostrar auditoría de restricciones y salir")
     parser.add_argument('--seed', type=int, default=3, help="Semilla del generador (default: 3)")
-    parser.add_argument('--metaheuristica', choices=sorted(METAHEURISTICAS), default='min_conflicts_tabu',
-                        help="Metaheurística de mejora (default: min_conflicts_tabu)")
+    parser.add_argument('--metaheuristica', choices=sorted(METAHEURISTICAS), default=POR_DEFECTO,
+                        help=f"Metaheurística de mejora: ils (búsqueda local iterada) o its (búsqueda tabú "
+                             f"iterada) (default: {POR_DEFECTO})")
     parser.add_argument('--tiempo-max', type=float, default=None,
                         help="Segundos máximos de la búsqueda (default: sin límite)")
     args = parser.parse_args()

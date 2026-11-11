@@ -5,7 +5,7 @@ Página web interactiva para revisar dos horarios del colegio:
 | Año | Origen |
 | :--- | :--- |
 | **2026** | Horario **oficial**, leído tal cual de `data/Data 2026/HORARIO CURSOS 2026.xlsx`. |
-| **2027** | Horario **generado** por `notebooks/generador_horarios.py` (semilla por defecto: 3). |
+| **2027** | Horario **generado** por el motor de `notebooks/`. Hay varias **instancias generadas** y en **Configuración** se elige cuál se muestra; la predeterminada es el *Horario del 6 de octubre*. |
 
 Funciona abriendo `index.html` directamente en el navegador, sin instalar nada ni levantar un servidor.
 
@@ -18,6 +18,22 @@ Funciona abriendo `index.html` directamente en el navegador, sin instalar nada n
 3. Para cambiar de año, usa el botón `2026 · Oficial` / `2027 · Generado` de la barra superior: vuelve
    al menú y, al elegir el otro año, se abre la misma vista (por ejemplo, el mismo curso).
 
+### Configuración: instancias generadas del 2027
+
+El botón de la esquina superior derecha (también en el menú de inicio) abre **Configuración**, con
+el selector de instancias generadas del horario 2027. Cada instancia muestra su método, semilla,
+fecha, si es factible, sus ventanas docentes y bloques. La elegida pasa a ser el 2027 de todas las
+vistas, de la tarjeta del menú y de los documentos que se descargan, y se recuerda en el navegador.
+*Usar la predeterminada* vuelve a la instancia por defecto del catálogo.
+
+| Instancia | Origen | Ventanas |
+| :--- | :--- | ---: |
+| **Horario del 6 de octubre** (predeterminada) | Semilla 3 con el motor de octubre (commit `253c7d6`), cuando el modelo incluía el Patio Santo Domingo (f(x) = 1000·H + 1·P). Recuperado de git; ese motor lo reproduce exacto. | 116 |
+| Horario del 3 de noviembre | Semilla 3 con el motor de noviembre (commits `a554782` a `1159c14`, sin el Patio: f(x) = 1000·H). | 130 |
+
+Las dos son factibles y se generaron con el método anterior a noviembre de 2026: construcción voraz +
+Min-Conflicts con tabú, ruido y reinicios (hoy el motor usa ILS o ITS; las instancias nuevas lo indican). Cambian porque la función objetivo cambió y la búsqueda tomó otro camino con la misma semilla.
+
 Para regenerar los datos y recargar la página:
 
 ```bash
@@ -25,16 +41,27 @@ python "Prototipos/Prototipo 2/exportar_datos.py"
 ```
 
 ```bash
-python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2027 --seed 7
+python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2027 --seed 7 --nombre "Semilla 7"
 ```
 
 ```bash
 python "Prototipos/Prototipo 2/exportar_datos.py" --anio 2026
 ```
 
-Sin `--anio` se exportan los dos años. El script escribe `datos/horarios_<año>.js` (el horario
-completo), `datos/resumen_<año>.js` (lo que muestra la tarjeta del menú) y `assets/escudo.png`
-(el escudo se toma del Excel oficial 2026).
+```bash
+python "Prototipos/Prototipo 2/exportar_datos.py" --importar horario.js --nombre "Gurobi" --defecto
+```
+
+Sin `--anio` se exportan los dos años. El 2026 se escribe en `datos/horarios_2026.js` (el horario
+completo) y `datos/resumen_2026.js` (lo que muestra la tarjeta del menú). Cada ejecución del 2027
+guarda una **instancia** en `datos/instancias/horarios_2027_<id>.js` y la anota en el catálogo
+`datos/instancias_2027.js` (instancia predeterminada y, de cada una, archivo, nombre, método y
+resumen). Si el horario ya existe en el catálogo (mismas clases), se actualiza esa entrada en vez
+de duplicarla. Opciones del 2027: `--metaheuristica` (método de mejora), `--nombre`,
+`--descripcion`, `--id` y `--defecto` (dejarla como predeterminada). Con `--importar` se agrega
+un horario ya guardado (de una versión anterior o descargado desde *Resolver*), reconstruido con el
+formato y la auditoría actuales. El script también escribe `assets/escudo.png` (el escudo se toma
+del Excel oficial 2026).
 
 ### Cómo se lee el horario oficial 2026
 
@@ -53,7 +80,7 @@ completo), `datos/resumen_<año>.js` (lo que muestra la tarjeta del menú) y `as
 | **Docentes** | Grilla de los 37 docentes con sus ventanas, carga por día y distribución horaria. |
 | **Salas y gimnasios** | Ocupación de los 3 recintos deportivos y las 12 salas, incluidos los bloqueos de pastoral. |
 | **Por bloque** | Todo el colegio en un momento de la semana: qué tiene cada curso, docentes sin clase y salas en uso. El botón *Recorrer la semana* avanza bloque a bloque. |
-| **Auditoría** | Estado de las restricciones duras, indicadores (bloques asignados y ventanas docentes), horas por docente y mapa de docentes en clase. |
+| **Auditoría** | Estado de las restricciones duras, indicadores (bloques asignados y ventanas docentes), horas por docente, mapa de docentes en clase y la tabla **Ventanas por docente y día**: bloques libres entre dos clases de cada docente, de lunes a viernes, con totales por día y por docente. Se ordena por departamento o por más ventanas, puede mostrar solo los docentes con ventanas y, al pasar el cursor por una celda, indica qué bloques son. |
 
 ## Uso rápido
 
@@ -66,6 +93,7 @@ completo), `datos/resumen_<año>.js` (lo que muestra la tarjeta del menú) y `as
 - En el menú de cursos las flechas mueven la selección, `Enter` abre el curso y `Esc` cierra el menú.
 - En el celular la grilla muestra un día a la vez; el detalle aparece desde abajo.
 - Botón de tema claro/oscuro.
+- Botón **Configuración** (esquina superior derecha): elige la instancia generada del 2027; `Esc` lo cierra y las flechas recorren las instancias.
 - En Cursos, Docentes y Salas, **Imprimir** deja el horario de la semana en una sola hoja horizontal
   (con membrete, en tema claro y sin las marcas de "hoy"), y el botón de descarga, junto a él, guarda esa
   misma hoja como PDF de una plana (carta horizontal). El PDF usa html2canvas-pro y jsPDF, que se descargan
@@ -107,7 +135,7 @@ entre visitas). Con el modo activo:
 | **Docentes** | Agregar, renombrar, cambiar de departamento y quitar docentes. Al quitar uno se elige quién se queda con sus clases, jefaturas y electivos. Muestra la carga en grilla de cada docente frente a los 42 bloques de la semana. |
 | **Asignación** | Por curso, quién dicta cada asignatura (dos docentes en la co-docencia) y el profesor/a jefe; la Orientación sigue a la jefatura. Las horas y jornadas no se editan. |
 | **Electivos** | Nombre, sección, docente y sala de cada electivo de las 3 franjas de 3° y 4° medio; agregar o quitar electivos. No deja poner a un docente en dos electivos de la misma franja. El interruptor **Franjas de electivos fijas** decide si las franjas quedan en los bloques del Excel 2026 (encendido, como en la base) o si el solver elige sus 3 bloques dobles (apagado: días distintos y los mismos para A y B). |
-| **Resolver** | Resuelve la instancia base o la editada con el método elegido: la heurística Voraz + Min-Conflicts, las metaheurísticas búsqueda tabú, búsqueda local iterada y Min-Conflicts + tabú (con sus parámetros) o el modelo matemático (**Gurobi** por defecto; también CP-SAT, HiGHS, SCIP o CBC). Explica qué hace cada método. Con franjas móviles muestra los bloques que eligió el solver. Muestra f(x) inicial y final, tiempos por fase, convergencia y la auditoría, y permite **ver el resultado en el visualizador** (solo en esa pestaña del navegador; desde ahí se descargan sus documentos) o descargarlo con el formato de `datos/horarios_<año>.js`. En **Ejecuciones de esta sesión** (las de Resolver y las de Comparar) cada fila tiene **Ver en el visualizador**: el horario de cada ejecución queda guardado en el navegador (IndexedDB) mientras la pestaña esté abierta, así que se puede abrir cualquiera aunque se haya recargado la página. Si un horario no quedó guardado, el botón lo vuelve a calcular con la misma configuración y lo abre (con una instancia editada, solo si sigue igual); el botón **Resolver** junto al aviso *Vuelve a resolver…* hace lo mismo con el último resultado. |
+| **Resolver** | Resuelve la instancia base o la editada con el método elegido: las metaheurísticas **búsqueda local iterada (ILS)** o **búsqueda tabú iterada (ITS)**, que parten de la heurística constructiva voraz (con sus parámetros), o el modelo matemático (**Gurobi** por defecto; también CP-SAT, HiGHS, SCIP o CBC). Explica qué hace cada método. Con franjas móviles muestra los bloques que eligió el solver. Muestra f(x) inicial y final, tiempos por fase, convergencia y la auditoría, y permite **ver el resultado en el visualizador** (solo en esa pestaña del navegador; desde ahí se descargan sus documentos) o descargarlo con el formato de los datos de la página (luego `exportar_datos.py --importar` lo agrega como instancia de Configuración). En **Ejecuciones de esta sesión** (las de Resolver y las de Comparar) cada fila tiene **Ver en el visualizador**: el horario de cada ejecución queda guardado en el navegador (IndexedDB) mientras la pestaña esté abierta, así que se puede abrir cualquiera aunque se haya recargado la página. Si un horario no quedó guardado, el botón lo vuelve a calcular con la misma configuración y lo abre (con una instancia editada, solo si sigue igual); el botón **Resolver** junto al aviso *Vuelve a resolver…* hace lo mismo con el último resultado. |
 | **Comparar** | Ejecuta los métodos elegidos con varias semillas y el mismo presupuesto (el modelo se repite tantas veces como semillas) y compara factibilidad, f(x) inicial y final, tiempo de ejecución (mediana, media ± desviación, hasta factible), pasos, ventanas y % de bloques dobles. Incluye gráficos de tiempos, función objetivo y convergencia, y descarga en CSV. |
 
 Los docentes, departamentos, salas y cursos se eligen con un selector emergente (fichas agrupadas,
@@ -202,14 +230,15 @@ no lo permite desde una página https).
 Prototipo 2/
 ├── index.html               # Estructura de la página (menú de inicio + plataforma)
 ├── css/estilos.css          # Diseño (tema claro y oscuro, responsivo, impresión)
-├── js/menu.js               # Menú de inicio: elige el año y carga sus datos y app.js
+├── js/menu.js               # Menú de inicio y Configuración: elige el año y la instancia, y carga sus datos y app.js
 ├── js/app.js                # Lógica de las vistas y animaciones
 ├── js/desarrollador.js      # Modo desarrollador: pestaña Edición, solver, comparación y diagnóstico de f(x)
 ├── datos/horarios_2026.js   # Horario oficial 2026 (generado, no editar a mano)
-├── datos/horarios_2027.js   # Horario generado 2027 (generado, no editar a mano)
-├── datos/resumen_<año>.js   # Resumen de cada año para las tarjetas del menú
+├── datos/resumen_2026.js    # Resumen del 2026 para la tarjeta del menú
+├── datos/instancias_2027.js # Catálogo de instancias generadas del 2027 (lo usa Configuración)
+├── datos/instancias/        # Una instancia por archivo: horarios_2027_<id>.js (no editar a mano)
 ├── assets/escudo.png        # Escudo del colegio
-├── exportar_datos.py        # Lee el Excel 2026, ejecuta el motor (2027) y exporta los datos
+├── exportar_datos.py        # Lee el Excel 2026, ejecuta el motor (instancias 2027) y exporta los datos
 ├── servidor.py              # Servidor local del modo desarrollador (página + API del solver y documentos)
 ├── api/                     # Funciones de Vercel: estado, instancia, resolver, factibilidad y exportar
 ├── pyproject.toml           # Dependencias de las funciones de Vercel (OR-Tools, Gurobi, documentos + motor)

@@ -20,10 +20,14 @@
 <body>
   <!-- ============================== MENÚ DE INICIO ==============================
        Elige entre el horario oficial 2026 (Excel del colegio) y el 2027 generado por el
-       proyecto. js/menu.js dibuja las tarjetas y carga datos/horarios_<año>.js y js/app.js. -->
+       proyecto. js/menu.js dibuja las tarjetas y carga el horario del año y js/app.js. -->
   <section class="menu" id="menu" aria-labelledby="menu-titulo">
     <div class="menu-fondo" aria-hidden="true"></div>
     <div class="menu-acciones">
+      <button class="boton-icono" type="button" data-abrir-config aria-label="Configuración" aria-haspopup="dialog"
+              aria-controls="config" aria-expanded="false" title="Configuración">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+      </button>
       <button class="boton-icono" type="button" id="menu-tema" aria-label="Cambiar entre tema claro y oscuro">
         <svg class="icono icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12H5M19 12h2.5M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></svg>
         <svg class="icono icono-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
@@ -83,6 +87,11 @@
     <button id="tema" class="boton-icono" type="button" aria-label="Cambiar entre tema claro y oscuro">
       <svg class="icono icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M2.5 12H5M19 12h2.5M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></svg>
       <svg class="icono icono-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+    </button>
+
+    <button id="configuracion" class="boton-icono" type="button" data-abrir-config aria-label="Configuración"
+            aria-haspopup="dialog" aria-controls="config" aria-expanded="false" title="Configuración">
+      <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
     </button>
   </header>
 
@@ -211,6 +220,18 @@
 
   <div class="tooltip" id="tooltip" role="status" hidden></div>
 
+  <!-- Configuración (botón de la esquina superior derecha): elige qué instancia generada del
+       horario 2027 se muestra. La dibuja js/menu.js con el catálogo datos/instancias_2027.js. -->
+  <div class="config" id="config" role="dialog" aria-labelledby="config-titulo" hidden>
+    <div class="config-cabecera">
+      <h2 class="config-titulo" id="config-titulo">Configuración</h2>
+      <button class="boton-icono" type="button" id="config-cerrar" aria-label="Cerrar configuración">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="config-cuerpo" id="config-cuerpo"></div>
+  </div>
+
   <footer class="pie">
     <span id="pie-datos"></span>
     <span>Taller de Gestión de Operaciones · Ingeniería Civil Industrial, Universidad de Concepción</span>
@@ -218,10 +239,11 @@
 
   <!-- Animaciones: GSAP (si no carga, la página funciona igual, sin animaciones) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-  <!-- Resumen de cada año para las tarjetas del menú (exportar_datos.py). El horario completo
-       (datos/horarios_<año>.js) y js/app.js los carga js/menu.js al elegir el año. -->
+  <!-- Datos para las tarjetas del menú (exportar_datos.py): el resumen del horario oficial 2026 y el
+       catálogo de instancias generadas del 2027 (cada una trae su resumen). El horario completo
+       (datos/horarios_2026.js o el archivo de la instancia elegida) y js/app.js los carga js/menu.js. -->
   <script src="datos/resumen_2026.js"></script>
-  <script src="datos/resumen_2027.js"></script>
+  <script src="datos/instancias_2027.js"></script>
   <script src="js/menu.js"></script>
 </body>
 </html>
